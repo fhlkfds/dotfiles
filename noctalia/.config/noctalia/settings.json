@@ -262,7 +262,7 @@
         "manualSunrise": "06:30",
         "manualSunset": "18:30",
         "monitorForColors": "",
-        "predefinedScheme": "Kanagawa",
+        "predefinedScheme": "Catppuccin",
         "schedulingMode": "off",
         "syncGsettings": true,
         "useWallpaperColors": false
@@ -393,6 +393,11 @@
                         "x": 23,
                         "y": 718
                     }
+                ]
+            },
+            {
+                "name": "DP-1",
+                "widgets": [
                 ]
             }
         ],
@@ -744,7 +749,7 @@
         ],
         "useOriginalImages": false,
         "useSolidColor": false,
-        "useWallhaven": true,
+        "useWallhaven": false,
         "viewMode": "browse",
         "wallhavenApiKey": "",
         "wallhavenCategories": "111",
