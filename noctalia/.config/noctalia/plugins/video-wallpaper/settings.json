@@ -1,0 +1,50 @@
+{
+  "activeBackend": "mpvpaper",
+  "automationMode": "random",
+  "automationTime": 300,
+  "fillMode": "fit",
+  "mpvSocket": "/tmp/mpv-socket",
+  "profile": "default",
+  "volume": 1,
+  "wallpapersFolder": "~/Pictures/Wallpapers",
+  "thumbCacheReady": true,
+  "enabled": true,
+  "monitorSpecific": true,
+  "DP-1": {
+    "currentWallpaper": "/home/liam/Pictures/Wallpapers/dynamic/Lost-In-Dream-Sunset.mkv",
+    "volume": 1,
+    "automation": false,
+    "automationMode": "random",
+    "automationTime": 300,
+    "hardwareAcceleration": false,
+    "profile": "default",
+    "fillMode": "",
+    "orientation": 0,
+    "isPlaying": true
+  },
+  "DP-2": {
+    "currentWallpaper": "/home/liam/Pictures/Wallpapers/dynamic/Lost-In-Dream-Sunset.mkv",
+    "volume": 1,
+    "automation": false,
+    "automationMode": "random",
+    "automationTime": 300,
+    "hardwareAcceleration": false,
+    "profile": "default",
+    "fillMode": "stretch",
+    "orientation": 0,
+    "isPlaying": true
+  },
+  "DP-3": {
+    "currentWallpaper": "/home/liam/Pictures/Wallpapers/dynamic/Lost-In-Dream-Sunset.mkv",
+    "volume": 1,
+    "automation": false,
+    "automationMode": "random",
+    "automationTime": 300,
+    "hardwareAcceleration": false,
+    "profile": "default",
+    "fillMode": "",
+    "orientation": 0,
+    "isPlaying": true
+  },
+  "automationCustomTime": []
+}

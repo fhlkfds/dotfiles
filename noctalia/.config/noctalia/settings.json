@@ -75,7 +75,7 @@
         "showOnWorkspaceSwitch": true,
         "showOutline": false,
         "useSeparateOpacity": false,
-        "widgetSpacing": 6,
+        "widgetSpacing": 5,
         "widgets": {
             "center": [
                 {
@@ -222,91 +222,16 @@
                     "useDistroLogo": false
                 },
                 {
-                    "defaultSettings": {
-                        "assetsDir": "",
-                        "autoApplyOnStartup": true,
-                        "defaultAudioReactiveEffects": true,
-                        "defaultDisableMouse": false,
-                        "defaultDisableParallax": false,
-                        "defaultFps": 30,
-                        "defaultFullscreenPauseOnlyActive": false,
-                        "defaultMuted": true,
-                        "defaultNoFullscreenPause": false,
-                        "defaultScaling": "fill",
-                        "defaultVolume": 100,
-                        "lastKnownGoodScreens": {
-                        },
-                        "panelLastSelectedPath": "",
-                        "runtimeRecoveryPending": false,
-                        "screens": {
-                        },
-                        "wallpapersFolder": "~/.local/share/Steam/steamapps/workshop/content/431960"
-                    },
-                    "id": "plugin:linux-wallpaperengine-controller"
+                    "id": "plugin:screen-toolkit"
                 },
                 {
-                    "defaultSettings": {
-                        "autoHeight": true,
-                        "cheatsheetData": [
-                        ],
-                        "columnCount": 3,
-                        "detectedCompositor": "",
-                        "hyprlandConfigPath": "~/.config/hypr/hyprland.conf",
-                        "modKeyVariable": "$mod",
-                        "niriConfigPath": "~/.config/niri/config.kdl",
-                        "windowHeight": 0,
-                        "windowWidth": 1400
-                    },
-                    "id": "plugin:keybind-cheatsheet"
+                    "id": "plugin:timer"
                 },
                 {
-                    "defaultSettings": {
-                        "boldText": true,
-                        "checkCmd": "(checkupdates; paru -Qua) 2>/dev/null",
-                        "customIconPath": "",
-                        "desktopTip": true,
-                        "enableColorization": false,
-                        "flatpak": true,
-                        "hideOnEmpty": false,
-                        "iconColor": "none",
-                        "iconName": "arrow-big-down-lines",
-                        "noctalia": true,
-                        "refreshInterval": 120,
-                        "refreshTimer": true,
-                        "toast": true,
-                        "updateCmd": "ghostty -e bash -c 'echo \"Updating System...\";paru; flatpak update; read -n 1 -p \"Press any key to exit...\"'",
-                        "useDistroLogo": false
-                    },
-                    "id": "plugin:arch-updater"
+                    "id": "plugin:wallcards"
                 },
                 {
-                    "defaultSettings": {
-                        "ai": {
-                            "apiKeys": {
-                            },
-                            "maxHistoryLength": 100,
-                            "model": "gemini-2.5-flash",
-                            "openaiBaseUrl": "https://api.openai.com/v1/chat/completions",
-                            "openaiLocal": false,
-                            "provider": "google",
-                            "systemPrompt": "You are a helpful assistant integrated into a Linux desktop shell. Be concise and helpful.",
-                            "temperature": 0.7
-                        },
-                        "maxHistoryLength": 100,
-                        "panelDetached": true,
-                        "panelHeightRatio": 0.85,
-                        "panelPosition": "right",
-                        "panelWidth": 520,
-                        "scale": 1,
-                        "translator": {
-                            "backend": "google",
-                            "deeplApiKey": "",
-                            "realTimeTranslation": true,
-                            "sourceLanguage": "auto",
-                            "targetLanguage": "en"
-                        }
-                    },
-                    "id": "plugin:assistant-panel"
+                    "id": "plugin:video-wallpaper"
                 }
             ]
         }
@@ -474,7 +399,7 @@
                 ]
             }
         ],
-        "overviewEnabled": false
+        "overviewEnabled": true
     },
     "dock": {
         "animationSpeed": 1,
@@ -498,7 +423,10 @@
         "launcherPosition": "end",
         "launcherUseDistroLogo": false,
         "monitors": [
-            "eDP-1"
+            "eDP-1",
+            "DP-1",
+            "DP-2",
+            "DP-3"
         ],
         "onlySameOutput": true,
         "pinnedApps": [
@@ -512,19 +440,19 @@
     },
     "general": {
         "allowPanelsOnScreenWithoutBar": true,
-        "allowPasswordWithFprintd": false,
+        "allowPasswordWithFprintd": true,
         "animationDisabled": false,
         "animationSpeed": 1,
-        "autoStartAuth": false,
+        "autoStartAuth": true,
         "avatarImage": "/home/liam/.face",
         "boxRadiusRatio": 1,
         "clockFormat": "hh\\nmm",
-        "clockStyle": "custom",
+        "clockStyle": "digital",
         "compactLockScreen": false,
         "dimmerOpacity": 0.2,
         "enableBlurBehind": true,
         "enableLockScreenCountdown": true,
-        "enableLockScreenMediaControls": false,
+        "enableLockScreenMediaControls": true,
         "enableShadows": true,
         "forceBlackScreenCorners": false,
         "iRadiusRatio": 1,
@@ -554,13 +482,16 @@
         },
         "language": "",
         "lockOnSuspend": true,
-        "lockScreenAnimations": false,
+        "lockScreenAnimations": true,
         "lockScreenBlur": 0,
         "lockScreenCountdownDuration": 10000,
         "lockScreenMonitors": [
+            "DP-1",
+            "DP-2",
+            "DP-3"
         ],
         "lockScreenTint": 0,
-        "passwordChars": false,
+        "passwordChars": true,
         "radiusRatio": 1,
         "reverseScroll": false,
         "scaleRatio": 1.05,
@@ -569,9 +500,9 @@
         "shadowOffsetX": 2,
         "shadowOffsetY": 3,
         "showChangelogOnStartup": true,
-        "showHibernateOnLockScreen": true,
+        "showHibernateOnLockScreen": false,
         "showScreenCorners": false,
-        "showSessionButtonsOnLockScreen": true,
+        "showSessionButtonsOnLockScreen": false,
         "smoothScrollEnabled": true,
         "telemetryEnabled": false
     },
@@ -647,12 +578,13 @@
         "density": "default",
         "enableBatteryToast": true,
         "enableKeyboardLayoutToast": true,
-        "enableMarkdown": false,
+        "enableMarkdown": true,
         "enableMediaToast": true,
         "enabled": true,
         "location": "top_right",
         "lowUrgencyDuration": 3,
         "monitors": [
+            "DP-2"
         ],
         "normalUrgencyDuration": 8,
         "overlayLayer": true,
@@ -679,7 +611,8 @@
         "enabledTypes": [
             0,
             1,
-            2
+            2,
+            3
         ],
         "location": "top_right",
         "monitors": [
@@ -687,7 +620,7 @@
         "overlayLayer": true
     },
     "plugins": {
-        "autoUpdate": false,
+        "autoUpdate": true,
         "notifyUpdates": true
     },
     "sessionMenu": {
