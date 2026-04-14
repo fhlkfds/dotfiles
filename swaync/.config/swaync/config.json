@@ -1,0 +1,66 @@
+{
+  "ignore-gtk-theme": true,
+  "positionX": "right",
+  "positionY": "top",
+  "layer": "overlay",
+  "layer-shell": true,
+  "layer-shell-cover-screen": true,
+  "cssPriority": "application",
+  "control-center-layer": "top",
+  "control-center-positionX": "right",
+  "control-center-positionY": "top",
+  "control-center-margin-top": 14,
+  "control-center-margin-right": 14,
+  "control-center-margin-bottom": 14,
+  "control-center-margin-left": 0,
+  "control-center-exclusive-zone": true,
+  "fit-to-screen": false,
+  "control-center-width": 420,
+  "control-center-height": 720,
+  "notification-window-width": 400,
+  "notification-window-height": -1,
+  "timeout": 8,
+  "timeout-low": 5,
+  "timeout-critical": 0,
+  "transition-time": 200,
+  "relative-timestamps": true,
+  "notification-grouping": true,
+  "notification-2fa-action": true,
+  "notification-inline-replies": false,
+  "image-visibility": "when-available",
+  "hide-on-action": true,
+  "hide-on-clear": false,
+  "keyboard-shortcuts": true,
+  "text-empty": "All clear",
+  "widgets": [
+    "title",
+    "dnd",
+    "volume",
+    "notifications"
+  ],
+  "widget-config": {
+    "title": {
+      "text": "Notifications",
+      "clear-all-button": true,
+      "button-text": "Clear"
+    },
+    "dnd": {
+      "text": "Do Not Disturb"
+    },
+    "volume": {
+      "label": "Volume",
+      "show-per-app": false,
+      "show-per-app-icon": true,
+      "show-per-app-label": false,
+      "expand-per-app": false,
+      "empty-list-label": "No active audio",
+      "expand-button-label": "↥",
+      "collapse-button-label": "↧",
+      "animation-type": "slide_down",
+      "animation-duration": 200
+    },
+    "notifications": {
+      "vexpand": true
+    }
+  }
+}

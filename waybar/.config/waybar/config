@@ -1,0 +1,150 @@
+{
+  "layer": "top",
+  "position": "top",
+  "height": 34,
+  "margin-top": 10,
+  "margin-left": 14,
+  "margin-right": 14,
+  "spacing": 8,
+  "reload_style_on_change": true,
+
+  "modules-left": [
+    "hyprland/window",
+    "hyprland/workspaces"
+  ],
+  "modules-center": [
+    "custom/update",
+    "clock"
+  ],
+  "modules-right": [
+    "cpu",
+    "memory",
+    "network",
+    "pulseaudio",
+    "battery",
+    "tray",
+    "custom/power"
+  ],
+
+  "hyprland/window": {
+    "format": "{}",
+    "separate-outputs": true,
+    "max-length": 55
+  },
+
+  "hyprland/workspaces": {
+    "format": "{id}",
+    "sort-by": "number",
+    "move-to-monitor": true,
+    "all-outputs": false,
+    "active-only": false
+  },
+
+  "custom/update": {
+    "format": "󰚰",
+    "tooltip": true,
+    "tooltip-format": "Run system update",
+    "on-click": "bash -lc \"$HOME/.config/waybar/scripts/update-system.sh\""
+  },
+
+  "clock": {
+    "interval": 60,
+    "format": "{:%I:%M %p}",
+    "format-alt": "{:%a, %b %d}",
+    "tooltip-format": "<big>{:%A, %B %d, %Y}</big>\n<tt>{calendar}</tt>",
+    "calendar": {
+      "mode": "month",
+      "mode-mon-col": 3,
+      "weeks-pos": "right",
+      "on-scroll": 1,
+      "format": {
+        "months": "<span color='#EAF7FF'><b>{}</b></span>",
+        "days": "<span color='#CFD8FF'>{}</span>",
+        "weeks": "<span color='#86E6FF'><b>W{}</b></span>",
+        "weekdays": "<span color='#B8C7FF'><b>{}</b></span>",
+        "today": "<span color='#86E6FF'><b><u>{}</u></b></span>"
+      }
+    }
+  },
+
+  "cpu": {
+    "interval": 5,
+    "format": "󰍛  {usage}%",
+    "states": {
+      "warning": 60,
+      "critical": 85
+    }
+  },
+
+  "memory": {
+    "interval": 10,
+    "format": "󰘚  {used:0.1f}G",
+    "tooltip-format": "RAM: {used:0.1f} / {total:0.1f} GiB ({percentage}%)"
+  },
+
+  "network": {
+    "interval": 5,
+    "format-wifi": "󰖩  {essid}",
+    "format-ethernet": "󰈀  {ifname}",
+    "format-linked": "󰈀  {ifname} (no IP)",
+    "format-disconnected": "󰖪  offline",
+    "tooltip-format-wifi": "{essid} ({signalStrength}%)\n{ipaddr}",
+    "tooltip-format-ethernet": "{ifname}\n{ipaddr}",
+    "tooltip-format-disconnected": "Disconnected"
+  },
+
+  "pulseaudio": {
+    "format": "{icon}  {volume}%",
+    "format-bluetooth": "{icon}  {volume}% ",
+    "format-muted": "󰝟  muted",
+    "format-icons": {
+      "headphone": "󰋋",
+      "hands-free": "󰋎",
+      "headset": "󰋎",
+      "phone": "󰏲",
+      "portable": "󰏲",
+      "car": "󰄋",
+      "default": ["󰕿", "󰖀", "󰕾"]
+    },
+    "scroll-step": 5,
+    "on-click": "pavucontrol"
+  },
+
+  "battery": {
+    "interval": 30,
+    "states": {
+      "warning": 30,
+      "critical": 15
+    },
+    "format": "{icon}  {capacity}%",
+    "format-charging": "󰂄  {capacity}%",
+    "format-plugged": "󰂄  {capacity}%",
+    "format-alt": "{time}",
+    "format-icons": [
+      "󰂎",
+      "󰁺",
+      "󰁻",
+      "󰁼",
+      "󰁽",
+      "󰁾",
+      "󰁿",
+      "󰂀",
+      "󰂁",
+      "󰂂",
+      "󰁹"
+    ],
+    "tooltip-format": "{capacity}% • {power}W\n{time}"
+  },
+
+  "tray": {
+    "icon-size": 14,
+    "spacing": 10
+  },
+
+  "custom/power": {
+    "format": "⏻",
+    "tooltip": true,
+    "tooltip-format": "Power menu",
+    "on-click": "bash -lc \"$HOME/.config/waybar/scripts/power-menu.sh\""
+  }
+}
