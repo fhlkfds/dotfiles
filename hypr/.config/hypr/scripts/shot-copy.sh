@@ -1,7 +1,20 @@
 #!/usr/bin/env bash
+TMP="$(mktemp --suffix=.png)"
 
-if grim -g "$(slurp -d)" - | wl-copy; then
-  hyprctl notify 5 2000 "rgb(a6e3a1)" "Screenshot copied to clipboard"
+if grim -g "$(slurp -d)" "$TMP"; then
+  wl-copy < "$TMP"
+  notify-send \
+    -a "Screenshot" \
+    -i "$TMP" \
+    -h "string:image-path:$TMP" \
+    "Screenshot copied" \
+    "Copied to clipboard"
+
+  (
+    sleep 15
+    rm -f "$TMP"
+  ) &
 else
-  hyprctl notify 3 4000 "rgb(f38ba8)" "Screenshot copy failed"
+  rm -f "$TMP"
+  notify-send -a "Screenshot" "Screenshot copy failed"
 fi
