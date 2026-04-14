@@ -229,9 +229,6 @@
                 },
                 {
                     "id": "plugin:wallcards"
-                },
-                {
-                    "id": "plugin:video-wallpaper"
                 }
             ]
         }
@@ -714,7 +711,7 @@
     },
     "wallpaper": {
         "automationEnabled": false,
-        "directory": "/home/liam/Pictures/Wallpapers",
+        "directory": "/home/liam/Pictures/Wallpapers/static",
         "enableMultiMonitorDirectories": false,
         "enabled": true,
         "favorites": [
@@ -731,7 +728,7 @@
         "panelPosition": "follow_bar",
         "randomIntervalSec": 300,
         "setWallpaperOnAllMonitors": true,
-        "showHiddenFiles": false,
+        "showHiddenFiles": true,
         "skipStartupTransition": false,
         "solidColor": "#1a1a2e",
         "sortOrder": "name",
@@ -747,13 +744,13 @@
         ],
         "useOriginalImages": false,
         "useSolidColor": false,
-        "useWallhaven": false,
+        "useWallhaven": true,
         "viewMode": "browse",
         "wallhavenApiKey": "",
         "wallhavenCategories": "111",
         "wallhavenOrder": "desc",
         "wallhavenPurity": "100",
-        "wallhavenQuery": "",
+        "wallhavenQuery": "linux",
         "wallhavenRatios": "",
         "wallhavenResolutionHeight": "",
         "wallhavenResolutionMode": "atleast",

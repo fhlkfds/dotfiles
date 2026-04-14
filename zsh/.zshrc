@@ -29,7 +29,7 @@ alias l..='eza -al --icons=auto --color=always --group-directories-first ../../'
 alias l...='eza -al --icons=auto --color=always --group-directories-first ../../../'
 alias cls='clear'
 alias v='nvim'
-
+alias sudo='doas'
 # Load Oh My Zsh
 source $ZSH/oh-my-zsh.sh
 
