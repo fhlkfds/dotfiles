@@ -12,6 +12,6 @@
   "detectedRecorder": "",
   "detectedCompositor": "hyprland",
   "stateIsRunning": false,
-  "stateActiveTool": "measure",
+  "stateActiveTool": "",
   "stateMirrorVisible": false
 }

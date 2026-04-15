@@ -24,8 +24,8 @@
         "showCategories": true,
         "showIconBackground": false,
         "sortByMostUsed": true,
-        "terminalCommand": "alacritty -e",
-        "viewMode": "list"
+        "terminalCommand": "kitty -e",
+        "viewMode": "grid"
     },
     "audio": {
         "mprisBlacklist": [
@@ -171,6 +171,12 @@
             ],
             "right": [
                 {
+                    "displayMode": "onhover",
+                    "iconColor": "none",
+                    "id": "Bluetooth",
+                    "textColor": "none"
+                },
+                {
                     "blacklist": [
                     ],
                     "chevronColor": "none",
@@ -206,13 +212,6 @@
                     "textColor": "none"
                 },
                 {
-                    "applyToAllMonitors": false,
-                    "displayMode": "onhover",
-                    "iconColor": "none",
-                    "id": "Brightness",
-                    "textColor": "none"
-                },
-                {
                     "colorizeDistroLogo": false,
                     "colorizeSystemIcon": "none",
                     "customIconPath": "",
@@ -222,13 +221,84 @@
                     "useDistroLogo": false
                 },
                 {
-                    "id": "plugin:screen-toolkit"
-                },
-                {
+                    "defaultSettings": {
+                        "compactMode": false,
+                        "defaultDuration": 0,
+                        "iconColor": "none",
+                        "textColor": "none"
+                    },
                     "id": "plugin:timer"
                 },
                 {
+                    "defaultSettings": {
+                        "animation_duration": 750,
+                        "background_color": null,
+                        "background_opacity": null,
+                        "card_height": 500,
+                        "card_radius": 10,
+                        "card_spacing": 8,
+                        "card_strip_width": 80,
+                        "cards_shown": 11,
+                        "filter_images": [
+                            "png",
+                            "jpg",
+                            "jpeg"
+                        ],
+                        "filter_videos": [
+                            "mp4",
+                            "mkv",
+                            "avi",
+                            "mov"
+                        ],
+                        "live_preview": false,
+                        "selected_filter": "images",
+                        "shear_factor": -0.25,
+                        "top_bar_height": 35,
+                        "top_bar_radius": 10
+                    },
                     "id": "plugin:wallcards"
+                },
+                {
+                    "defaultSettings": {
+                        "activeColor": "primary",
+                        "refreshInterval": 3000,
+                        "showProfileLabel": false
+                    },
+                    "id": "plugin:monique"
+                },
+                {
+                    "colorizeSystemIcon": "none",
+                    "enableColorization": false,
+                    "generalTooltipText": "",
+                    "hideMode": "alwaysExpanded",
+                    "icon": "heart",
+                    "id": "CustomButton",
+                    "ipcIdentifier": "",
+                    "leftClickExec": "",
+                    "leftClickUpdateText": false,
+                    "maxTextLength": {
+                        "horizontal": 10,
+                        "vertical": 10
+                    },
+                    "middleClickExec": "",
+                    "middleClickUpdateText": false,
+                    "parseJson": false,
+                    "rightClickExec": "",
+                    "rightClickUpdateText": false,
+                    "showExecTooltip": true,
+                    "showIcon": true,
+                    "showTextTooltip": true,
+                    "textCollapse": "",
+                    "textCommand": "",
+                    "textIntervalMs": 3000,
+                    "textStream": false,
+                    "wheelDownExec": "",
+                    "wheelDownUpdateText": false,
+                    "wheelExec": "",
+                    "wheelMode": "unified",
+                    "wheelUpExec": "",
+                    "wheelUpUpdateText": false,
+                    "wheelUpdateText": false
                 }
             ]
         }
@@ -328,7 +398,7 @@
         }
     },
     "desktopWidgets": {
-        "enabled": true,
+        "enabled": false,
         "gridSnap": false,
         "gridSnapScale": false,
         "monitorWidgets": [
@@ -425,10 +495,10 @@
         "launcherPosition": "end",
         "launcherUseDistroLogo": false,
         "monitors": [
-            "eDP-1",
             "DP-1",
             "DP-2",
-            "DP-3"
+            "DP-3",
+            "eDP-1"
         ],
         "onlySameOutput": true,
         "pinnedApps": [
@@ -551,7 +621,7 @@
         "weatherTaliaMascotAlways": false
     },
     "network": {
-        "bluetoothAutoConnect": true,
+        "bluetoothAutoConnect": false,
         "bluetoothDetailsViewMode": "grid",
         "bluetoothHideUnnamedDevices": false,
         "bluetoothRssiPollIntervalMs": 60000,

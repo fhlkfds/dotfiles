@@ -8,7 +8,7 @@
   "volume": 1,
   "wallpapersFolder": "~/Pictures/Wallpapers",
   "thumbCacheReady": true,
-  "enabled": true,
+  "enabled": false,
   "monitorSpecific": false,
   "DP-1": {
     "currentWallpaper": "/home/liam/Pictures/Wallpapers/static/wallpaperflare.com_wallpaper.jpg",
@@ -20,7 +20,8 @@
     "profile": "default",
     "fillMode": "fit",
     "orientation": 0,
-    "isPlaying": true
+    "isPlaying": true,
+    "noctaliaWallpaper": "/home/liam/Pictures/Wallpapers/static/wallhaven_j8reeq.jpg"
   },
   "DP-2": {
     "currentWallpaper": "/home/liam/Pictures/Wallpapers/static/wallpaperflare.com_wallpaper.jpg",
@@ -32,7 +33,8 @@
     "profile": "default",
     "fillMode": "fit",
     "orientation": 0,
-    "isPlaying": true
+    "isPlaying": true,
+    "noctaliaWallpaper": "/home/liam/Pictures/Wallpapers/static/wallhaven_j8reeq.jpg"
   },
   "DP-3": {
     "currentWallpaper": "/home/liam/Pictures/Wallpapers/static/wallpaperflare.com_wallpaper.jpg",
@@ -44,7 +46,24 @@
     "profile": "default",
     "fillMode": "fit",
     "orientation": 0,
-    "isPlaying": true
+    "isPlaying": true,
+    "noctaliaWallpaper": "/home/liam/Pictures/Wallpapers/static/wallhaven_j8reeq.jpg"
   },
-  "automationCustomTime": []
+  "automationCustomTime": [],
+  "eDP-1": {
+    "isPlaying": true,
+    "currentWallpaper": "/home/liam/Pictures/Wallpapers/dynamic/mylivewallpapers-com-Astronaut-Synthwave-4K.mlw",
+    "volume": 1,
+    "automation": false,
+    "automationMode": "random",
+    "automationTime": 300,
+    "hardwareAcceleration": false,
+    "profile": "default",
+    "fillMode": "",
+    "orientation": 0,
+    "noctaliaWallpaper": "/home/liam/Pictures/Wallpapers/static/space-whale.png"
+  },
+  "": {
+    "isPlaying": true
+  }
 }
