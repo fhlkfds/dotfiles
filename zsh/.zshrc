@@ -30,6 +30,7 @@ alias l...='eza -al --icons=auto --color=always --group-directories-first ../../
 alias cls='clear'
 alias v='nvim'
 alias sudo='doas'
+alias hack='sudo systemctl stop tailscale && sudo openvpn --config /home/liam/Downloads/vpn/us-east-1-liamdecareaux200-regular.ovpn'
 # Load Oh My Zsh
 source $ZSH/oh-my-zsh.sh
 
@@ -55,3 +56,4 @@ pokemon-colorscripts --no-title -s -r | fastfetch -c $HOME/.config/fastfetch/con
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 typeset -g POWERLEVEL9K_INSTANT_PROMPT=off
+

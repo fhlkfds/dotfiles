@@ -1,7 +1,7 @@
 {
   "id": "monique",
   "name": "Monique",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minNoctaliaVersion": "4.0.0",
   "author": "ToRvaLDz",
   "license": "MIT",
@@ -23,7 +23,7 @@
   },
   "metadata": {
     "defaultSettings": {
-      "refreshInterval": 3000,
+      "refreshInterval": 5000,
       "activeColor": "primary",
       "showProfileLabel": false
     }

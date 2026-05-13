@@ -3,7 +3,7 @@
   "wallpapersFolder": "/home/liam/Pictures/Wallpapers/dynamic",
   "profile": "default",
   "fillMode": "fit",
-  "thumbCacheReady": false,
+  "thumbCacheReady": true,
   "active": false,
   "currentWallpaper": "/home/liam/Pictures/Wallpapers/dynamic/Lost-In-Dream-Sunset.mkv",
   "hardwareAcceleration": true,
@@ -55,3 +55,4 @@
   "isPlaying": true,
   "isMuted": true
 }
+

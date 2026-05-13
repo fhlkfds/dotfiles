@@ -8,9 +8,10 @@ Item {
 
   property var pluginApi: null
 
-  readonly property int refreshInterval: pluginApi?.pluginSettings?.refreshInterval ?? 3000
+  readonly property int refreshInterval: pluginApi?.pluginSettings?.refreshInterval ?? 5000
 
   property bool moniqueInstalled: false
+  property string moniquePath: ""
   property string activeProfile: ""
   property var profiles: []
   property bool isRefreshing: false
@@ -43,7 +44,6 @@ Item {
     switchProcess.running = true
   }
 
-  // Verifica che monique sia installato
   Process {
     id: whichProcess
     command: ["which", "monique"]
@@ -51,22 +51,27 @@ Item {
     stderr: StdioCollector {}
 
     onExited: function(exitCode) {
-      root.moniqueInstalled = (exitCode === 0)
-      root.isRefreshing = false
-      if (root.moniqueInstalled) {
-        root.refresh()
-        listProfilesProcess.running = true
-        updateTimer.start()
-      } else {
-        Logger.w("Monique", "monique not found in PATH")
+      if (exitCode === 0) {
+        var resolved = String(whichProcess.stdout.text || "").trim()
+        if (resolved !== "") {
+          root.moniquePath = resolved
+          root.moniqueInstalled = true
+          root.isRefreshing = false
+          root.refresh()
+          listProfilesProcess.running = true
+          updateTimer.start()
+          return
+        }
       }
+      root.moniqueInstalled = false
+      root.isRefreshing = false
+      Logger.w("Monique", "monique not found in PATH")
     }
   }
 
-  // Carica la lista dei profili
   Process {
     id: listProfilesProcess
-    command: ["monique", "--list-profiles"]
+    command: [root.moniquePath, "--list-profiles"]
     stdout: StdioCollector {}
     stderr: StdioCollector {}
 
@@ -82,10 +87,9 @@ Item {
     }
   }
 
-  // Legge il profilo attivo
   Process {
     id: currentProfileProcess
-    command: ["monique", "--current-profile"]
+    command: [root.moniquePath, "--current-profile"]
     stdout: StdioCollector {}
     stderr: StdioCollector {}
 
@@ -99,13 +103,12 @@ Item {
     }
   }
 
-  // Esegue lo switch del profilo
   Process {
     id: switchProcess
 
     property string profileName: ""
 
-    command: ["monique", "--switch-profile", profileName]
+    command: [root.moniquePath, "--switch-profile", profileName]
     stdout: StdioCollector {}
     stderr: StdioCollector {}
 

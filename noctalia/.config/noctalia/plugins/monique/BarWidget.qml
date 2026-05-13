@@ -85,7 +85,7 @@ Item {
 
   Process {
     id: openMoniqueProcess
-    command: ["monique"]
+    command: [mainInstance?.moniquePath ?? "monique"]
   }
 
   NPopupContextMenu {

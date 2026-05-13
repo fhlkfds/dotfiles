@@ -55,6 +55,10 @@ PanelWindow {
   property var topBarRadius: cfg.top_bar_radius ?? defaults.top_bar_radius
   property string wallpaperDir: Settings.data.wallpaper.directory
 
+  property bool showImageType: cfg.show_image_type ?? defaults.show_image_type ?? true
+  property bool showImageName: cfg.show_image_name ?? defaults.show_image_name ?? true
+  property bool showTopBar: cfg.show_top_bar ?? defaults.show_top_bar ?? true
+
   property string loadingMessage
   property bool loading: true
   property int pendingProcesses: 0
@@ -314,6 +318,7 @@ PanelWindow {
       width: rightEdge - leftEdge
       height: topBarHeight
       radius: topBarRadius ?? Style.radiusS
+      visible: root.showTopBar
 
       // Left
       NText {
@@ -680,7 +685,7 @@ PanelWindow {
             anchors.right: parent.right
             anchors.topMargin: Style.marginM
             anchors.rightMargin: Style.marginM
-            visible: cardDelegate.currentFileName !== ""
+            visible: cardDelegate.currentFileName !== "" && root.showImageType
             icon: cardDelegate.isVideoFile ? "video" : "image"
             text: cardDelegate.currentFileName.split('.').pop().toUpperCase()
           }
@@ -690,7 +695,7 @@ PanelWindow {
             anchors.left: parent.left
             anchors.topMargin: Style.marginM
             anchors.leftMargin: Style.marginM
-            visible: isCenter
+            visible: isCenter && root.showImageName
             text: cardDelegate.currentFileName.substring(0, cardDelegate.currentFileName.lastIndexOf('.'))
           }
 
