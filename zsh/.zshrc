@@ -59,4 +59,68 @@ typeset -g POWERLEVEL9K_INSTANT_PROMPT=off
 
 
 alias gam="/home/liam/bin/gam7/gam"
+# Rickroll protected files
+_RICKROLL_URL="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
+# Remove old aliases/functions
+unalias sudo 2>/dev/null
+unalias doas 2>/dev/null
+
+_rickroll_protected_file() {
+  local target="$1"
+
+  target="${target/#\~/$HOME}"
+  target="${target%/}"
+
+  case "$target" in
+    "/etc/hosts"|"/etc/resolv.conf"|"/etc/reslove.conf"|"$HOME/.zshrc")
+      mpv "$_RICKROLL_URL"
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+_rickroll_editor_wrapper() {
+  local editor="$1"
+  shift
+
+  for arg in "$@"; do
+    if _rickroll_protected_file "$arg"; then
+      return 0
+    fi
+  done
+
+  command "$editor" "$@"
+}
+
+nvim()  { _rickroll_editor_wrapper nvim "$@"; }
+vim()   { _rickroll_editor_wrapper vim "$@"; }
+vi()    { _rickroll_editor_wrapper vi "$@"; }
+nano()  { _rickroll_editor_wrapper nano "$@"; }
+micro() { _rickroll_editor_wrapper micro "$@"; }
+
+# Wrap doas so protected files still get blocked
+doas() {
+  case "$1" in
+    nvim|vim|vi|nano|micro)
+      local editor="$1"
+      shift
+
+      for arg in "$@"; do
+        if _rickroll_protected_file "$arg"; then
+          return 0
+        fi
+      done
+
+      command doas "$editor" "$@"
+      ;;
+    *)
+      command doas "$@"
+      ;;
+  esac
+}
+
+# Make sudo use doas
+alias sudo='doas'

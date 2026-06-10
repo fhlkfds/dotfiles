@@ -774,7 +774,7 @@
     },
     "wallpaper": {
         "automationEnabled": false,
-        "directory": "/home/liam/Pictures/Wallpapers/static",
+        "directory": "/home/liam/Pictures/Wallpapers",
         "enableMultiMonitorDirectories": false,
         "enabled": true,
         "favorites": [
