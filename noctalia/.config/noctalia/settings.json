@@ -571,14 +571,14 @@
     "location": {
         "analogClockInCalendar": false,
         "autoLocate": true,
-        "firstDayOfWeek": -1,
+        "firstDayOfWeek": 0,
         "hideWeatherCityName": true,
         "hideWeatherTimezone": true,
         "name": "Harvey",
         "showCalendarEvents": true,
         "showCalendarWeather": true,
         "showWeekNumberInCalendar": false,
-        "use12hourFormat": false,
+        "use12hourFormat": true,
         "useFahrenheit": true,
         "weatherEnabled": true,
         "weatherShowEffects": true,
@@ -587,21 +587,21 @@
     "network": {
         "bluetoothAutoConnect": true,
         "bluetoothDetailsViewMode": "grid",
-        "bluetoothHideUnnamedDevices": false,
+        "bluetoothHideUnnamedDevices": true,
         "bluetoothRssiPollIntervalMs": 60000,
         "bluetoothRssiPollingEnabled": false,
-        "disableDiscoverability": false,
+        "disableDiscoverability": true,
         "networkPanelView": "wifi",
         "wifiDetailsViewMode": "grid"
     },
     "nightLight": {
-        "autoSchedule": false,
-        "dayTemp": "6500",
-        "enabled": false,
+        "autoSchedule": true,
+        "dayTemp": "4661",
+        "enabled": true,
         "forced": false,
-        "manualSunrise": "06:30",
+        "manualSunrise": "08:00",
         "manualSunset": "18:30",
-        "nightTemp": "2213"
+        "nightTemp": "1000"
     },
     "noctaliaPerformance": {
         "disableDesktopWidgets": false,
@@ -774,7 +774,7 @@
     },
     "wallpaper": {
         "automationEnabled": false,
-        "directory": "/home/liam/Pictures/Wallpapers",
+        "directory": "/home/liam/Pictures/wallpaper",
         "enableMultiMonitorDirectories": false,
         "enabled": true,
         "favorites": [
