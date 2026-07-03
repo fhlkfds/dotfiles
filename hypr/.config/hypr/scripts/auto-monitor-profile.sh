@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROFILE_DIR="$HOME/.config/hypr/monitor-profiles"
+PROFILE_DIR="$HOME/.config/hypr/monitor_profiles"
 LIVE_FILE="$HOME/.config/hypr/monitors.conf"
 
 # Give Hyprland a moment to finish bringing outputs online
