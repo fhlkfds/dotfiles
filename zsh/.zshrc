@@ -59,5 +59,3 @@ typeset -g POWERLEVEL9K_INSTANT_PROMPT=off
 
 
 alias gam="/home/liam/bin/gam7/gam"
-# Make sudo use doas
-alias sudo='doas'

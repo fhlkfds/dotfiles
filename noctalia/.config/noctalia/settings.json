@@ -118,7 +118,7 @@
                 {
                     "clockColor": "none",
                     "customFont": "",
-                    "formatHorizontal": "HH:mm ddd, MMM dd",
+                    "formatHorizontal": "h:mm AP",
                     "formatVertical": "HH mm - dd MM",
                     "id": "Clock",
                     "tooltipFormat": "HH:mm ddd, MMM dd",
@@ -595,13 +595,13 @@
         "wifiDetailsViewMode": "grid"
     },
     "nightLight": {
-        "autoSchedule": true,
-        "dayTemp": "4661",
+        "autoSchedule": false,
+        "dayTemp": "3459",
         "enabled": true,
         "forced": false,
-        "manualSunrise": "08:00",
-        "manualSunset": "18:30",
-        "nightTemp": "1000"
+        "manualSunrise": "07:30",
+        "manualSunset": "19:00",
+        "nightTemp": "1023"
     },
     "noctaliaPerformance": {
         "disableDesktopWidgets": false,
