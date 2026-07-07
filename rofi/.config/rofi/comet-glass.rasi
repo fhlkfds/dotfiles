@@ -34,6 +34,20 @@ configuration {
     urgent: #F2A2C6;
     good: #B7F7D8;
 
+    window-border: rgba(126, 134, 217, 55%);
+    alt-bg: rgba(255, 255, 255, 3%);
+    urgent-bg: rgba(242, 162, 198, 10%);
+    urgent-border: rgba(242, 162, 198, 18%);
+    active-bg: rgba(183, 247, 216, 8%);
+    active-border: rgba(183, 247, 216, 16%);
+    selected-bg: rgba(103, 231, 247, 14%);
+    selected-border: rgba(103, 231, 247, 34%);
+    selected-active-bg: rgba(183, 247, 216, 14%);
+    selected-active-border: rgba(183, 247, 216, 32%);
+    selected-urgent-bg: rgba(242, 162, 198, 15%);
+    selected-urgent-border: rgba(242, 162, 198, 34%);
+    button-selected-bg: rgba(166, 179, 255, 16%);
+
     background-color: transparent;
     text-color: @fg0;
 }
@@ -50,7 +64,7 @@ window {
 
     border: 2px solid;
     border-radius: 22px;
-    border-color: rgba(126, 134, 217, 55%);
+    border-color: @window-border;
     background-color: @bg0;
     cursor: "default";
 }
@@ -126,37 +140,37 @@ element normal.normal {
 }
 
 element alternate.normal {
-    background-color: rgba(255, 255, 255, 3%);
+    background-color: @alt-bg;
     text-color: @fg1;
 }
 
 element normal.urgent {
-    background-color: rgba(242, 162, 198, 10%);
-    border-color: rgba(242, 162, 198, 18%);
+    background-color: @urgent-bg;
+    border-color: @urgent-border;
     text-color: @fg0;
 }
 
 element normal.active {
-    background-color: rgba(183, 247, 216, 8%);
-    border-color: rgba(183, 247, 216, 16%);
+    background-color: @active-bg;
+    border-color: @active-border;
     text-color: @fg0;
 }
 
 element selected.normal {
-    background-color: rgba(103, 231, 247, 14%);
-    border-color: rgba(103, 231, 247, 34%);
+    background-color: @selected-bg;
+    border-color: @selected-border;
     text-color: @fg0;
 }
 
 element selected.active {
-    background-color: rgba(183, 247, 216, 14%);
-    border-color: rgba(183, 247, 216, 32%);
+    background-color: @selected-active-bg;
+    border-color: @selected-active-border;
     text-color: @fg0;
 }
 
 element selected.urgent {
-    background-color: rgba(242, 162, 198, 15%);
-    border-color: rgba(242, 162, 198, 34%);
+    background-color: @selected-urgent-bg;
+    border-color: @selected-urgent-border;
     text-color: @fg0;
 }
 
@@ -187,6 +201,6 @@ button {
 }
 
 button selected {
-    background-color: rgba(166, 179, 255, 16%);
+    background-color: @button-selected-bg;
     text-color: @fg0;
 }

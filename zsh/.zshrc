@@ -6,8 +6,9 @@ fi
 # Oh My Zsh path
 export ZSH="$HOME/.oh-my-zsh"
 
-# Theme
+# Theme (default; overridden by the zsh theme menu - SUPER CTRL T)
 ZSH_THEME="powerlevel10k/powerlevel10k"
+[[ -f ~/.config/zsh/current-theme.zsh ]] && source ~/.config/zsh/current-theme.zsh
 
 # Plugins handled by Oh My Zsh
 plugins=(

@@ -7,7 +7,7 @@ theme_dir="$kitty_dir/theme"
 kitty_conf="$kitty_dir/kitty.conf"
 current_theme_link="$theme_dir/current-theme.conf"
 include_line="include $current_theme_link"
-rofi_theme="$HOME/.config/rofi/config-wallpaper.rasi"
+rofi_theme="$HOME/.config/rofi/current-theme.rasi"
 
 notify() {
   local title="$1"
@@ -62,7 +62,7 @@ pick_theme() {
     theme_name="${theme_file##*/}"
     theme_files+=("$theme_file")
     theme_names+=("${theme_name%.conf}")
-  done < <(find "$theme_dir" -maxdepth 1 -type f -name '*.conf' ! -name 'current-theme.conf' | sort)
+  done < <(find "$theme_dir/" -maxdepth 1 -type f -name '*.conf' ! -name 'current-theme.conf' | sort)
 
   if [ "${#theme_files[@]}" -eq 0 ]; then
     notify "Kitty Theme" "No theme files found in $theme_dir"
@@ -75,7 +75,7 @@ pick_theme() {
 
   local rofi_cmd=(rofi -i -dmenu -p "Kitty Theme" -mesg "Current: $(current_theme_name)")
   if [ -f "$rofi_theme" ]; then
-    rofi_cmd+=(-config "$rofi_theme")
+    rofi_cmd+=(-theme "$rofi_theme")
   fi
 
   local selection

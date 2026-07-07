@@ -296,7 +296,7 @@
         "manualSunrise": "06:30",
         "manualSunset": "18:30",
         "monitorForColors": "",
-        "predefinedScheme": "Eldritch",
+        "predefinedScheme": "Catppuccin",
         "schedulingMode": "off",
         "syncGsettings": true,
         "useWallpaperColors": false
@@ -522,9 +522,6 @@
         "lockScreenBlur": 0,
         "lockScreenCountdownDuration": 10000,
         "lockScreenMonitors": [
-            "DP-1",
-            "DP-2",
-            "DP-3"
         ],
         "lockScreenTint": 0,
         "passwordChars": true,
@@ -596,11 +593,11 @@
     },
     "nightLight": {
         "autoSchedule": false,
-        "dayTemp": "3459",
+        "dayTemp": "1989",
         "enabled": true,
         "forced": false,
         "manualSunrise": "07:30",
-        "manualSunset": "19:00",
+        "manualSunset": "19:30",
         "nightTemp": "1023"
     },
     "noctaliaPerformance": {
@@ -813,7 +810,7 @@
         "wallhavenCategories": "111",
         "wallhavenOrder": "desc",
         "wallhavenPurity": "100",
-        "wallhavenQuery": "space",
+        "wallhavenQuery": "Torvalds",
         "wallhavenRatios": "",
         "wallhavenResolutionHeight": "",
         "wallhavenResolutionMode": "atleast",

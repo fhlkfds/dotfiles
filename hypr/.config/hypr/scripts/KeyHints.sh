@@ -38,7 +38,7 @@ load_vars() {
                 VARS["$key"]="$value"
             fi
         done < "$file"
-    done < <(find "$HYPR_DIR" -type f -name '*.conf' 2>/dev/null | sort)
+    done < <(find -L "$HYPR_DIR" -type f -name '*.conf' 2>/dev/null | sort)
 }
 
 expand_vars() {
@@ -191,12 +191,17 @@ if [[ -z "${MENU_CONTENT:-}" ]]; then
     exit 1
 fi
 
+ROFI_THEME="$HOME/.config/rofi/current-theme.rasi"
+[[ -f "$ROFI_THEME" ]] || ROFI_THEME="$HOME/.config/rofi/comet-glass.rasi"
+
 selection="$(
     printf '%s\n' "$MENU_CONTENT" |
     rofi -dmenu \
         -i \
+        -matching fuzzy \
+        -sort -sorting-method fzf \
         -p "Hyprland keybinds" \
-        -config "$HOME/.config/rofi/comet-glass.rasi"
+        -theme "$ROFI_THEME"
 )"
 [[ -z "${selection:-}" ]] && exit 0
 
