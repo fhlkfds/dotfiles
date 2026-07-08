@@ -50,4 +50,7 @@ case "$MODE" in
     ;;
 esac
 
+# Also copy the captured image to the clipboard
+wl-copy -t image/png < "$FILE"
+
 notify_saved
