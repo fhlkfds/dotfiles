@@ -22,7 +22,7 @@ pick_profile() {
 
   if has_monitor DP-5 "$monitors" && has_monitor DP-7 "$monitors" && has_monitor DP-9 "$monitors"; then
     printf '%s\n' kvm
-  elif has_monitor DP-6 "$monitors" && has_monitor DP-10 "$monitors" && has_monitor DP-12 "$monitors"; then
+  elif has_monitor DP-1 "$monitors" && has_monitor HDMI-A-1 "$monitors"; then
     printf '%s\n' desktop
   else
     printf '%s\n' laptop
@@ -40,9 +40,8 @@ workspace_monitor() {
       else printf '%s\n' DP-9; fi
       ;;
     desktop)
-      if (( workspace <= 5 )); then printf '%s\n' DP-6
-      elif (( workspace <= 10 )); then printf '%s\n' DP-10
-      else printf '%s\n' DP-12; fi
+      if (( workspace <= 5 )); then printf '%s\n' HDMI-A-1
+      else printf '%s\n' DP-1; fi
       ;;
     laptop) printf '%s\n' eDP-1 ;;
   esac
