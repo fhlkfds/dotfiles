@@ -60,3 +60,6 @@ typeset -g POWERLEVEL9K_INSTANT_PROMPT=off
 
 
 alias gam="/home/liam/bin/gam7/gam"
+
+# Hermes Agent — ensure ~/.local/bin is on PATH
+export PATH="$HOME/.local/bin:$PATH"
