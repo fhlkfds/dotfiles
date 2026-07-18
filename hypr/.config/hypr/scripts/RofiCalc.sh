@@ -24,6 +24,12 @@ set -euo pipefail
 ROFI_CONFIG="$HOME/.config/rofi/comet-glass.rasi"
 PROMPT="Calculator"
 
+# Use XDG cache dir with fallback; create a unique temp file with cleanup.
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}"
+mkdir -p -- "$CACHE_DIR" 2>/dev/null || true
+BASES_TMP="$(mktemp "$CACHE_DIR/roficalc.XXXXXX" 2>/dev/null || mktemp)"
+trap 'rm -f -- "$BASES_TMP"' EXIT
+
 if ! command -v rofi >/dev/null 2>&1; then
     notify-send "Calculator" "rofi is not installed" 2>/dev/null || true
     exit 1
@@ -46,9 +52,11 @@ expr="$(
 
 # -----------------------------------------------------------------------------
 # Evaluate + format with Python (safe AST-based evaluator, no eval())
+# The 2> redirect MUST be inside the command substitution, attached to python3,
+# so __HEX__/__BIN__/__OCT__ markers on stderr are captured to the temp file.
 # -----------------------------------------------------------------------------
 raw_output="$(
-python3 - "$expr" <<'PY'
+python3 - "$expr" 2>"$BASES_TMP" <<'PY'
 import ast
 import math
 import operator
@@ -146,9 +154,9 @@ def eval_node(node):
     if isinstance(node, ast.Expression):
         return eval_node(node.body)
 
-    # ast.Constant handles all numbers in Python 3.8+.
-    # Do NOT use ast.Num — it's deprecated in 3.12+ and raises
-    # AttributeError via isinstance() on Python 3.13.
+    # ast.Constant handles all numeric literals in Python 3.8+.
+    # The legacy ast.Num branch was removed as a modernization; it is
+    # deprecated in 3.12+ and unnecessary since ast.Constant covers it.
     if isinstance(node, ast.Constant):
         if isinstance(node.value, (int, float)):
             return node.value
@@ -234,14 +242,14 @@ except Exception as e:
     print(f"Error: invalid expression ({type(e).__name__})")
     sys.exit(1)
 PY
-)" 2>"$HOME/.cache/roficalc-bases.tmp" || true
+)" || true
 
-# raw_output holds stdout (the answer). stderr holds __HEX__ etc lines.
+# raw_output holds stdout (the answer). BASES_TMP holds __HEX__ etc lines
+# (captured via the 2> redirect INSIDE the command substitution above).
 result="$(printf '%s' "$raw_output" | head -n1)"
-hex_line="$(grep -m1 '^__HEX__' "$HOME/.cache/roficalc-bases.tmp" 2>/dev/null | cut -d' ' -f2- || true)"
-bin_line="$(grep -m1 '^__BIN__' "$HOME/.cache/roficalc-bases.tmp" 2>/dev/null | cut -d' ' -f2- || true)"
-oct_line="$(grep -m1 '^__OCT__' "$HOME/.cache/roficalc-bases.tmp" 2>/dev/null | cut -d' ' -f2- || true)"
-rm -f "$HOME/.cache/roficalc-bases.tmp" 2>/dev/null || true
+hex_line="$(grep -m1 '^__HEX__' "$BASES_TMP" 2>/dev/null | cut -d' ' -f2- || true)"
+bin_line="$(grep -m1 '^__BIN__' "$BASES_TMP" 2>/dev/null | cut -d' ' -f2- || true)"
+oct_line="$(grep -m1 '^__OCT__' "$BASES_TMP" 2>/dev/null | cut -d' ' -f2- || true)"
 
 [[ -z "${result:-}" ]] && exit 1
 
