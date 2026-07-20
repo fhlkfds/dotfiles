@@ -22,7 +22,7 @@ pick_profile() {
 
   if has_monitor DP-5 "$monitors" && has_monitor DP-7 "$monitors" && has_monitor DP-9 "$monitors"; then
     printf '%s\n' kvm
-  elif has_monitor DP-1 "$monitors" && has_monitor HDMI-A-1 "$monitors"; then
+  elif has_monitor DP-4 "$monitors" && has_monitor HDMI-A-3 "$monitors"; then
     printf '%s\n' desktop
   else
     printf '%s\n' laptop
@@ -40,8 +40,8 @@ workspace_monitor() {
       else printf '%s\n' DP-9; fi
       ;;
     desktop)
-      if (( workspace <= 5 )); then printf '%s\n' HDMI-A-1
-      else printf '%s\n' DP-1; fi
+      if (( workspace <= 5 )); then printf '%s\n' HDMI-A-3
+      else printf '%s\n' DP-4; fi
       ;;
     laptop) printf '%s\n' eDP-1 ;;
   esac
@@ -72,6 +72,9 @@ apply_profile() {
   printf '%s\n' "$profile" >"$STATE_FILE"
   hyprctl reload
   move_existing_workspaces "$profile"
+  if [[ "$profile" == desktop ]]; then
+    hyprctl dispatch focusmonitor HDMI-A-3
+  fi
   hyprctl notify -1 3000 "rgb(88c0d0)" "Loaded monitor profile: $profile"
 }
 

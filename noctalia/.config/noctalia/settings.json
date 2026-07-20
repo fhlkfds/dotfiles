@@ -571,7 +571,7 @@
         "firstDayOfWeek": 0,
         "hideWeatherCityName": true,
         "hideWeatherTimezone": true,
-        "name": "New Orleans",
+        "name": "Harvey",
         "showCalendarEvents": true,
         "showCalendarWeather": true,
         "showWeekNumberInCalendar": false,
@@ -771,7 +771,7 @@
     },
     "wallpaper": {
         "automationEnabled": false,
-        "directory": "/home/liam/Pictures/wallpaper",
+        "directory": "/home/liam/Pictures/Wallpapers",
         "enableMultiMonitorDirectories": false,
         "enabled": true,
         "favorites": [

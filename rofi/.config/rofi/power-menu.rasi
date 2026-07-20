@@ -1,0 +1,111 @@
+/**
+ * Compact session controls for the Waybar power button and Super+P.
+ * It uses the same indigo/cyan palette as comet-glass.rasi.
+ */
+
+* {
+    font: "JetBrainsMono Nerd Font 12";
+
+    bg: rgba(18, 22, 48, 96%);
+    card: rgba(42, 48, 94, 88%);
+    text: #F3F3FF;
+    muted: #B8BDE5;
+    accent: #67E7F7;
+    border: rgba(126, 134, 217, 70%);
+    selected: rgba(103, 231, 247, 18%);
+    danger: #F2A2C6;
+    danger-bg: rgba(242, 162, 198, 13%);
+
+    background-color: transparent;
+    text-color: @text;
+}
+
+window {
+    transparency: "real";
+    location: center;
+    anchor: center;
+    width: 760px;
+    padding: 24px;
+    border: 2px solid;
+    border-radius: 24px;
+    border-color: @border;
+    background-color: @bg;
+}
+
+mainbox {
+    spacing: 18px;
+    background-color: transparent;
+    children: [ "inputbar", "listview" ];
+}
+
+inputbar {
+    padding: 4px 8px;
+    background-color: transparent;
+    children: [ "textbox-prompt-colon" ];
+}
+
+textbox-prompt-colon {
+    expand: true;
+    str: "Power menu";
+    text-color: @accent;
+    background-color: transparent;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+}
+
+entry { enabled: false; }
+
+listview {
+    columns: 5;
+    lines: 1;
+    cycle: true;
+    fixed-height: true;
+    layout: vertical;
+    scrollbar: false;
+    spacing: 12px;
+    background-color: transparent;
+}
+
+element {
+    orientation: vertical;
+    spacing: 10px;
+    padding: 18px 10px;
+    border: 1px solid;
+    border-radius: 18px;
+    border-color: transparent;
+    background-color: @card;
+    text-color: @muted;
+    cursor: pointer;
+}
+
+element selected.normal, element selected.active {
+    background-color: @selected;
+    border-color: @accent;
+    text-color: @text;
+}
+
+element normal.urgent {
+    background-color: @danger-bg;
+    border-color: rgba(242, 162, 198, 45%);
+    text-color: @danger;
+}
+
+element selected.urgent {
+    background-color: rgba(242, 162, 198, 22%);
+    border-color: @danger;
+    text-color: @text;
+}
+
+element-icon {
+    size: 34px;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    background-color: transparent;
+}
+
+element-text {
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    background-color: transparent;
+    text-color: inherit;
+}

@@ -6,7 +6,7 @@
 # =============================================================================
 set -euo pipefail
 
-ROFI_CONFIG="$HOME/.config/rofi/comet-glass.rasi"
+ROFI_CONFIG="$HOME/.config/rofi/calculator.rasi"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}"
 mkdir -p -- "$CACHE_DIR" 2>/dev/null || true
 BASES_TMP="$(mktemp "$CACHE_DIR/roficalc.XXXXXX" 2>/dev/null || mktemp)"
@@ -23,9 +23,9 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 expr="$(
-    rofi -dmenu -i -p "Classic" \
-        -mesg "Basic: 1+1, (8*3)-2, 100/7" \
-        -config "$ROFI_CONFIG"
+    rofi -dmenu -i -p "󰪚  Calculator" \
+        -mesg "Basic arithmetic  •  +  −  ×  ÷  %  ( )" \
+        -theme "$ROFI_CONFIG"
 )"
 
 [[ -z "${expr:-}" ]] && exit 0
@@ -82,7 +82,7 @@ if [[ "$result" == Error:* ]]; then
 fi
 
 # Result menu — show value, select to copy
-choice="$(printf '%s\n' "$result" | rofi -dmenu -i -p "Result" -config "$ROFI_CONFIG")"
+choice="$(printf '%s\n' "$result" | rofi -dmenu -i -no-custom -p "󰪚  Answer" -mesg "Press Enter to copy  •  Esc to close" -theme "$ROFI_CONFIG")"
 [[ -z "${choice:-}" ]] && exit 0
 
 printf '%s' "$choice" | wl-copy

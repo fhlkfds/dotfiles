@@ -4,11 +4,16 @@ set -euo pipefail
 pick() {
   local prompt="$1"
   local options="$2"
+  local theme="$HOME/.config/rofi/power-menu.rasi"
 
   if command -v fuzzel >/dev/null 2>&1; then
     printf '%s\n' "$options" | fuzzel --dmenu --prompt "${prompt}: "
   elif command -v rofi >/dev/null 2>&1; then
-    printf '%s\n' "$options" | rofi -dmenu -i -p "$prompt"
+    if [[ "$prompt" == "Power menu" ]]; then
+      printf '%s\n' "$options" | rofi -dmenu -i -no-custom -p "$prompt" -theme "$theme" -a '0,1,2' -u '3,4'
+    else
+      printf '%s\n' "$options" | rofi -dmenu -i -no-custom -p "$prompt" -theme "$theme" -u '1'
+    fi
   elif command -v wofi >/dev/null 2>&1; then
     printf '%s\n' "$options" | wofi --dmenu --prompt "$prompt"
   elif command -v bemenu >/dev/null 2>&1; then
@@ -46,7 +51,7 @@ logout_session() {
   fi
 }
 
-choice="$(pick "Power" $'  Lock\n󰐥  Logout\n󰤄  Suspend\n󰜉  Reboot\n  Shutdown')" || exit 0
+choice="$(pick "Power menu" $'  Lock\n󰐥  Logout\n󰤄  Suspend\n󰜉  Reboot\n  Shutdown')" || exit 0
 
 case "$choice" in
   *Lock)

@@ -1,0 +1,101 @@
+/**
+ * Minimal calculator surface: an expressive input and a large, readable answer.
+ */
+
+* {
+    font: "JetBrainsMono Nerd Font 13";
+
+    bg: rgba(18, 22, 48, 97%);
+    panel: rgba(42, 48, 94, 90%);
+    text: #F3F3FF;
+    muted: #B8BDE5;
+    accent: #67E7F7;
+    border: rgba(126, 134, 217, 72%);
+    selected: rgba(103, 231, 247, 17%);
+
+    background-color: transparent;
+    text-color: @text;
+}
+
+window {
+    transparency: "real";
+    location: center;
+    anchor: center;
+    width: 540px;
+    padding: 24px;
+    border: 2px solid;
+    border-radius: 24px;
+    border-color: @border;
+    background-color: @bg;
+}
+
+mainbox {
+    spacing: 16px;
+    background-color: transparent;
+    children: [ "inputbar", "message", "listview" ];
+}
+
+inputbar {
+    spacing: 12px;
+    padding: 16px 18px;
+    border: 1px solid;
+    border-radius: 17px;
+    border-color: rgba(103, 231, 247, 38%);
+    background-color: @panel;
+    children: [ "textbox-prompt-colon", "entry" ];
+}
+
+textbox-prompt-colon {
+    expand: false;
+    text-color: @accent;
+    background-color: transparent;
+}
+
+entry {
+    placeholder: "Type an expression…";
+    placeholder-color: @muted;
+    text-color: @text;
+    cursor: text;
+    background-color: transparent;
+}
+
+message {
+    padding: 0px 6px;
+    background-color: transparent;
+}
+
+textbox {
+    background-color: transparent;
+    text-color: @muted;
+    vertical-align: 0.5;
+}
+
+listview {
+    columns: 1;
+    lines: 1;
+    fixed-height: false;
+    cycle: true;
+    scrollbar: false;
+    background-color: transparent;
+}
+
+element {
+    padding: 18px;
+    border: 1px solid;
+    border-radius: 17px;
+    border-color: rgba(103, 231, 247, 32%);
+    background-color: @selected;
+    text-color: @text;
+}
+
+element selected.normal {
+    border-color: @accent;
+    background-color: rgba(103, 231, 247, 25%);
+    text-color: @text;
+}
+
+element-text {
+    background-color: transparent;
+    text-color: inherit;
+    vertical-align: 0.5;
+}
