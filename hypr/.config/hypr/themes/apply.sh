@@ -736,9 +736,7 @@ if command -v kitty >/dev/null 2>&1; then
   kitty @ set-colors --all "$KITTY_THEMES/${THEME_SLUG}.conf" >/dev/null 2>&1 && RELOADS="${RELOADS} kitty" || true
 fi
 
-if command -v qs >/dev/null 2>&1; then
-  qs -c noctalia-shell ipc call colorScheme set "$THEME_NAME" >/dev/null 2>&1 && RELOADS="${RELOADS} noctalia" || true
-fi
+# Noctalia colors are set directly via colors.json above — no IPC call needed
 
 notify "Theme Switcher" "Applied: ${THEME_NAME}"
 printf '\n✓ Theme "%s" applied successfully\n' "$THEME_NAME"
