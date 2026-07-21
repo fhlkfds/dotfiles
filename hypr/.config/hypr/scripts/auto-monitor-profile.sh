@@ -81,7 +81,7 @@ apply_profile() {
 apply_profile
 
 if [[ "${1:-}" == "--watch" ]]; then
-  while sleep 2; do
+  while sleep 15; do
     apply_profile
   done
 fi
