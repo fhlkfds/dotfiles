@@ -405,6 +405,10 @@ cat > "$ROFI_THEMES/${THEME_SLUG}.rasi" << ROFIT
 ROFIT
 printf '  ✓ rofi theme\n'
 
+# Symlink to current-theme.rasi so WIN+A (SUPER + A) uses the active theme
+ln -sfn "$ROFI_THEMES/${THEME_SLUG}.rasi" "$ROFI_DIR/current-theme.rasi"
+printf '  ✓ rofi current-theme.rasi link\n'
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 5. Wofi style.css
 # ══════════════════════════════════════════════════════════════════════════════
