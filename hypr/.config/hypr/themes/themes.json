@@ -524,6 +524,58 @@
       },
       "fastfetch_keycolor": "magenta",
       "p10k_color": "5"
+    },
+    "Windows 7": {
+      "display": "Windows 7 Aero 🪟",
+      "description": "Classic Windows 7 blue glass with crisp silver highlights",
+      "wallpaper": "arch-windows",
+      "hyprland": {
+        "active_border_1": "4fc3f7",
+        "active_border_2": "1565c0",
+        "active_border_angle": "90deg",
+        "inactive_border": "536d82",
+        "border_size": 2,
+        "rounding": 4,
+        "rounding_power": 2.0,
+        "gaps_in": 4,
+        "gaps_out": 8,
+        "active_opacity": 1.0,
+        "inactive_opacity": 0.96,
+        "shadow_enabled": true,
+        "shadow_color": "00111f88",
+        "shadow_range": 14,
+        "blur_enabled": true,
+        "blur_size": 6,
+        "blur_passes": 2
+      },
+      "palette": {
+        "base": "102a43",
+        "surface0": "173f5f",
+        "surface1": "205493",
+        "overlay0": "527da3",
+        "overlay1": "7fa8c9",
+        "subtext0": "9bb8d1",
+        "subtext1": "c7dced",
+        "text": "f2f8fc",
+        "lavender": "b8d8f0",
+        "blue": "4fc3f7",
+        "sapphire": "81d4fa",
+        "sky": "b3e5fc",
+        "teal": "80cbc4",
+        "green": "9ccc65",
+        "yellow": "ffd54f",
+        "peach": "ffb74d",
+        "maroon": "ef5350",
+        "red": "ef5350",
+        "mauve": "90caf9",
+        "pink": "f48fb1",
+        "flamingo": "e1f5fe",
+        "rosewater": "e3f2fd",
+        "mantle": "0b1f33",
+        "crust": "061522"
+      },
+      "fastfetch_keycolor": "blue",
+      "p10k_color": "4"
     }
   }
 }

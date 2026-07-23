@@ -50,7 +50,7 @@ HYPRLOCK_WALL_DIR="$CONFIG_HOME/hyprlock/wallpapers"
 notify() {
   local title="$1" message="$2"
   if command -v notify-send >/dev/null 2>&1; then
-    notify-send "$title" "$message"
+    notify-send "$title" "$message" >/dev/null 2>&1 || true
   else
     printf '%s: %s\n' "$title" "$message" >&2
   fi
@@ -674,6 +674,21 @@ cat > "$NOCTALIA_DIR/colors.json" << NOCTJSON
 NOCTJSON
 printf '  ✓ noctalia colors\n'
 
+# Register generated colors as a user Noctalia scheme. The shell otherwise
+# keeps using its selected predefined scheme (and may replace colors.json
+# with wallpaper-derived colors).
+NOCTALIA_SCHEME_DIR="$NOCTALIA_DIR/colorschemes/Windows-7"
+mkdir -p "$NOCTALIA_SCHEME_DIR"
+cp "$NOCTALIA_DIR/colors.json" "$NOCTALIA_SCHEME_DIR/Windows-7.json"
+NOCTALIA_SETTINGS="$NOCTALIA_DIR/settings.json"
+if [ -f "$NOCTALIA_SETTINGS" ]; then
+  TMP="$(mktemp)"
+  jq '.colorSchemes.predefinedScheme = "Windows-7" | .colorSchemes.useWallpaperColors = false' \
+    "$NOCTALIA_SETTINGS" >"$TMP"
+  mv "$TMP" "$NOCTALIA_SETTINGS"
+  printf '  ✓ noctalia scheme selection\n'
+fi
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 9. Fastfetch config — update key colors
 # ══════════════════════════════════════════════════════════════════════════════
@@ -701,7 +716,18 @@ for ext in jpg png webp; do
 done
 
 if [ "$WALL_FOUND" = false ]; then
-  printf '  - wallpaper not found at %s/*.{jpg,png,webp}, skipping\n' "${THEME_WALLPAPERS}/${WALL_NAME}"
+  for ext in jpg png webp; do
+    if [ -f "${WALLPAPER_DIR}/static/${WALL_NAME}.${ext}" ]; then
+      cp "${WALLPAPER_DIR}/static/${WALL_NAME}.${ext}" "$WALL_DEST" 2>/dev/null || true
+      WALL_FOUND=true
+      printf '  ✓ wallpaper: static/%s.%s\n' "$WALL_NAME" "$ext"
+      break
+    fi
+  done
+fi
+
+if [ "$WALL_FOUND" = false ]; then
+  printf '  - wallpaper not found for %s, skipping\n' "$WALL_NAME"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -725,18 +751,26 @@ printf '%s' "$THEME_NAME" > "$THEME_STATE"
 RELOADS=""
 
 if command -v hyprctl >/dev/null 2>&1; then
-  hyprctl reload >/dev/null 2>&1 && RELOADS="${RELOADS} hyprland" || true
+  timeout 3s hyprctl reload >/dev/null 2>&1 && RELOADS="${RELOADS} hyprland" || true
 fi
 
 if command -v swaync >/dev/null 2>&1; then
-  swaync-client --reload-config 2>/dev/null && RELOADS="${RELOADS} swaync" || true
+  timeout 3s swaync-client --reload-config 2>/dev/null && RELOADS="${RELOADS} swaync" || true
 fi
 
 if command -v kitty >/dev/null 2>&1; then
-  kitty @ set-colors --all "$KITTY_THEMES/${THEME_SLUG}.conf" >/dev/null 2>&1 && RELOADS="${RELOADS} kitty" || true
+  timeout 3s kitty @ set-colors --all "$KITTY_THEMES/${THEME_SLUG}.conf" >/dev/null 2>&1 && RELOADS="${RELOADS} kitty" || true
 fi
 
 # Noctalia colors are set directly via colors.json above — no IPC call needed
+if command -v qs >/dev/null 2>&1; then
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 3s qs -c noctalia-shell reload >/dev/null 2>&1 && RELOADS="${RELOADS} noctalia" || true
+  else
+    qs -c noctalia-shell reload >/dev/null 2>&1 &
+    RELOADS="${RELOADS} noctalia"
+  fi
+fi
 
 notify "Theme Switcher" "Applied: ${THEME_NAME}"
 printf '\n✓ Theme "%s" applied successfully\n' "$THEME_NAME"
