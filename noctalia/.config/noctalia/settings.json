@@ -517,7 +517,7 @@
             ]
         },
         "language": "",
-        "lockOnSuspend": true,
+        "lockOnSuspend": false,
         "lockScreenAnimations": true,
         "lockScreenBlur": 0,
         "lockScreenCountdownDuration": 10000,
@@ -553,7 +553,7 @@
     },
     "idle": {
         "customCommands": "[]",
-        "enabled": true,
+        "enabled": false,
         "fadeDuration": 5,
         "lockCommand": "",
         "lockTimeout": 660,
@@ -593,12 +593,12 @@
     },
     "nightLight": {
         "autoSchedule": false,
-        "dayTemp": "1989",
+        "dayTemp": "4383",
         "enabled": true,
         "forced": false,
         "manualSunrise": "07:30",
         "manualSunset": "19:30",
-        "nightTemp": "1023"
+        "nightTemp": "1987"
     },
     "noctaliaPerformance": {
         "disableDesktopWidgets": false,

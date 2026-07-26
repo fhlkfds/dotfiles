@@ -61,7 +61,7 @@ case "$choice" in
     confirm "Logout" && logout_session
     ;;
   *Suspend)
-    lock_screen || true
+    loginctl lock-session
     systemctl suspend
     ;;
   *Reboot)

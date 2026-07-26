@@ -1,0 +1,272 @@
+#!/usr/bin/env bash
+
+wallpaper_dir="/home/liam/Pictures/wallpapers"
+rofi_theme="$HOME/.config/rofi/current-theme.rasi"
+
+grid_theme='
+window {
+    width: 80%;
+}
+
+mainbox {
+    children: [ "inputbar", "listview" ];
+}
+
+entry {
+    placeholder: "Search wallpapers...";
+}
+
+listview {
+    columns: 3;
+    lines: 2;
+    spacing: 14px;
+}
+
+element {
+    orientation: vertical;
+    spacing: 8px;
+    padding: 10px;
+}
+
+element-icon {
+    size: 240px;
+    horizontal-align: 0.5;
+}
+
+element-text {
+    horizontal-align: 0.5;
+}
+'
+
+pick_local_wallpaper() {
+    local choice wallpaper
+    local -a wallpapers
+
+    mapfile -d '' wallpapers < <(
+        find "$wallpaper_dir" -type f \( -iname '*.jpg' -o -iname '*.png' \) -print0
+    )
+
+    ((${#wallpapers[@]})) || {
+        notify-send "Wallpaper picker" "No JPG or PNG wallpapers found"
+        return 1
+    }
+
+    choice="$(
+        for wallpaper in "${wallpapers[@]}"; do
+            printf '%s\0icon\x1f%s\n' "$(basename "$wallpaper")" "$wallpaper"
+        done | sort | rofi \
+            -dmenu \
+            -i \
+            -show-icons \
+            -p "Local wallpapers" \
+            -theme "$rofi_theme" \
+            -theme-str "$grid_theme"
+    )" || return 1
+
+    [[ -n "$choice" ]] || return 1
+
+    for wallpaper in "${wallpapers[@]}"; do
+        if [[ "$(basename "$wallpaper")" == "$choice" ]]; then
+            printf '%s\n' "$wallpaper"
+            return
+        fi
+    done
+
+    return 1
+}
+
+search_wallhaven() {
+    local query="" response preview_dir choice index extension target partial
+    local id full_url thumbnail resolution preview
+    local page=1 last_page=1
+    local new_search="󰑐  New search"
+    local previous_page="  Previous page"
+    local next_page="Next page  "
+    local -a ids=() urls=() labels=() previews=()
+
+    preview_dir="$(mktemp -d -t hypr-wallhaven.XXXXXX)" || return 1
+    trap 'rm -rf -- "$preview_dir"' RETURN
+
+    while true; do
+        if [[ -z "$query" ]]; then
+            query="$(
+                printf '\n' | rofi \
+                    -dmenu \
+                    -i \
+                    -p "Search Wallhaven" \
+                    -theme "$rofi_theme"
+            )" || return 1
+
+            [[ -n "$query" ]] || return 1
+
+            # A new search is a new API session: discard the old query's page
+            # and result state before making the request.
+            page=1
+            last_page=1
+            ids=()
+            urls=()
+            labels=()
+            previews=()
+            find "$preview_dir" -mindepth 1 -maxdepth 1 -type f -delete
+        fi
+
+        notify-send "Wallpaper picker" \
+            "Searching Wallhaven for: $query (page $page)"
+
+        if ! response="$(
+            curl -fsSLG "https://wallhaven.cc/api/v1/search" \
+                --header "Cache-Control: no-cache" \
+                --data-urlencode "q=$query" \
+                --data-urlencode "page=$page" \
+                --data-urlencode "categories=111" \
+                --data-urlencode "purity=100" \
+                --data-urlencode "sorting=relevance" \
+                --data-urlencode "atleast=1920x1080"
+        )"; then
+            notify-send "Wallpaper picker" "Wallhaven search failed"
+            return 1
+        fi
+
+        if ! last_page="$(jq -er '.meta.last_page // 1' <<< "$response")"; then
+            notify-send "Wallpaper picker" "Wallhaven returned an invalid response"
+            return 1
+        fi
+
+        # Keep only the requested page in the menu. This makes Previous page
+        # the boundary before its first wallpaper and Next page the boundary
+        # after its last wallpaper.
+        ids=()
+        urls=()
+        labels=()
+        previews=()
+        find "$preview_dir" -mindepth 1 -maxdepth 1 -type f -delete
+
+        while IFS=$'\t' read -r id full_url thumbnail resolution; do
+            preview="$preview_dir/$id.jpg"
+            if curl -fsSL --retry 2 -o "$preview" "$thumbnail"; then
+                ids+=("$id")
+                urls+=("$full_url")
+                labels+=("wallhaven-$id · $resolution")
+                previews+=("$preview")
+            fi
+        done < <(
+            jq -r '.data[] | [.id, .path, .thumbs.large, .resolution] | @tsv' \
+                <<< "$response"
+        )
+
+        ((${#ids[@]})) || {
+            notify-send "Wallpaper picker" "No Wallhaven results found"
+            return 1
+        }
+
+        choice="$(
+            {
+                printf '%s\n' "$new_search"
+                ((page > 1)) && printf '%s\n' "$previous_page"
+                for index in "${!ids[@]}"; do
+                    printf '%s\0icon\x1f%s\n' \
+                        "${labels[$index]}" "${previews[$index]}"
+                done
+                ((page < last_page)) && printf '%s\n' "$next_page"
+            } | rofi \
+                -dmenu \
+                -i \
+                -no-custom \
+                -show-icons \
+                -p "Wallhaven: $query · page $page/$last_page" \
+                -theme "$rofi_theme" \
+                -theme-str "$grid_theme"
+        )" || return 1
+
+        case "$choice" in
+            "$new_search")
+                query=""
+                page=1
+                last_page=1
+                ids=()
+                urls=()
+                labels=()
+                previews=()
+                continue
+                ;;
+            "$previous_page")
+                ((page--))
+                continue
+                ;;
+            "$next_page")
+                ((page++))
+                continue
+                ;;
+        esac
+
+        for index in "${!ids[@]}"; do
+            [[ "${labels[$index]}" == "$choice" ]] || continue
+
+            case "${urls[$index]}" in
+                *.png) extension="png" ;;
+                *) extension="jpg" ;;
+            esac
+
+            target="$wallpaper_dir/wallhaven-${ids[$index]}.$extension"
+            partial="$target.part"
+
+            if [[ ! -s "$target" ]]; then
+                notify-send "Wallpaper picker" "Downloading wallhaven-${ids[$index]}"
+                if ! curl -fsSL --retry 2 -o "$partial" "${urls[$index]}"; then
+                    rm -f -- "$partial"
+                    notify-send "Wallpaper picker" "Wallpaper download failed"
+                    return 1
+                fi
+                mv -f -- "$partial" "$target"
+            fi
+
+            printf '%s\n' "$target"
+            return
+        done
+
+        return 1
+    done
+}
+
+set_wallpaper() {
+    local wallpaper="$1"
+
+    pkill -x hyprpaper 2>/dev/null || true
+    while pgrep -x hyprpaper >/dev/null; do
+        sleep 0.05
+    done
+
+    hyprpaper >/dev/null 2>&1 &
+
+    for _ in {1..40}; do
+        if hyprctl hyprpaper wallpaper ",$wallpaper,cover" >/dev/null 2>&1; then
+            return
+        fi
+        sleep 0.05
+    done
+
+    notify-send "Wallpaper picker" "hyprpaper failed to set the wallpaper"
+    return 1
+}
+
+source_choice="$(
+    printf '%s\n' "Local wallpapers" "Search Wallhaven" | rofi \
+        -dmenu \
+        -i \
+        -p "Wallpapers" \
+        -theme "$rofi_theme"
+)" || exit
+
+case "$source_choice" in
+    "Local wallpapers")
+        selected="$(pick_local_wallpaper)" || exit
+        ;;
+    "Search Wallhaven")
+        selected="$(search_wallhaven)" || exit
+        ;;
+    *)
+        exit
+        ;;
+esac
+
+set_wallpaper "$selected"
