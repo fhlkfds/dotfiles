@@ -1,0 +1,7 @@
+{
+  "clockColor": "none",
+  "format": "h:mm AP",
+  "timezone": "local",
+  "tooltipFormat": "HH:mm ddd, MMM dd",
+  "cachedOffset": 0
+}

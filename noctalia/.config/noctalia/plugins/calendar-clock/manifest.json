@@ -1,0 +1,27 @@
+{
+  "id": "calendar-clock",
+  "name": "Calendar Clock",
+  "version": "1.0.0",
+  "minNoctaliaVersion": "4.7.0",
+  "author": "l0cky",
+  "license": "MIT",
+  "description": "Clock with a Monday-start ISO-week calendar, format cycling, and a per-widget timezone.",
+  "tags": ["Bar", "Utility"],
+  "entryPoints": {
+    "main": "Main.qml",
+    "barWidget": "BarWidget.qml",
+    "panel": "Panel.qml",
+    "settings": "Settings.qml"
+  },
+  "dependencies": {
+    "plugins": []
+  },
+  "metadata": {
+    "defaultSettings": {
+      "clockColor": "none",
+      "format": "h:mm AP",
+      "timezone": "local",
+      "tooltipFormat": "HH:mm ddd, MMM dd"
+    }
+  }
+}

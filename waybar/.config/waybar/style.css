@@ -1,3 +1,5 @@
+@import "colors.css";
+
 * {
   border: none;
   border-radius: 0;
@@ -9,17 +11,17 @@
 
 window#waybar {
   background: transparent;
-  color: #EAF7FF;
+  color: @text;
 }
 
 tooltip {
-  background: rgba(18, 18, 38, 0.96);
-  border: 1px solid rgba(134, 230, 255, 0.22);
+  background: @tooltip_bg;
+  border: 1px solid @tooltip_border;
   border-radius: 14px;
 }
 
 tooltip label {
-  color: #EAF7FF;
+  color: @text;
   padding: 4px 6px;
 }
 
@@ -34,18 +36,18 @@ tooltip label {
 #battery,
 #tray,
 #custom-power {
-  background: rgba(19, 18, 46, 0.72);
-  border: 1px solid rgba(134, 230, 255, 0.16);
+  background: @module;
+  border: 1px solid @border;
   border-radius: 999px;
-  color: #EAF7FF;
+  color: @text;
   margin-top: 8px;
   margin-bottom: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 2px 10px @shadow;
 }
 
 #window {
   padding: 0 18px;
-  color: #F4F7FF;
+  color: @text_bright;
 }
 
 window#waybar.empty #window {
@@ -64,27 +66,27 @@ window#waybar.empty #window {
   min-width: 28px;
   border-radius: 999px;
   background: transparent;
-  color: rgba(234, 247, 255, 0.62);
+  color: @muted;
   box-shadow: none;
 }
 
 #workspaces button:hover {
-  background: rgba(227, 168, 255, 0.16);
-  color: #FFFFFF;
+  background: @module_hover;
+  color: @text_bright;
 }
 
 #workspaces button.active {
-  background: rgba(134, 230, 255, 0.95);
-  color: #12122B;
+  background: @accent;
+  color: @on_accent;
 }
 
 #workspaces button.visible {
-  background: rgba(111, 170, 255, 0.22);
-  color: #EAF7FF;
+  background: @module_active;
+  color: @text;
 }
 
 #workspaces button.empty {
-  color: rgba(234, 247, 255, 0.34);
+  color: @disabled;
 }
 
 #custom-update,
@@ -93,15 +95,15 @@ window#waybar.empty #window {
 }
 
 #custom-update {
-  color: #86E6FF;
+  color: @info;
 }
 
 #custom-update:hover {
-  background: rgba(134, 230, 255, 0.16);
+  background: @module_hover;
 }
 
 #clock {
-  color: #EAF7FF;
+  color: @text;
   font-weight: 700;
   padding-right: 16px;
 }
@@ -115,41 +117,41 @@ window#waybar.empty #window {
 }
 
 #cpu {
-  color: #BFD4FF;
+  color: @info;
 }
 
 #memory {
-  color: #D8C8FF;
+  color: @accent_alt;
 }
 
 #network {
-  color: #CFE1FF;
+  color: @text_bright;
 }
 
 #pulseaudio {
-  color: #E6D8FF;
+  color: @accent_alt;
 }
 
 #pulseaudio.muted,
 #network.disconnected {
-  color: #FFCADB;
+  color: @critical;
 }
 
 #cpu.warning,
 #battery.warning {
-  color: #FFD98C;
+  color: @warning;
 }
 
 #cpu.critical,
 #battery.critical:not(.charging) {
-  color: #FFD4DE;
-  background: rgba(123, 36, 63, 0.38);
-  border-color: rgba(255, 160, 190, 0.28);
+  color: @text;
+  background: @critical;
+  border-color: @critical;
 }
 
 #battery.charging,
 #battery.plugged {
-  color: #9BF2C8;
+  color: @success;
 }
 
 #tray {
@@ -158,13 +160,13 @@ window#waybar.empty #window {
 
 #custom-power {
   padding: 0 16px;
-  color: #FFD4DE;
+  color: @critical;
   font-size: 15px;
 }
 
 #custom-power:hover {
-  background: rgba(255, 120, 140, 0.16);
-  border-color: rgba(255, 160, 190, 0.28);
+  background: @module_hover;
+  border-color: @border;
 }
 
 #tray > .passive {

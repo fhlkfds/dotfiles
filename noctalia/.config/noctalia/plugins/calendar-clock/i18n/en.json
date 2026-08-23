@@ -1,0 +1,35 @@
+{
+  "timezones": {
+    "local": "Local (America/Chicago)"
+  },
+  "formats": {
+    "h12": "12-hour — 3:42 PM",
+    "h24": "24-hour — 15:42",
+    "short-date": "Short date — Fri, Aug 21",
+    "iso-date": "ISO date — 2026-08-21"
+  },
+  "calendar": {
+    "previous-month": "Previous month",
+    "next-month": "Next month",
+    "today": "Back to this month",
+    "week-abbrev": "W"
+  },
+  "settings": {
+    "format": {
+      "label": "Clock format",
+      "description": "Starting format for the bar label. Right-click the widget to cycle through all four."
+    },
+    "timezone": {
+      "label": "Timezone",
+      "description": "Changes only what this widget displays. The system clock and every other widget are left alone."
+    },
+    "clock-color": {
+      "label": "Clock color",
+      "description": "Color of the bar label."
+    },
+    "tooltip-format": {
+      "label": "Tooltip format",
+      "description": "Qt date format shown on hover. The timezone is appended when it is not local."
+    }
+  }
+}

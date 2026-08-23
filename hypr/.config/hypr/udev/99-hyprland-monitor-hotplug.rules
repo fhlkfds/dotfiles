@@ -1,0 +1,24 @@
+# 99-hyprland-monitor-hotplug.rules
+#
+# Fires the moment a DRM connector changes state (dock plugged/unplugged,
+# monitor turned on, KVM switched) so the Hyprland monitor profile is applied
+# instantly instead of waiting for the 15s poll in
+# ~/.config/hypr/scripts/auto-monitor-profile.sh --watch (which stays as the
+# fallback).
+#
+# The RUN helper runs as root with no session context. It does no user work
+# itself: it detaches, resolves the graphical session, and hands off via
+# runuser. See hyprland-monitor-hotplug.sh.
+#
+# Install (USER STEP — not done by stow). Install the helper root-owned FIRST,
+# then the rule:
+#   sudo install -Dm755 -o root -g root ~/.config/hypr/udev/hyprland-monitor-hotplug.sh /usr/local/sbin/
+#   sudo cp ~/.config/hypr/udev/99-hyprland-monitor-hotplug.rules /etc/udev/rules.d/ && sudo udevadm control --reload-rules
+#
+# NOTE: RUN+= deliberately points at the root-owned copy in /usr/local/sbin,
+# NOT at the stowed path under ~/.config. udev runs RUN+= as root, and the
+# stowed copy is a symlink into a user-owned repo — any process running as the
+# user could rewrite it and gain root. Re-run the `install` line above after
+# pulling changes to the helper.
+
+ACTION=="change", SUBSYSTEM=="drm", RUN+="/usr/local/sbin/hyprland-monitor-hotplug.sh"

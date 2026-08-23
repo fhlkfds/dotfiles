@@ -116,13 +116,13 @@
                     "useDistroLogo": false
                 },
                 {
-                    "clockColor": "none",
-                    "customFont": "",
-                    "formatHorizontal": "h:mm AP",
-                    "formatVertical": "HH mm - dd MM",
-                    "id": "Clock",
-                    "tooltipFormat": "HH:mm ddd, MMM dd",
-                    "useCustomFont": false
+                    "defaultSettings": {
+                        "clockColor": "none",
+                        "format": "h:mm AP",
+                        "timezone": "local",
+                        "tooltipFormat": "HH:mm ddd, MMM dd"
+                    },
+                    "id": "plugin:calendar-clock"
                 },
                 {
                     "compactMode": true,
@@ -593,12 +593,12 @@
     },
     "nightLight": {
         "autoSchedule": false,
-        "dayTemp": "4383",
+        "dayTemp": "1500",
         "enabled": true,
         "forced": false,
         "manualSunrise": "07:30",
         "manualSunset": "19:30",
-        "nightTemp": "1987"
+        "nightTemp": "1000"
     },
     "noctaliaPerformance": {
         "disableDesktopWidgets": false,

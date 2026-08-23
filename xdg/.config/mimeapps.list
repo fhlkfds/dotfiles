@@ -1,0 +1,49 @@
+
+[Default Applications]
+text/html=brave-browser.desktop
+x-scheme-handler/http=brave-browser.desktop
+x-scheme-handler/https=brave-browser.desktop
+x-scheme-handler/about=brave-browser.desktop
+x-scheme-handler/unknown=brave-browser.desktop
+x-scheme-handler/pttp=CiscoPacketTracerPtsa-9.0.0.desktop
+application/x-pka=CiscoPacketTracer-9.0.0.desktop
+application/x-pkt=CiscoPacketTracer-9.0.0.desktop
+application/x-pkz=CiscoPacketTracer-9.0.0.desktop
+application/x-pksz=CiscoPacketTracer-9.0.0.desktop
+x-scheme-handler/t3code=t3code-url-handler.desktop
+x-scheme-handler/claude-cli=claude-code-url-handler.desktop
+
+# --- File manager -----------------------------------------------------------
+# Previously resolved to kitty-open.desktop, so opening a folder landed in a
+# terminal instead of a file manager.
+inode/directory=org.gnome.Nautilus.desktop
+
+# --- Images -----------------------------------------------------------------
+# image/svg+xml is deliberately left to the browser: imv rasterizes SVG poorly.
+image/png=imv.desktop
+image/jpeg=imv.desktop
+image/webp=imv.desktop
+image/gif=imv.desktop
+image/bmp=imv.desktop
+image/tiff=imv.desktop
+
+# --- Video ------------------------------------------------------------------
+# Audio MIME types are deliberately left untouched.
+video/mp4=mpv.desktop
+video/x-matroska=mpv.desktop
+video/webm=mpv.desktop
+video/x-msvideo=mpv.desktop
+video/quicktime=mpv.desktop
+
+# --- Documents --------------------------------------------------------------
+application/pdf=org.pwmt.zathura.desktop
+
+# --- Text and code ----------------------------------------------------------
+# The packaged nvim.desktop is Terminal=true, which GTK apps under Hyprland
+# cannot honor; nvim-kitty.desktop wraps it in a kitty window instead.
+text/plain=nvim-kitty.desktop
+text/markdown=nvim-kitty.desktop
+text/x-shellscript=nvim-kitty.desktop
+application/json=nvim-kitty.desktop
+text/x-python=nvim-kitty.desktop
+text/x-csrc=nvim-kitty.desktop

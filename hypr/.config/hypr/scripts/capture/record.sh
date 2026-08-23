@@ -1,0 +1,423 @@
+#!/usr/bin/env bash
+# =============================================================================
+# capture/record.sh — screen recording via gpu-screen-recorder
+#
+# Usage:
+#   record.sh toggle [options]   stop if recording, otherwise ask and start
+#   record.sh start  [options]   start (refuses if already recording)
+#   record.sh stop               graceful SIGINT stop
+#   record.sh status             prints "recording" or "idle" (for the bar)
+#   record.sh menu               audio/target chooser, then start
+#
+# Options for start/toggle:
+#   --audio=none|desktop|mic|both   (default: desktop)
+#   --target=smart|region|monitor   (default: monitor)
+#   --with-webcam                   floating webcam overlay while recording
+#
+# State lives in $XDG_RUNTIME_DIR, never the repo. The pid is re-validated
+# against /proc every time, so a crashed recorder cannot wedge the toggle.
+# =============================================================================
+set -euo pipefail
+
+_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=select.sh
+source "$_dir/select.sh"
+
+PIDFILE="$CAPTURE_RUNTIME/record.pid"
+OUTFILE_REF="$CAPTURE_RUNTIME/record.out"
+WEBCAM_PIDFILE="$CAPTURE_RUNTIME/webcam.pid"
+THUMB="$CAPTURE_RUNTIME/record-thumb.png"
+
+RECORDER=gpu-screen-recorder
+
+# --- state -------------------------------------------------------------------
+
+# Prints the live recorder pid, or nothing. Clears a stale pidfile as a side
+# effect so the next toggle starts cleanly instead of refusing forever.
+record_pid() {
+  [ -f "$PIDFILE" ] || return 1
+  local pid
+  pid=$(cat "$PIDFILE" 2>/dev/null || true)
+  if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+    printf '%s' "$pid"
+    return 0
+  fi
+  rm -f "$PIDFILE"
+  return 1
+}
+
+record_status() {
+  if record_pid >/dev/null; then
+    printf 'recording\n'
+  else
+    printf 'idle\n'
+  fi
+}
+
+# --- audio -------------------------------------------------------------------
+# Device names are resolved at runtime: the default sink here is Bluetooth and
+# changes whenever headphones connect, so a hardcoded name would rot.
+
+desktop_audio_device() {
+  local sink
+  sink=$(pactl get-default-sink 2>/dev/null || true)
+  [ -n "$sink" ] && printf '%s.monitor' "$sink"
+}
+
+mic_audio_device() {
+  pactl get-default-source 2>/dev/null || true
+}
+
+# Emits the -a arguments. Desktop+mic are merged into ONE track (gsr's "|"
+# syntax) so ordinary players hear both; separate tracks confuse most of them.
+audio_args() {
+  local mode="$1" desktop mic
+  case "$mode" in
+    none) return 0 ;;
+    desktop)
+      desktop=$(desktop_audio_device)
+      [ -n "$desktop" ] && printf '%s\n%s\n' -a "$desktop"
+      ;;
+    mic)
+      mic=$(mic_audio_device)
+      [ -n "$mic" ] && printf '%s\n%s\n' -a "$mic"
+      ;;
+    both)
+      desktop=$(desktop_audio_device)
+      mic=$(mic_audio_device)
+      if [ -n "$desktop" ] && [ -n "$mic" ]; then
+        printf '%s\n%s\n' -a "${desktop}|${mic}"
+      elif [ -n "$desktop" ]; then
+        printf '%s\n%s\n' -a "$desktop"
+      elif [ -n "$mic" ]; then
+        printf '%s\n%s\n' -a "$mic"
+      fi
+      ;;
+  esac
+}
+
+# --- webcam ------------------------------------------------------------------
+
+webcam_device() {
+  if [ "$WEBCAM_DEVICE" != "auto" ]; then
+    printf '%s' "$WEBCAM_DEVICE"
+    return 0
+  fi
+  # The first device that actually reports capture formats. This box exposes
+  # /dev/video0 AND /dev/video1 for one camera; only one of them captures.
+  local d
+  for d in /dev/video*; do
+    [ -e "$d" ] || continue
+    if v4l2-ctl -d "$d" --list-formats 2>/dev/null | grep -q '\[0\]'; then
+      printf '%s' "$d"
+      return 0
+    fi
+  done
+  return 1
+}
+
+webcam_overlay_size() {
+  case "$WEBCAM_DEFAULT_SIZE" in
+    small)  printf '320x180' ;;
+    large)  printf '640x360' ;;
+    *)      printf '480x270' ;;
+  esac
+}
+
+webcam_start() {
+  local dev size w h
+  dev=$(webcam_device) || { notify "Recording" "No webcam found — recording without it"; return 0; }
+  has mpv || { notify "Recording" "mpv not installed — recording without webcam"; return 0; }
+
+  size=$(webcam_overlay_size)
+  w=${size%x*}; h=${size#*x}
+
+  # Borderless, no OSD, no audio, always on top, parked bottom-right so it does
+  # not sit over what is being demonstrated.
+  mpv av://v4l2:"$dev" \
+    --profile=low-latency --untimed \
+    --no-audio --no-osc --no-osd-bar --no-border --ontop \
+    --geometry="${w}x${h}-20-60" \
+    --title="capture-webcam" \
+    --demuxer-lavf-o=input_format=mjpeg,video_size="$WEBCAM_RESOLUTION" \
+    >/dev/null 2>&1 &
+  echo $! > "$WEBCAM_PIDFILE"
+}
+
+webcam_stop() {
+  [ -f "$WEBCAM_PIDFILE" ] || return 0
+  local pid
+  pid=$(cat "$WEBCAM_PIDFILE" 2>/dev/null || true)
+  [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  rm -f "$WEBCAM_PIDFILE"
+}
+
+# --- start -------------------------------------------------------------------
+
+record_start() {
+  local audio="desktop" target_mode="monitor" webcam=0 arg
+
+  for arg in "$@"; do
+    case "$arg" in
+      --audio=*)     audio="${arg#--audio=}" ;;
+      --target=*)    target_mode="${arg#--target=}" ;;
+      --with-webcam) webcam=1 ;;
+    esac
+  done
+
+  if record_pid >/dev/null; then
+    notify_error "A recording is already running"
+    return 1
+  fi
+
+  require_cmd "$RECORDER" gpu-screen-recorder || return 1
+  capture_require_writable "$SCREENRECORD_DIR" || return 1
+
+  # --- resolve the target ---
+  capture_trap_cleanup
+  capture_freeze_start
+  local target
+  if ! target=$(capture_select "$target_mode"); then
+    return 0
+  fi
+  capture_freeze_stop
+
+  local -a gsr_args=()
+  local width=0 height=0
+
+  case "$target" in
+    monitor:*)
+      local name="${target#monitor:}"
+      gsr_args+=(-w "$name")
+      read -r width height < <(
+        capture_monitors | awk -F'\t' -v n="$name" '$2==n {split($1,a," "); split(a[2],d,"x"); print d[1], d[2]}'
+      ) || true
+      # A monitor unplugged between selection and start leaves these empty, and
+      # an empty string is not a number -- the downscale test below would abort.
+      [ -n "$width" ]  || width=0
+      [ -n "$height" ] || height=0
+      ;;
+    region:*)
+      local geo="${target#region:}"
+      local pos="${geo%% *}" dim="${geo#* }"
+      width=${dim%x*}; height=${dim#*x}
+      # Region recording is a newer gsr feature; check before relying on it.
+      if "$RECORDER" --help 2>&1 | grep -q -- '-region'; then
+        gsr_args+=(-w region -region "${dim}+${pos%%,*}+${pos#*,}")
+      else
+        notify_error "This gpu-screen-recorder has no region support — recording the monitor instead"
+        local fallback
+        fallback=$(capture_focused_monitor)
+        gsr_args+=(-w "$fallback")
+      fi
+      ;;
+  esac
+
+  # --- downscale only if genuinely oversized ---
+  local max_w=${SCREENRECORD_MAX_RESOLUTION%x*}
+  local max_h=${SCREENRECORD_MAX_RESOLUTION#*x}
+  if [ "$width" -gt 0 ] && { [ "$width" -gt "$max_w" ] || [ "$height" -gt "$max_h" ]; }; then
+    gsr_args+=(-s "$SCREENRECORD_MAX_RESOLUTION")
+  fi
+
+  local outfile
+  outfile=$(capture_outfile "$SCREENRECORD_DIR" screenrecording mp4)
+
+  local -a aargs=()
+  mapfile -t aargs < <(audio_args "$audio")
+
+  [ "$webcam" -eq 1 ] && webcam_start
+
+  # -k auto lets gsr choose the codec for whichever GPU it binds to; this box
+  # has both an NVIDIA and an AMD card, so hardcoding nvenc/vaapi would be wrong.
+  "$RECORDER" \
+    "${gsr_args[@]}" \
+    -f "$SCREENRECORD_FPS" \
+    -fm cfr \
+    -k auto \
+    -c mp4 \
+    "${aargs[@]}" \
+    -o "$outfile" \
+    >"$CAPTURE_RUNTIME/record.log" 2>&1 &
+
+  local pid=$!
+  echo "$pid" > "$PIDFILE"
+  printf '%s' "$outfile" > "$OUTFILE_REF"
+
+  # Give it a moment to fail loudly (bad device, no permission) rather than
+  # silently reporting a recording that never started.
+  sleep 0.5
+  if ! [ -d "/proc/$pid" ]; then
+    rm -f "$PIDFILE" "$OUTFILE_REF"
+    webcam_stop
+    notify_error "Recorder failed to start — see $CAPTURE_RUNTIME/record.log"
+    return 1
+  fi
+
+  notify "Recording started" "$(basename "$outfile")"
+}
+
+# --- stop --------------------------------------------------------------------
+
+record_stop() {
+  local pid
+  if ! pid=$(record_pid); then
+    notify_error "No recording is running"
+    return 1
+  fi
+
+  local outfile=""
+  [ -f "$OUTFILE_REF" ] && outfile=$(cat "$OUTFILE_REF" 2>/dev/null || true)
+
+  # SIGINT is what tells gsr to finalise the container. Anything harsher leaves
+  # an unplayable file.
+  kill -INT "$pid" 2>/dev/null || true
+
+  local waited=0
+  while [ -d "/proc/$pid" ] && [ "$waited" -lt 50 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+
+  local incomplete=0
+  if [ -d "/proc/$pid" ]; then
+    kill -TERM "$pid" 2>/dev/null || true
+    sleep 0.5
+    incomplete=1
+  fi
+
+  rm -f "$PIDFILE" "$OUTFILE_REF"
+  webcam_stop
+
+  if [ -z "$outfile" ] || [ ! -f "$outfile" ]; then
+    notify_error "Recording stopped but no output file was produced"
+    return 1
+  fi
+
+  record_postprocess "$outfile"
+
+  if [ "$incomplete" -eq 1 ]; then
+    notify_error "Recorder did not stop cleanly — $(basename "$outfile") may be truncated"
+    return 0
+  fi
+
+  record_notify_saved "$outfile"
+}
+
+# --- post-processing ---------------------------------------------------------
+# Nothing here runs unless explicitly enabled: a stream copy is the default, so
+# a recording is never re-encoded just for the sake of it.
+
+record_postprocess() {
+  local file="$1"
+  has ffmpeg || return 0
+
+  local do_trim=0 do_norm=0
+  awk "BEGIN{exit !($SCREENRECORD_TRIM > 0)}" && do_trim=1
+  [ "$SCREENRECORD_NORMALIZE" = "1" ] && do_norm=1
+  [ "$do_trim" -eq 0 ] && [ "$do_norm" -eq 0 ] && return 0
+
+  local tmp="${file%.mp4}-proc.mp4"
+  local -a args=(-y -hide_banner -loglevel error)
+
+  [ "$do_trim" -eq 1 ] && args+=(-ss "$SCREENRECORD_TRIM")
+  args+=(-i "$file")
+
+  if [ "$do_norm" -eq 1 ]; then
+    # Audio must be re-encoded to be filtered; video is still copied.
+    args+=(-c:v copy
+           -af "loudnorm=I=${SCREENRECORD_LOUDNESS}:TP=${SCREENRECORD_TRUE_PEAK}:LRA=${SCREENRECORD_LRA}"
+           -c:a aac -b:a 128k)
+  else
+    args+=(-c copy)
+  fi
+  args+=(-movflags +faststart "$tmp")
+
+  if ffmpeg "${args[@]}" 2>/dev/null && [ -s "$tmp" ]; then
+    mv -f "$tmp" "$file"
+  else
+    rm -f "$tmp"
+  fi
+}
+
+record_notify_saved() {
+  local file="$1" body
+  body="$(basename "$file")"
+
+  # Mid-frame thumbnail for the notification preview.
+  rm -f "$THUMB"
+  if has ffprobe && has ffmpeg; then
+    local dur mid
+    dur=$(ffprobe -v error -show_entries format=duration \
+          -of default=noprint_wrappers=1:nokey=1 "$file" 2>/dev/null || true)
+    case "$dur" in ''|N/A) dur=1 ;; esac
+    mid=$(awk "BEGIN{printf \"%.2f\", $dur / 2}")
+    ffmpeg -y -hide_banner -loglevel error -ss "$mid" -i "$file" \
+           -frames:v 1 "$THUMB" 2>/dev/null || rm -f "$THUMB"
+  fi
+
+  # -t bounds the blocking `notify-send -A` below; see screenshot.sh.
+  local -a nargs=(-a "$CAPTURE_APP" -t 12000)
+  [ -f "$THUMB" ] && nargs+=(-i "$THUMB" -h "string:image-path:$THUMB")
+
+  if has notify-send; then
+    setsid --fork bash -c '
+      file="$1"; player="$2"; body="$3"; shift 3
+      choice=$(notify-send "$@" -A "open=Open" "Screen recording saved" "$body" 2>/dev/null) || exit 0
+      if [ "$choice" = "open" ]; then
+        if command -v "$player" >/dev/null 2>&1; then exec "$player" "$file"; fi
+        command -v xdg-open >/dev/null 2>&1 && exec xdg-open "$file"
+      fi
+    ' _ "$file" "$SCREENRECORD_PLAYER" "$body" "${nargs[@]}" \
+        >/dev/null 2>&1 </dev/null || true
+  fi
+}
+
+# --- menu --------------------------------------------------------------------
+
+record_menu() {
+  local rofi_theme="$HOME/.config/rofi/current-theme.rasi"
+  [ -f "$rofi_theme" ] || rofi_theme="$HOME/.config/rofi/comet-glass.rasi"
+
+  has rofi || { record_start --audio=desktop --target=monitor; return; }
+
+  local items="No audio
+Desktop audio
+Desktop + microphone"
+  if webcam_device >/dev/null 2>&1; then
+    items="$items
+Desktop + microphone + webcam"
+  fi
+
+  local choice
+  choice=$(printf '%s\n' "$items" | rofi -dmenu -i -p "Record" \
+    -mesg "Screen recording" -theme "$rofi_theme") || return 0
+  [ -n "$choice" ] || return 0
+
+  case "$choice" in
+    "No audio")                        record_start --audio=none    --target=smart ;;
+    "Desktop audio")                   record_start --audio=desktop --target=smart ;;
+    "Desktop + microphone")            record_start --audio=both    --target=smart ;;
+    "Desktop + microphone + webcam")   record_start --audio=both    --target=smart --with-webcam ;;
+  esac
+}
+
+# --- dispatch ----------------------------------------------------------------
+
+ACTION="${1:-toggle}"
+shift || true
+
+case "$ACTION" in
+  status)  record_status ;;
+  start)   record_start "$@" ;;
+  stop)    record_stop ;;
+  menu)    record_menu ;;
+  toggle)
+    if record_pid >/dev/null; then
+      record_stop
+    else
+      record_menu
+    fi
+    ;;
+  *) printf 'record.sh: unknown action: %s\n' "$ACTION" >&2; exit 2 ;;
+esac
