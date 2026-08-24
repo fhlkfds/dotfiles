@@ -91,6 +91,16 @@ assert_contains "$test_root/curl.log" "purity=100"
 assert_contains "$test_root/curl.log" "sorting=relevance"
 assert_contains "$test_root/curl.log" "atleast=1920x1080"
 
+search_wallpapers "space" 1 > "$test_root/combined-results.json"
+assert_eq 2 "$(jq '.items | length' "$test_root/combined-results.json")"
+assert_eq local "$(jq -r '.items[0].kind' "$test_root/combined-results.json")"
+assert_eq "b space.JPG" "$(jq -r '.items[0].name' "$test_root/combined-results.json")"
+assert_eq wallhaven "$(jq -r '.items[1].kind' "$test_root/combined-results.json")"
+
+search_wallpapers "space" 2 > "$test_root/page-two-results.json"
+assert_eq 1 "$(jq '.items | length' "$test_root/page-two-results.json")"
+assert_eq wallhaven "$(jq -r '.items[0].kind' "$test_root/page-two-results.json")"
+
 magick_ok=1
 magick() { ((magick_ok == 1)); }
 
@@ -142,5 +152,9 @@ assert_contains "$repo_root/quickshell/.config/quickshell/Bar.qml" \
     "controller: WallpaperState"
 assert_contains "$repo_root/quickshell/.config/quickshell/WallpaperState.qml" \
     'root.mode !== "local"'
+assert_contains "$repo_root/quickshell/.config/quickshell/WallpaperState.qml" \
+    '"Search Wallhaven for “" + root.query.trim() + "”"'
+assert_contains "$repo_root/quickshell/.config/quickshell/WallpaperState.qml" \
+    'root.wallhavenQuery = root.query.trim()'
 
 printf 'ok: hypr-wallpaper-picker fixtures\n'

@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Copy URL",
+  "version": "1.0.0",
+  "description": "Copy the active tab URL to the Wayland clipboard.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnP6EWdMaJpvFPz/rvBxtW9iyMA/SG69FZ8hcpTyfksOPh1kp/p7mnsYMQ95DjvnW4YLIjvBwn0EAt0+Zkjv+S6HcnVd8P63+WolecfJ/D1kqWlGizulPXFHn9kdm5M/RXkfGZLv/rKMWS0CrUa+/ClQSZdtG2SP3ivESuOqoQlblwr8P8nJyigpC9YiR0GvC2u4fZvwFkdsCUHIPkej4iNy+7y6nfJq3/0L1pl6hkLeA8iQ1ueJnZQPZXn619cFdYU9iChz4tEJBRWfmxshqEWpQuX7nbIUeZ1tWTR+UXDMkUxF7+qb/zDdJc166y98JDFXc8kabwo0LRbeDKlm0FQIDAQAB",
+  "permissions": ["activeTab", "nativeMessaging"],
+  "action": { "default_title": "Copy URL" },
+  "commands": {
+    "copy-url": {
+      "suggested_key": { "default": "Alt+Shift+L" },
+      "description": "Copy URL"
+    }
+  },
+  "background": { "service_worker": "background.js" }
+}

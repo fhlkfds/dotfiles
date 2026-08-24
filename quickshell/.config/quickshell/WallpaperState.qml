@@ -43,7 +43,11 @@ Singleton {
   }
 
   readonly property var searchEntry:
-    root.entry("search", "__wallhaven_search", "Search Wallhaven", "")
+    root.entry("search", "__wallhaven_search",
+               root.query.trim() === ""
+                 ? "Search Wallhaven"
+                 : "Search Wallhaven for “" + root.query.trim() + "”",
+               "")
   readonly property var queryEntry:
     root.entry("query", "__wallhaven_query", "Search Wallhaven", "")
 
@@ -241,23 +245,29 @@ Singleton {
       }
       try {
         const data = JSON.parse(searchOut.text)
-        const items = [root.entry("new-search", "__new_search",
-                                        "New search", "")]
+        const items = []
+        for (const item of (data.items || [])) {
+          if (item.kind === "local") {
+            items.push(root.entry("local", item.slug, item.name,
+                                  item.wallpaper, { path: item.path }))
+          } else {
+            items.push(root.entry("wallhaven", item.slug, item.name,
+                                  item.wallpaper,
+                                  { id: item.id, url: item.url }))
+          }
+        }
         if (data.page > 1)
           items.push(root.entry("previous", "__previous_page",
                                 "Previous page", ""))
-        for (const item of (data.items || [])) {
-          items.push(root.entry("wallhaven", item.slug, item.name,
-                                item.wallpaper, { id: item.id, url: item.url }))
-        }
         if (data.page < data.last_page)
           items.push(root.entry("next", "__next_page", "Next page", ""))
+        items.push(root.entry("new-search", "__new_search", "New search", ""))
         root.resultItems = items
         root.page = data.page
         root.lastPage = data.last_page
         root.mode = "results"
         root.query = ""
-        root.selectedIndex = data.page > 1 ? 2 : 1
+        root.selectedIndex = 0
         root.lastError = ""
       } catch (e) {
         root.lastError = "Could not read Wallhaven results: " + e
@@ -271,6 +281,13 @@ Singleton {
       return
     switch (item.kind) {
     case "search":
+      if (root.query.trim() !== "") {
+        root.wallhavenQuery = root.query.trim()
+        root.search(1)
+        return
+      }
+      root.enterSearch()
+      return
     case "new-search":
       root.enterSearch()
       return

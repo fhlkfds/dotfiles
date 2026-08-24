@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+export PATH="/home/liam/.local/bin:/usr/local/bin:/usr/bin:$PATH"
+DOWNLOAD_DIR="${CHROMIUM_YTDLP_DIR:-$HOME/Videos}"
+MAX_MESSAGE_BYTES=1048576
+
+parse_url() {
+    jq -r 'if (.url | type) == "string" then .url else empty end' \
+        2>/dev/null <<<"$1" || true
+}
+
+valid_url() {
+    [[ "$1" =~ ^https?:// ]]
+}
+
+read_native_message() {
+    local length
+    length="$(head -c 4 | od -An -v -tu4 --endian=little | tr -d ' ')"
+    [[ "$length" =~ ^[0-9]+$ ]] || return 1
+    ((length > 0 && length <= MAX_MESSAGE_BYTES)) || return 1
+    head -c "$length"
+}
+
+resolve_download_file() {
+    local candidate="$1" file_real dir_real
+    [[ -n "$candidate" ]] || return 1
+    [[ "$candidate" != *$'\n'* && "$candidate" != *$'\r'* && \
+       "$candidate" != *$'\t'* ]] || return 1
+    [[ -f "$candidate" ]] || return 1
+    IFS= read -r -d '' file_real < <(realpath -ze -- "$candidate") || return 1
+    IFS= read -r -d '' dir_real < <(realpath -ze -- "$DOWNLOAD_DIR") || return 1
+    [[ "$file_real" == "${dir_real%/}"/* ]] || return 1
+    printf '%s' "$file_real"
+}
+
+decode_title() {
+    local decoded
+    decoded="$(jq -r 'if type == "string" then . else empty end' \
+        <<<"$1" 2>/dev/null)" || return 1
+    decoded="${decoded%%[[:cntrl:]]*}"
+    [[ -n "$decoded" && "$decoded" != -* ]] || return 1
+    printf '%s' "$decoded"
+}
+
+title_from_file() {
+    local name="${1##*/}"
+    name="${name%.*}"
+    name="${name//[$'\n\r\t']/}"
+    if [[ -z "$name" || "$name" == -* ]]; then
+        printf 'Video'
+    else
+        printf '%s' "$name"
+    fi
+}
+
+osd_progress() {
+    quickshell ipc call videoDownload setProgress "$1" >/dev/null 2>&1 || true
+}
+
+osd_close() {
+    quickshell ipc call videoDownload close >/dev/null 2>&1 || true
+}
+
+notify_failure() {
+    notify-send -a "Download Video" -u critical \
+        -h string:desktop-glyph:󰅖 "$1" "$2" || true
+}
+
+notify_complete() {
+    local filepath="$1" title="$2" preview="$3" action=""
+    local -a args=(-a "Download Video" -t 10000
+                   -h string:desktop-glyph:󰄬 -A default=Open)
+    [[ -s "$preview" ]] && args+=(-i "$preview")
+    action="$(notify-send "${args[@]}" "Download complete" "$title" || true)"
+    if [[ "$action" == default ]]; then
+        setsid -f mpv -- "$filepath" </dev/null >/dev/null 2>&1 || true
+    fi
+}
+
+download_url() {
+    local url="$1"
+    mkdir -p "$DOWNLOAD_DIR"
+    if ! yt-dlp --no-playlist --simulate --quiet --no-warnings \
+        --no-exec --no-exec-before-download -- "$url" >/dev/null 2>&1; then
+        notify_failure "No video found for download" "$url"
+        return 0
+    fi
+
+    osd_progress 0
+    local line pct intpct last="" nowms lastms=0 title="" filepath="" resolved
+    while IFS= read -r line; do
+        case "$line" in
+        BROWSER_PROG*)
+            pct="${line#BROWSER_PROG$'\t'}"
+            intpct="${pct%%.*}"
+            intpct="${intpct//[^0-9]/}"
+            [[ -n "$intpct" && "$intpct" != "$last" ]] || continue
+            nowms="$(date +%s%3N)"
+            ((nowms - lastms >= 250)) || continue
+            last="$intpct"
+            lastms="$nowms"
+            osd_progress "$intpct"
+            ;;
+        BROWSER_FILE*)
+            resolved="$(resolve_download_file "${line#BROWSER_FILE$'\t'}")" || continue
+            filepath="$resolved"
+            ;;
+        BROWSER_TITLE*)
+            title="$(decode_title "${line#BROWSER_TITLE$'\t'}")" || title=""
+            ;;
+        esac
+    done < <(PYTHONUNBUFFERED=1 yt-dlp --no-playlist --no-simulate \
+        --quiet --no-warnings --no-exec --no-exec-before-download \
+        --progress --newline \
+        --progress-template $'download:BROWSER_PROG\t%(progress._percent_str)s' \
+        --paths "$DOWNLOAD_DIR" -o '%(title)s.%(ext)s' \
+        --print $'after_move:BROWSER_FILE\t%(filepath)s' \
+        --print $'after_move:BROWSER_TITLE\t%(title)j' -- "$url" 2>&1)
+    osd_close
+
+    if [[ -n "$filepath" ]]; then
+        [[ -n "$title" ]] || title="$(title_from_file "$filepath")"
+        ((${#title} > 50)) && title="${title:0:50}…"
+        local preview
+        preview="$(mktemp --suffix=.jpg)"
+        ffmpeg -y -i "$filepath" -ss 00:00:00.1 -vframes 1 \
+            -vf "crop='min(iw,ih)':'min(iw,ih)',scale=256:256" \
+            -q:v 2 "$preview" -loglevel quiet 2>/dev/null || true
+        notify_complete "$filepath" "$title" "$preview"
+        rm -f -- "$preview"
+    else
+        notify_failure "Download failed" "$url"
+    fi
+}
+
+main() {
+    local payload url
+    if [[ "${1:-}" == --download ]]; then
+        (($# == 2)) && valid_url "$2" && download_url "$2"
+        return
+    fi
+
+    payload="$(read_native_message)" || exit 0
+    printf '\x02\x00\x00\x00{}'
+    url="$(parse_url "$payload")"
+    [[ -n "$url" ]] && valid_url "$url" || exit 0
+    setsid -f "$SCRIPT_PATH" --download "$url" </dev/null >/dev/null 2>&1
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

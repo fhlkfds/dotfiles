@@ -121,6 +121,26 @@ search_wallhaven() {
     rm -f -- "$response_tmp" "$output_tmp"
 }
 
+search_wallpapers() {
+    local query="$1" page="$2" local_json wallhaven_json
+
+    local_json="$(list_wallpapers)" || return 1
+    wallhaven_json="$(search_wallhaven "$query" "$page")" || return 1
+
+    jq -n --arg query "$query" --argjson page "$page" \
+        --argjson local "$local_json" --argjson wallhaven "$wallhaven_json" '
+      ($query | ascii_downcase) as $needle |
+      $wallhaven |
+      .items = (
+        (if $page == 1 then
+          [$local.items[] |
+            select(((.name + " " + .path) | ascii_downcase) | contains($needle))]
+        else
+          []
+        end) + .items
+      )'
+}
+
 download_wallhaven() {
     local id="$1" url="$2" extension target partial
     [[ "$id" =~ ^[[:alnum:]]+$ && "$url" == https://* ]] || {
@@ -213,7 +233,7 @@ main() {
             ;;
         search)
             (($# == 3)) || { usage; return; }
-            search_wallhaven "$2" "$3"
+            search_wallpapers "$2" "$3"
             ;;
         apply)
             (($# == 2)) || { usage; return; }

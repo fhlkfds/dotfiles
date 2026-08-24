@@ -30,13 +30,14 @@ Each top-level directory is a Stow package. Run `stow <package>` to symlink its 
 **Deploy everything at once:**
 
 ```bash
-stow ai fastfetch hypr hyprlock kitty noctalia quickshell rofi swaync Wallpapers wofi zsh
+stow ai browser fastfetch hypr hyprlock kitty noctalia quickshell rofi swaync Wallpapers wofi zsh
 ```
 
 **Or deploy packages individually:**
 
 ```bash
 stow ai          # ~/.local/bin/ai-agent, ~/.config/ai-agent
+stow browser     # Chromium extensions, flags, and native messaging hosts
 stow hypr        # ~/.config/hypr
 stow hyprlock    # ~/.config/hyprlock
 stow kitty       # ~/.config/kitty
@@ -436,11 +437,50 @@ Notes worth knowing:
   rejected. URLs are never passed through a shell and never appear in an `Exec`
   line -- the launcher receives only the app id.
 
+## Chromium Desktop Tools
+
+The `browser` package installs two unpacked Manifest V3 extensions and their
+native messaging hosts for Chromium, Chrome, Brave (including Origin), and
+Microsoft Edge profiles:
+
+| Shortcut | Toolbar action | Result |
+|---|---|---|
+| `Alt + Shift + L` | Copy URL | Copies the active tab URL with `wl-copy`; the existing `cliphist` watcher records it |
+| `Alt + Shift + D` | Download Video | Sends the active page URL to `yt-dlp`, saves one video in `~/Videos`, and shows progress in the Quickshell OSD |
+
+The browser owns both shortcuts; they are not Hyprland bindings. Browser flag
+files load the extensions from `~/.local/share/chromium-tools/extensions/`, and
+each browser profile authorizes only the extensions' pinned IDs to launch the
+matching executable in `~/.local/bin/`.
+
+Download Video accepts only HTTP(S) pages, disables playlists, and leaves format
+selection to yt-dlp. Set `CHROMIUM_YTDLP_DIR` in the browser's environment to
+override `~/Videos`. After a successful download, click the ten-second
+notification to open the validated file in mpv. An unsupported page or failed
+download produces a critical notification.
+
+After first installation, completely close and reopen the browser. Inspect or
+change the browser-owned shortcuts at `brave://extensions/shortcuts` (or the
+equivalent `chrome://extensions/shortcuts`). A shortcut already assigned to
+another extension must be cleared there before it can be assigned to these
+tools.
+
+Validation from the repository root:
+
+```bash
+tests/browser-native-tools.test.sh
+stow --simulate browser quickshell
+```
+
+The fixture suite uses mocked clipboard, downloader, notification, player, and
+OSD commands; it never downloads media or changes the live clipboard.
+
 ## What's Included
 
 | Package | Tool | Description |
 |---|---|---|
 | `hypr` | [Hyprland](https://hyprland.org/) | Wayland compositor — keybinds, decorations, autostart, monitor profiles, theme system |
+| `browser` | Chromium tools | Copy URL and yt-dlp extensions with native desktop integration |
 | `hyprlock` | [Hyprlock](https://github.com/hyprwm/hyprlock) | Lock screen with music widget, weather, and multiple layouts |
 | `kitty` | [Kitty](https://sw.kovidgoyal.net/kitty/) | Terminal emulator with generated theme palette |
 | `rofi` | [Rofi](https://github.com/davatorium/rofi) | App launcher with generated colour theme on comet-glass layout |
@@ -479,6 +519,7 @@ Notes worth knowing:
 - `doas` — privilege escalation (used in place of sudo)
 - `grim`, `slurp` — screenshots
 - `cliphist` / `wl-clipboard` — clipboard
+- `yt-dlp`, `jq`, `ffmpeg`, `mpv`, `libnotify` — Chromium video download integration
 
 Install AUR packages with your preferred helper (e.g. `paru` or `yay`).
 

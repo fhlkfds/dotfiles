@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MAX_MESSAGE_BYTES=1048576
+
+parse_url() {
+    jq -r 'if (.url | type) == "string" then .url else empty end' \
+        2>/dev/null <<<"$1" || true
+}
+
+copy_url() {
+    local url="$1"
+    [[ -n "$url" ]] || return 1
+    printf '%s' "$url" | wl-copy --type text/plain
+    notify-send -a "Copy URL" -h string:desktop-glyph:󰅍 \
+        "URL copied to clipboard"
+}
+
+read_native_message() {
+    local length
+    length="$(head -c 4 | od -An -v -tu4 --endian=little | tr -d ' ')"
+    [[ "$length" =~ ^[0-9]+$ ]] || return 1
+    ((length > 0 && length <= MAX_MESSAGE_BYTES)) || return 1
+    head -c "$length"
+}
+
+reply_copied() {
+    if [[ "$1" == true ]]; then
+        printf '\x0f\x00\x00\x00{"copied":true}'
+    else
+        printf '\x10\x00\x00\x00{"copied":false}'
+    fi
+}
+
+main() {
+    local payload url
+    payload="$(read_native_message)" || exit 0
+    url="$(parse_url "$payload")"
+    if copy_url "$url"; then
+        reply_copied true
+    else
+        reply_copied false
+    fi
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

@@ -1,0 +1,9 @@
+{
+  "name": "io.github.fhlkfds.ytdlp",
+  "description": "Download video from the active Chromium page with yt-dlp",
+  "path": "/home/liam/.local/bin/chromium-ytdlp-host",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://kgbmkkhmlonlobngnjpncdlgaipnabmc/"
+  ]
+}

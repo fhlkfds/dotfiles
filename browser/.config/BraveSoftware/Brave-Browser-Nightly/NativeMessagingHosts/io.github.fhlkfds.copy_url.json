@@ -1,0 +1,9 @@
+{
+  "name": "io.github.fhlkfds.copy_url",
+  "description": "Copy the active Chromium tab URL to the Wayland clipboard",
+  "path": "/home/liam/.local/bin/chromium-copy-url-host",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://nlobndichollhdcdlbcndgdcfgonenfh/"
+  ]
+}
