@@ -1,0 +1,226 @@
+# Desktop components
+
+## Quickshell: active shell and bar
+
+Hyprland starts `quickshell`, which loads
+`quickshell/.config/quickshell/shell.qml`. The root creates the bar, notification
+service, and browser-video progress service.
+
+### Bar layout
+
+One top-layer bar is created per screen. Its active layout is:
+
+| Area | Modules |
+| --- | --- |
+| Left | Arch/dashboard button, fixed workspace cells 1–10 |
+| Center | MPRIS media display |
+| Right | display, network, audio, recording status, DND status, clipboard, clock |
+
+Workspace buttons switch to their numbered workspace. Other interactions include:
+
+- Arch button: dashboard.
+- Media: media panel.
+- Display: display panel; wheel adjusts DDC/CI brightness.
+- Network: panel, or `kitty -e nmtui` for the Wi-Fi path.
+- Audio: panel on left/middle click, mute on right click, 3% wheel adjustment.
+- Recording indicator: appears while recording and stops it when clicked.
+- DND indicator: appears only while DND is enabled and disables it on click.
+- Clipboard: clipboard-history panel.
+- Clock: calendar on left click, time-format cycle on right click, timezone cycle
+  on middle click.
+
+### Panels and data sources
+
+| Panel | Implementation / external interfaces |
+| --- | --- |
+| Network | `nmcli`, `ping`, IP/gateway/DNS queries; `pkexec` for DNS changes |
+| Audio | Quickshell PipeWire API |
+| Media | Quickshell MPRIS; recent/pinned players; lyrics from `lrclib.net` |
+| Display | Hyprland monitor model, `ddcutil`, monitor-scale helper |
+| Dashboard | `/proc`, `df`, shell commands, Open-Meteo weather API |
+| Clipboard | `cliphist`, `wl-copy`, local image preview/index state |
+| Keybindings | live `hyprctl binds -j`; destructive entries are not invoked from UI |
+| Theme | Hyprland theme generator |
+| Wallpaper | local/Wallhaven wallpaper backend |
+| Web apps | shell backend creating/removing launchers |
+
+IPC targets let keybindings toggle network, display, media, clipboard, dashboard,
+keybindings, theme, wallpaper, and web-app panels.
+
+`quickshell/.config/quickshell/Theme.qml` watches
+`~/.config/hypr/themes/.active/theme.json` and updates live. It uses a sans-serif
+UI font and JetBrainsMono Nerd Font for glyphs, with font scaling persisted via
+`gsettings`.
+
+## Notifications
+
+The active notification daemon is implemented below
+`quickshell/.config/quickshell/notifications/`. It owns the standard
+`org.freedesktop.Notifications` D-Bus interface and displays top-right cards.
+
+Default policy from `config.json`:
+
+| Setting | Value |
+| --- | --- |
+| History limit | 10 |
+| Low urgency timeout | 5 seconds |
+| Normal urgency timeout | 8 seconds |
+| Ordinary maximum timeout | 30 seconds |
+| Critical notifications | persistent |
+| Card width | 380 pixels |
+| Initial DND | disabled |
+
+State, history, and cached images are stored under
+`$XDG_STATE_HOME/hyprland-desktop/notifications`, with
+`~/.local/state` as fallback. `notificationctl` provides the stable command-line
+interface used by keybindings. DND bypasses are configured for selected system
+apps such as capture, night light, and web-app management.
+
+The `swaync/` package is a retained rollback configuration. Its Hyprland
+autostart line is commented and its generated CSS is maintained only by the
+theme generator.
+
+## Clipboard history
+
+Two `wl-paste --watch` commands start from Hyprland autostart and pass text or
+images to `hypr/.config/hypr/scripts/clipboard-store.sh`. The active UI is the
+Quickshell clipboard panel, backed by `cliphist`. `cliphist/.config/cliphist/config`
+sets a 5,000-entry maximum. The database is unencrypted under
+`~/.cache/cliphist/db`.
+
+Browser Copy URL writes to the real Wayland clipboard, so it enters this history
+through the same watcher. Universal copy/cut/paste helpers adapt shortcuts for
+terminal applications.
+
+## Application launchers
+
+Rofi is active. `SUPER+A` opens `drun` using generated
+`rofi/.config/rofi/current-theme.rasi`, which imports the main Comet Glass layout
+and current palette. The launcher uses Papirus icons, Nerd Font glyphs, fuzzy
+matching, an approximately 42% width, and eight visible rows.
+
+Rofi also drives the power menu, key hints, calculator chooser, emoji helper,
+and legacy clipboard UI. Some auxiliary theme references are missing; see
+[Known script issues](./scripts.md#known-script-issues).
+
+`wofi/` is a retained alternative configured for fuzzy `drun` search in a
+Kitty-styled window. It is not bound or autostarted.
+
+## Wallpaper
+
+`SUPER+SHIFT+W` calls `~/.local/bin/hypr-wallpaper-picker` with no arguments,
+which toggles the Quickshell cover-flow UI. The same tracked script at
+`hypr/.local/bin/hypr-wallpaper-picker` implements the `index`, `search`, `apply`,
+`activate`, and `cleanup` operations used by that UI.
+
+Search order is intentional:
+
+1. Local JPEG/PNG filenames matching the query, on the first result page.
+2. SFW Wallhaven results from `https://wallhaven.cc/api/v1/search`, sorted by
+   relevance and requiring at least 1920×1080.
+3. Additional Wallhaven pages when the UI requests them.
+
+The backend caches previews, downloads the full selected image, validates it with
+ImageMagick, restarts Hyprpaper, and applies the image in cover mode. The default
+local directory is `/home/liam/Pictures/wallpapers`, which does not match the
+tracked asset tree. Standard Stow deployment of the current `Wallpapers/` package
+also places its contents directly below `$HOME`, contrary to the root README's
+`~/Wallpapers` claim.
+
+Older `WallpaperSwitch.sh` and `WallpaperEffects.sh` scripts are retained but are
+not used by the current binding.
+
+## Lock screen and idle service
+
+Hyprlock's entry point is `hypr/.config/hypr/hyprlock.conf`. It uses the
+`hyprlock` PAM service, disables fingerprint authentication, imports generated
+colors, and sources `layouts/hyprlock.conf`. That active layout contains a
+wallpaper background, clock/date, greeting, and password field.
+
+Many alternate layouts and music/weather helpers are tracked. They are examples,
+not active composition. Several assume `BAT0`, network access, extra fonts, or a
+profile image, so inspect a layout before enabling it.
+
+Hypridle supplies automatic lock/DPMS/suspend timing; see
+[Hyprland](./hyprland.md#lock-idle-and-power-behavior).
+
+## Terminal and shell
+
+Kitty is `$Terminal`. `kitty/.config/kitty/kitty.conf` selects JetBrainsMono Nerd
+Font, 14-pixel window padding, background blur, powerline-style tabs, and includes
+the generated `theme/current-theme.conf`. Remote control is allowed on a
+per-process abstract Unix socket.
+
+The optional `zsh/` package provides Oh My Zsh with Powerlevel10k, `git` and
+`fzf-tab` plugins, fzf integrations, syntax highlighting, autosuggestions, eza
+aliases, Neovim as `MANPAGER`, AI CLI aliases, and a Pokémon/Fastfetch greeting.
+It also includes personal VPN and GAM paths that must be adapted without copying
+private path details into shared documentation. Its `.oh-my-zsh` Gitlink has no
+matching `.gitmodules` entry, so a fresh clone cannot populate it as a submodule.
+
+`fastfetch/` provides the normal and Pokémon-oriented display configurations; the
+theme generator updates the configured accent color.
+
+## Browser integration
+
+The `browser` package supplies unpacked Manifest V3 extensions and Chrome Native
+Messaging hosts.
+
+### Copy URL
+
+`ALT+SHIFT+L` gets the active tab URL and sends it to
+`io.github.fhlkfds.copy_url`. `chromium-copy-url-host` validates the native
+message, writes a non-empty URL with `wl-copy`, and sends a desktop notification.
+Clipboard watchers record it normally.
+
+### Download Video
+
+`ALT+SHIFT+D` sends the active page URL to `com.omarchy.ytdlp`.
+`chromium-ytdlp-host`:
+
+1. accepts only HTTP(S) URLs;
+2. prevents duplicate requests with a lock;
+3. runs `yt-dlp --simulate` to detect supported media;
+4. starts a detached real download under `$CHROMIUM_YTDLP_DIR` or `~/Videos`;
+5. reports throttled progress to Quickshell's bottom-center OSD;
+6. generates a square FFmpeg thumbnail; and
+7. sends a completion notification whose action opens the file in mpv.
+
+Unsupported pages and failed downloads generate critical notifications. Native
+host manifests restrict each host to its exact extension ID.
+
+Browser flag files load the extensions for Chromium, Chrome, Brave, and Edge
+families. Absolute `/home/liam` paths mean the package is not account-portable as
+checked in. The repair helper can inspect or repair command registration while the
+browser is closed. Fixture tests live in `tests/browser-native-tools.test.sh`.
+
+## Waybar: retained alternative bar
+
+`waybar/.config/waybar/config` describes a top, 34-pixel bar with Hyprland
+window/workspace modules, update indicator and clock, CPU, memory, network,
+PulseAudio, battery, tray, and power button. The CSS imports generated
+`colors.css` and uses Nerd Font glyphs.
+
+The update and power click actions invoke scripts explicitly through `bash`.
+Waybar is not active unless a user adds it to startup. Two other helper scripts
+refer to missing `open-terminal.sh`; only the misspelled
+`open-terninal.sh` is tracked.
+
+## Noctalia: retained configuration
+
+`noctalia/.config/noctalia/` contains settings and plugin data, but its Quickshell
+startup line is commented. It includes user-specific monitor, location, and local
+network state. Enabled plugin configuration includes calendar/clock, clipboard,
+keybind, update, media-wallpaper, screen-toolkit, timer, and system-info features;
+the assistant and DNS-switcher entries are disabled. Do not treat these settings
+as part of the active shell without intentionally switching shells.
+
+## XDG defaults
+
+`xdg/.config/mimeapps.list` assigns Helium as the default HTTP/HTML handler,
+Nautilus for directories, imv for images, mpv for video, Zathura for PDFs, and a
+custom Kitty/Neovim desktop entry for text/code types. This differs from the
+Hyprland browser binding, which launches Brave. The desktop entry is tracked at
+`xdg/.local/share/applications/nvim-kitty.desktop`. The MIME file also delegates
+Packet Tracer file/protocol types and `t3code`/`claude-cli` URL schemes to
+externally installed desktop entries; those applications are not supplied here.

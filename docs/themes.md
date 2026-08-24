@@ -1,0 +1,110 @@
+# Themes and appearance
+
+## Source of truth
+
+Each palette lives at:
+
+```text
+hypr/.config/hypr/themes/<name>/colors.toml
+```
+
+The TOML file contains semantic desktop colors, ANSI terminal colors, and style
+values. `hypr/.config/hypr/theme/generate.py` is the renderer. Generated files
+are listed in `.gitignore`; edit the palette or generator rather than the outputs.
+
+## Included palettes
+
+There are 23 tracked palettes:
+
+```text
+catppuccin          catppuccin-latte  cyberpunk-neon
+ethereal            everforest        flexoki-light
+gruvbox             hackerman         kanagawa
+lumon               matte-black       miasma
+monochrome-minimal  nord              osaka-jade
+retro-82            ristretto         rose-pine
+solarized-dark      tokyo-night       vantablack
+warm-pastel         windows-7
+```
+
+`catppuccin-latte` and `flexoki-light` are light palettes; the remaining tracked
+palettes declare dark mode.
+
+## Generated targets
+
+A theme selection renders coordinated output for:
+
+| Component | Generated destination |
+| --- | --- |
+| Hyprland | `hypr/.config/hypr/conf/decorations.conf` |
+| Quickshell | `hypr/.config/hypr/themes/.active/theme.json` |
+| Kitty | `kitty/.config/kitty/theme/current-theme.conf` |
+| Zsh | live `~/.config/zsh/current-theme.zsh` (not a tracked Stow path) |
+| Rofi | current palette/import files below `rofi/.config/rofi/` |
+| Hyprlock | `hyprlock/.config/hyprlock/colors.conf` |
+| Waybar | `waybar/.config/waybar/colors.css` |
+| SwayNC | `swaync/.config/swaync/style.css` |
+| Wofi | `wofi/.config/wofi/style.css` |
+| Noctalia | generated colors/scheme data |
+| Fastfetch | configured `keyColor` |
+
+The generator also synchronizes relevant Noctalia settings and scheme metadata.
+
+## Theme bootstrap
+
+After Stowing the relevant packages, generate a complete active theme:
+
+```bash
+~/.config/hypr/themes/theme set tokyo-night
+```
+
+Useful CLI operations supported by `theme` include listing palettes, displaying
+the current palette, validating palettes, setting a palette, and cycling to the
+next or previous palette. Use the command's `--help` output for the exact current
+syntax.
+
+The Quickshell picker on `SUPER+T` or `SUPER+CTRL+SHIFT+Space` browses the same
+palette directory and applies only the selected center item/Enter choice.
+
+## Live application behavior
+
+On selection, the theme system can:
+
+- apply the palette's wallpaper through Hyprpaper;
+- reload Hyprland so generated decoration values take effect;
+- notify the Quickshell theme watcher;
+- update running Kitty windows through remote control;
+- signal Waybar and SwayNC when they are running; and
+- leave generated output ready for applications that load it later.
+
+This means `theme set` is not a purely read-only renderer. Use its validation
+operations when testing palette edits without wanting to change the live desktop.
+
+## Wallpaper resolution
+
+Theme wallpapers are resolved from user wallpaper locations before static
+repository assets. The resolver supports theme-specific images and fallback
+locations. This is separate from the interactive wallpaper picker's default
+directory; see [Wallpaper](./components.md#wallpaper).
+
+## Fonts, icons, and cursors
+
+- Kitty and glyph-heavy desktop UI expect JetBrainsMono Nerd Font.
+- The active Hyprlock layout also references AlfaSlabOne and a JetBrains Mono
+  ExtraBold face.
+- Rofi requests the Papirus icon theme.
+- Quickshell uses a generic sans-serif UI font plus Nerd Font glyphs.
+- Hyprland sets XCursor and Hyprcursor size to 24, but the cursor theme itself
+  could not be determined from the tracked configuration.
+- GTK/Qt theme selection is not defined by a dedicated tracked GTK, Qt, or
+  Kvantum package. It could not be determined from this repository.
+
+## Adding or changing a palette
+
+1. Copy an existing theme directory under `hypr/.config/hypr/themes/`.
+2. Rename it and edit `colors.toml`, retaining every key the validator requires.
+3. Use the theme tool's validation command.
+4. Set the palette and inspect all generated components, especially contrast in
+   notifications, Rofi, Hyprlock, and terminal ANSI colors.
+5. Commit only the source palette or deliberate generator/template changes, not
+   ignored generated output.
