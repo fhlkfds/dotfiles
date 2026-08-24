@@ -20,9 +20,11 @@ PanelWindow {
   id: panel
 
   required property string ownerScreen
+  property var controller: ThemeState
+  property string layerNamespace: "quickshell-theme-picker"
 
-  visible: ThemeState.panelVisible
-        && ThemeState.panelScreen === panel.ownerScreen
+  visible: panel.controller.panelVisible
+        && panel.controller.panelScreen === panel.ownerScreen
 
   anchors { top: true; bottom: true; left: true; right: true }
   exclusionMode: ExclusionMode.Ignore
@@ -30,7 +32,7 @@ PanelWindow {
 
   WlrLayershell.layer: WlrLayer.Overlay
   WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
-  WlrLayershell.namespace: "quickshell-theme-picker"
+  WlrLayershell.namespace: panel.layerNamespace
 
   // ── responsive scale ───────────────────────────────────────────────────────
   // Everything is authored in design space and multiplied by one factor, so the
@@ -62,21 +64,21 @@ PanelWindow {
     (panel.height - panel.selH - Theme.coverLabelGap * panel.s
      - Theme.coverLabelH * panel.s) / 2
 
-  readonly property int count: ThemeState.filtered.length
-  readonly property int current: ThemeState.selectedIndex
+  readonly property int count: panel.controller.filtered.length
+  readonly property int current: panel.controller.selectedIndex
 
   function commit() {
-    ThemeState.activate()
+    panel.controller.activate()
   }
 
   // Escape undoes the narrowing first, and only closes when there is nothing
   // left to undo.
   function dismiss() {
-    if (ThemeState.query !== "") {
-      ThemeState.clearQuery()
+    if (panel.controller.query !== "") {
+      panel.controller.clearQuery()
       return
     }
-    ThemeState.close()
+    panel.controller.close()
   }
 
   // ── scrim ──────────────────────────────────────────────────────────────────
@@ -91,7 +93,7 @@ PanelWindow {
 
     MouseArea {
       anchors.fill: parent
-      onClicked: ThemeState.close()
+      onClicked: panel.controller.close()
     }
   }
 
@@ -115,20 +117,21 @@ PanelWindow {
         panel.commit(); event.accepted = true; return
       case Qt.Key_Left:
       case Qt.Key_Backtab:
-        ThemeState.moveSelection(-1); event.accepted = true; return
+        panel.controller.moveSelection(-1); event.accepted = true; return
       case Qt.Key_Right:
-        ThemeState.moveSelection(1); event.accepted = true; return
+        panel.controller.moveSelection(1); event.accepted = true; return
       case Qt.Key_Tab:
         // Shift+Tab arrives as Key_Tab with the modifier on some layouts and as
         // Key_Backtab on others, so both spellings are handled.
-        ThemeState.moveSelection((event.modifiers & Qt.ShiftModifier) ? -1 : 1)
+        panel.controller.moveSelection(
+          (event.modifiers & Qt.ShiftModifier) ? -1 : 1)
         event.accepted = true; return
       case Qt.Key_Home:
-        ThemeState.selectFirst(); event.accepted = true; return
+        panel.controller.selectFirst(); event.accepted = true; return
       case Qt.Key_End:
-        ThemeState.selectLast(); event.accepted = true; return
+        panel.controller.selectLast(); event.accepted = true; return
       case Qt.Key_Backspace:
-        ThemeState.backspaceQuery(); event.accepted = true; return
+        panel.controller.backspaceQuery(); event.accepted = true; return
       }
 
       // Anything that produced a printable character becomes filter input.
@@ -137,7 +140,7 @@ PanelWindow {
           && event.text.charCodeAt(0) >= 0x20
           && !(event.modifiers & Qt.ControlModifier)
           && !(event.modifiers & Qt.AltModifier)) {
-        ThemeState.appendToQuery(event.text)
+        panel.controller.appendToQuery(event.text)
         event.accepted = true
       }
     }
@@ -179,10 +182,10 @@ PanelWindow {
               ? ((panel.current + sliceItem.offset) % panel.count + panel.count) % panel.count
               : 0
 
-          entry: panel.count > 0 ? ThemeState.filtered[sliceItem.modelIndex] : null
+          entry: panel.count > 0 ? panel.controller.filtered[sliceItem.modelIndex] : null
           relIndex: sliceItem.offset
           isActive: sliceItem.entry
-                 && sliceItem.entry.slug === ThemeState.activeSlug
+                 && sliceItem.entry.slug === panel.controller.activeSlug
           // Since built <= count, no two slices share a modelIndex, so there is
           // nothing to hide.
           loadImage: Math.abs(sliceItem.offset) <= Theme.coverLoadRadius
@@ -238,7 +241,7 @@ PanelWindow {
               panel.commit()
             } else {
               // Clicking a side slice only brings it to the centre.
-              ThemeState.moveSelection(sliceItem.relIndex)
+              panel.controller.moveSelection(sliceItem.relIndex)
             }
           }
         }
@@ -254,8 +257,8 @@ PanelWindow {
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
 
-        text: ThemeState.selected ? ThemeState.selected.name
-                                  : ThemeState.statusText
+        text: panel.controller.selected ? panel.controller.selected.name
+                                        : panel.controller.statusText
         color: Theme.text
         font.family: Theme.uiFamily
         font.pixelSize: Math.round(Theme.coverLabelFont * panel.s)
@@ -271,14 +274,14 @@ PanelWindow {
       // search field.
       Text {
         id: filterLabel
-        visible: ThemeState.query !== ""
+        visible: panel.controller.query !== ""
         width: panel.selW
         x: panel.centreX
         y: nameLabel.y + nameLabel.height + Math.round(6 * panel.s)
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
 
-        text: ThemeState.query
+        text: panel.controller.query
         color: Theme.textDim
         opacity: 0.85
         font.family: Theme.uiFamily
@@ -288,7 +291,7 @@ PanelWindow {
       // Restrained error line. The overlay stays open when the backend fails, so
       // this is where the reason shows up.
       Text {
-        visible: ThemeState.lastError !== ""
+        visible: panel.controller.lastError !== ""
         width: panel.selW
         x: panel.centreX
         y: filterLabel.visible
@@ -299,7 +302,7 @@ PanelWindow {
         maximumLineCount: 2
         elide: Text.ElideRight
 
-        text: ThemeState.lastError
+        text: panel.controller.lastError
         color: Theme.error
         font.family: Theme.uiFamily
         font.pixelSize: Math.round(Theme.coverFilterFont * panel.s)
@@ -319,7 +322,7 @@ PanelWindow {
             ? wheel.angleDelta.x : wheel.angleDelta.y
           accum += d
           while (Math.abs(accum) >= 120) {
-            ThemeState.moveSelection(accum > 0 ? -1 : 1)
+            panel.controller.moveSelection(accum > 0 ? -1 : 1)
             accum += (accum > 0 ? -120 : 120)
           }
           wheel.accepted = true
@@ -337,8 +340,8 @@ PanelWindow {
     }
     // Stale filter text must not survive a close, and the carousel should open
     // centred on the theme that is actually applied.
-    ThemeState.clearQuery()
-    ThemeState.reselect(ThemeState.activeSlug)
+    panel.controller.clearQuery()
+    panel.controller.reselect(panel.controller.activeSlug)
     keys.forceActiveFocus()
     panel.shown = true
   }

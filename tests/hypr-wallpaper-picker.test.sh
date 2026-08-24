@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+picker="$repo_root/hypr/.local/bin/hypr-wallpaper-picker"
+test_root="$(mktemp -d -t hypr-wallpaper-picker-test.XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+
+# shellcheck source=/dev/null
+source "$picker"
+
+fail() {
+    printf 'FAIL: %s\n' "$1" >&2
+    exit 1
+}
+
+assert_eq() {
+    [[ "$1" == "$2" ]] || fail "expected [$1], got [$2]"
+}
+
+assert_contains() {
+    grep -Fq -- "$2" "$1" || fail "$1 does not contain [$2]"
+}
+
+assert_missing() {
+    [[ ! -e "$1" ]] || fail "$1 should not exist"
+}
+
+notify-send() {
+    printf '%s\n' "$*" >> "$test_root/notifications"
+}
+
+wallpaper_dir="$test_root/wallpapers"
+runtime_dir="$test_root/runtime"
+mkdir -p "$wallpaper_dir/one" "$wallpaper_dir/two"
+printf x > "$wallpaper_dir/b space.JPG"
+printf x > "$wallpaper_dir/a-雪.png"
+printf x > "$wallpaper_dir/ignored.jpeg"
+printf x > "$wallpaper_dir/one/same.png"
+printf x > "$wallpaper_dir/two/same.png"
+printf x > "$wallpaper_dir/line
+break.jpg"
+
+list_wallpapers > "$test_root/index.json"
+assert_eq 5 "$(jq '.items | length' "$test_root/index.json")"
+assert_eq 2 "$(jq '[.items[] | select(.name == "same.png")] | length' "$test_root/index.json")"
+jq -e '.items[] | select(.name == "line\nbreak.jpg")' "$test_root/index.json" >/dev/null || \
+    fail "newline filename was not preserved in JSON"
+if jq -e '.items[] | select(.name == "ignored.jpeg")' "$test_root/index.json" >/dev/null; then
+    fail "unsupported JPEG was included"
+fi
+
+HYPR_WALLPAPER_DIR="$wallpaper_dir" "$picker" index > "$test_root/cli-index.json"
+assert_eq 5 "$(jq '.items | length' "$test_root/cli-index.json")"
+
+cat > "$test_root/wallhaven.json" <<'JSON'
+{"data":[{"id":"abc123","path":"https://w.wallhaven.cc/full/ab/wallhaven-abc123.png","thumbs":{"large":"https://th.wallhaven.cc/lg/ab/abc123.jpg"},"resolution":"2560x1440"}],"meta":{"current_page":1,"last_page":2}}
+JSON
+printf preview > "$test_root/preview.jpg"
+printf image > "$test_root/download.png"
+
+curl_mode=search
+curl() {
+    local output="" previous="" argument
+    printf '%s\n' "$*" >> "$test_root/curl.log"
+    for argument in "$@"; do
+        [[ "$previous" == -o ]] && output="$argument"
+        previous="$argument"
+    done
+    case "$curl_mode" in
+        fail) return 1 ;;
+        corrupt) printf broken > "$output" ;;
+        download) cp "$test_root/download.png" "$output" ;;
+        search)
+            [[ "$*" == *api/v1/search* ]] && \
+                cp "$test_root/wallhaven.json" "$output" || \
+                cp "$test_root/preview.jpg" "$output"
+            ;;
+    esac
+}
+
+search_wallhaven "space cats" 1 > "$test_root/results.json"
+assert_eq 1 "$(jq '.items | length' "$test_root/results.json")"
+assert_eq abc123 "$(jq -r '.items[0].id' "$test_root/results.json")"
+preview="$(jq -r '.items[0].wallpaper' "$test_root/results.json")"
+[[ -s "$preview" ]] || fail "Wallhaven preview was not cached"
+assert_contains "$test_root/curl.log" "q=space cats"
+assert_contains "$test_root/curl.log" "page=1"
+assert_contains "$test_root/curl.log" "categories=111"
+assert_contains "$test_root/curl.log" "purity=100"
+assert_contains "$test_root/curl.log" "sorting=relevance"
+assert_contains "$test_root/curl.log" "atleast=1920x1080"
+
+magick_ok=1
+magick() { ((magick_ok == 1)); }
+
+curl_mode=fail
+if download_wallhaven abc123 https://w.wallhaven.cc/full/ab/wallhaven-abc123.png; then
+    fail "failed download reported success"
+fi
+assert_missing "$wallpaper_dir/wallhaven-abc123.png.part"
+
+curl_mode=corrupt
+magick_ok=0
+if download_wallhaven abc123 https://w.wallhaven.cc/full/ab/wallhaven-abc123.png; then
+    fail "corrupt download reported success"
+fi
+assert_missing "$wallpaper_dir/wallhaven-abc123.png.part"
+assert_missing "$wallpaper_dir/wallhaven-abc123.png"
+
+curl_mode=download
+magick_ok=1
+downloaded="$(download_wallhaven abc123 https://w.wallhaven.cc/full/ab/wallhaven-abc123.png)"
+assert_eq "$wallpaper_dir/wallhaven-abc123.png" "$downloaded"
+[[ -s "$downloaded" ]] || fail "successful download was not installed"
+list_wallpapers > "$test_root/index-after-download.json"
+jq -e --arg path "$downloaded" '.items[] | select(.path == $path)' \
+    "$test_root/index-after-download.json" >/dev/null || \
+    fail "downloaded wallpaper was not added to the local index"
+
+pkill() { return 0; }
+pgrep() { return 1; }
+hyprpaper() { return 0; }
+hyprctl() { return 1; }
+sleep() { return 0; }
+if set_wallpaper "$downloaded"; then
+    fail "failed hyprpaper application reported success"
+fi
+grep -Fq "hyprpaper failed to set the wallpaper" "$test_root/notifications" || \
+    fail "application failure was not reported"
+
+hyprctl() { return 0; }
+set_wallpaper "$downloaded" || fail "successful mocked application failed"
+
+[[ -d "$runtime_dir" ]] || fail "search runtime directory was not created"
+cleanup
+assert_missing "$runtime_dir"
+
+assert_contains "$repo_root/quickshell/.config/quickshell/ThemePicker.qml" \
+    "property var controller: ThemeState"
+assert_contains "$repo_root/quickshell/.config/quickshell/Bar.qml" \
+    "controller: WallpaperState"
+assert_contains "$repo_root/quickshell/.config/quickshell/WallpaperState.qml" \
+    'root.mode !== "local"'
+
+printf 'ok: hypr-wallpaper-picker fixtures\n'

@@ -72,6 +72,13 @@ Scope {
   }
 
   IpcHandler {
+    target: "wallpaper"
+    function toggle(): void {
+      WallpaperState.togglePanel(bar.focusedScreen())
+    }
+  }
+
+  IpcHandler {
     target: "webapps"
     function toggle(): void {
       WebAppState.togglePanel(bar.focusedScreen())
@@ -100,6 +107,19 @@ Scope {
       required property var modelData
       screen: modelData
       ownerScreen: modelData.name
+    }
+  }
+
+  // The wallpaper gallery deliberately shares the exact theme cover-flow.
+  Variants {
+    model: Quickshell.screens
+
+    ThemePicker {
+      required property var modelData
+      screen: modelData
+      ownerScreen: modelData.name
+      controller: WallpaperState
+      layerNamespace: "quickshell-wallpaper-picker"
     }
   }
 
