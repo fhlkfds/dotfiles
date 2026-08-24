@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 SCRIPT_PATH="${BASH_SOURCE[0]}"
 export PATH="/home/liam/.local/bin:/usr/local/bin:/usr/bin:$PATH"
 DOWNLOAD_DIR="${CHROMIUM_YTDLP_DIR:-$HOME/Videos}"
 MAX_MESSAGE_BYTES=1048576
+WORKER_URL=""
 
 parse_url() {
     jq -r 'if (.url | type) == "string" then .url else empty end' \
@@ -65,7 +66,32 @@ osd_close() {
 
 notify_failure() {
     notify-send -a "Download Video" -u critical \
-        -h string:desktop-glyph:󰅖 "$1" "$2" || true
+        -h string:desktop-glyph:󰅖 "$1" "$2" >/dev/null 2>&1 || true
+}
+
+yt_dlp_error() {
+    local output="$1" message
+    message="$(sed -n 's/^ERROR: //p' <<<"$output" | tail -n 1)"
+    [[ -n "$message" ]] || message="yt-dlp could not download this page."
+    message="${message//$'\n'/ }"
+    ((${#message} > 240)) && message="${message:0:240}…"
+    printf '%s' "$message"
+}
+
+reply_accepted() {
+    if [[ "$1" == true ]]; then
+        printf '\x11\x00\x00\x00{"accepted":true}'
+    else
+        printf '\x12\x00\x00\x00{"accepted":false}'
+    fi
+}
+
+worker_error() {
+    local status="$?"
+    trap - ERR
+    osd_close
+    notify_failure "Download failed" "${WORKER_URL:-Unknown URL}"
+    exit "$status"
 }
 
 notify_complete() {
@@ -80,16 +106,18 @@ notify_complete() {
 }
 
 download_url() {
-    local url="$1"
+    local url="$1" probe_output error
     mkdir -p "$DOWNLOAD_DIR"
-    if ! yt-dlp --no-playlist --simulate --quiet --no-warnings \
-        --no-exec --no-exec-before-download -- "$url" >/dev/null 2>&1; then
-        notify_failure "No video found for download" "$url"
+    if ! probe_output="$(yt-dlp --no-playlist --simulate --quiet --no-warnings \
+        --no-exec --no-exec-before-download -- "$url" 2>&1)"; then
+        error="$(yt_dlp_error "$probe_output")"
+        notify_failure "Video download unavailable" "$error"
         return 0
     fi
 
     osd_progress 0
     local line pct intpct last="" nowms lastms=0 title="" filepath="" resolved
+    local download_error=""
     while IFS= read -r line; do
         case "$line" in
         BROWSER_PROG*)
@@ -110,6 +138,9 @@ download_url() {
         BROWSER_TITLE*)
             title="$(decode_title "${line#BROWSER_TITLE$'\t'}")" || title=""
             ;;
+        ERROR:*)
+            download_error="${line#ERROR: }"
+            ;;
         esac
     done < <(PYTHONUNBUFFERED=1 yt-dlp --no-playlist --no-simulate \
         --quiet --no-warnings --no-exec --no-exec-before-download \
@@ -122,7 +153,9 @@ download_url() {
 
     if [[ -n "$filepath" ]]; then
         [[ -n "$title" ]] || title="$(title_from_file "$filepath")"
-        ((${#title} > 50)) && title="${title:0:50}…"
+        if ((${#title} > 50)); then
+            title="${title:0:50}…"
+        fi
         local preview
         preview="$(mktemp --suffix=.jpg)"
         ffmpeg -y -i "$filepath" -ss 00:00:00.1 -vframes 1 \
@@ -131,22 +164,45 @@ download_url() {
         notify_complete "$filepath" "$title" "$preview"
         rm -f -- "$preview"
     else
-        notify_failure "Download failed" "$url"
+        if [[ -n "$download_error" ]]; then
+            error="$(yt_dlp_error "ERROR: $download_error")"
+        else
+            error="yt-dlp did not return a downloaded file."
+        fi
+        notify_failure "Download failed" "$error"
     fi
 }
 
 main() {
     local payload url
     if [[ "${1:-}" == --download ]]; then
-        (($# == 2)) && valid_url "$2" && download_url "$2"
+        if (($# != 2)) || ! valid_url "$2"; then
+            notify_failure "Download failed" "Invalid download URL"
+            return 2
+        fi
+        local lock_file="${XDG_RUNTIME_DIR:-/tmp}/chromium-ytdlp-${UID}.lock"
+        exec 9>"$lock_file"
+        flock -n 9 || return 0
+        WORKER_URL="$2"
+        trap worker_error ERR
+        download_url "$2"
+        trap - ERR
         return
     fi
 
     payload="$(read_native_message)" || exit 0
-    printf '\x02\x00\x00\x00{}'
     url="$(parse_url "$payload")"
-    [[ -n "$url" ]] && valid_url "$url" || exit 0
-    setsid -f "$SCRIPT_PATH" --download "$url" </dev/null >/dev/null 2>&1
+    if [[ -z "$url" ]] || ! valid_url "$url"; then
+        reply_accepted false
+        exit 0
+    fi
+    if setsid -f "$SCRIPT_PATH" --download "$url" \
+        </dev/null >/dev/null 2>&1; then
+        reply_accepted true
+    else
+        notify_failure "Could not start download" "$url"
+        reply_accepted false
+    fi
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

@@ -1,0 +1,9 @@
+{
+  "name": "com.omarchy.ytdlp",
+  "description": "Omarchy-compatible yt-dlp download host",
+  "path": "/home/liam/.local/bin/chromium-ytdlp-host",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://dedjgknigfeelejglamclffonmophnfl/"
+  ]
+}

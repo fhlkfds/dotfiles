@@ -457,13 +457,28 @@ Download Video accepts only HTTP(S) pages, disables playlists, and leaves format
 selection to yt-dlp. Set `CHROMIUM_YTDLP_DIR` in the browser's environment to
 override `~/Videos`. After a successful download, click the ten-second
 notification to open the validated file in mpv. An unsupported page or failed
-download produces a critical notification.
+download produces a critical desktop notification containing yt-dlp's error.
+Concurrent duplicate requests are ignored. Native-host connection or
+request errors produce a Brave notification and leave a red `!` badge on the
+Download Video extension, so the shortcut no longer fails silently.
 
 After first installation, completely close and reopen the browser. Inspect or
 change the browser-owned shortcuts at `brave://extensions/shortcuts` (or the
 equivalent `chrome://extensions/shortcuts`). A shortcut already assigned to
 another extension must be cleared there before it can be assigned to these
 tools.
+
+If an older unpacked Download Video extension still owns `Alt + Shift + D`,
+preview the narrowly scoped profile repair while Brave is open:
+
+```bash
+chromium-repair-download-video-shortcut ~/.config/BraveSoftware/Brave-Browser
+```
+
+Then completely quit Brave and rerun it with `--apply`. The repair refuses to
+write while Brave's singleton socket is active, creates a timestamped
+`Preferences` backup, and removes only obsolete Download Video registrations.
+The current pinned extension claims the shortcut on the next browser launch.
 
 Validation from the repository root:
 
