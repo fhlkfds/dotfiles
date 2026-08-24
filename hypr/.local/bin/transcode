@@ -1,0 +1,248 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_NAME="Transcode"
+COPY_TO_CLIPBOARD=0
+SEND_NOTIFICATION=0
+TEMP_OUTPUT=""
+
+usage() {
+  cat <<'EOF'
+Usage: transcode [--copy] [--notify] FILE FORMAT PRESET
+
+Convert an image or video beside its source without upscaling it.
+
+Images:
+  formats:  jpg, png
+  presets:  high (3160px), medium (2160px), low (1080px)
+
+Videos:
+  formats:  mp4, gif
+  presets:  4k (3840x2160), 1080p (1920x1080), 720p (1280x720)
+
+Options:
+  --copy    copy the output as a text/uri-list file URI with wl-copy
+  --notify  show success and failure desktop notifications
+  -h, --help
+
+JPEG output flattens transparent pixels onto white. The output path is printed
+on stdout. Existing files are never overwritten.
+EOF
+}
+
+cleanup() {
+  [[ -z "$TEMP_OUTPUT" ]] || rm -f -- "$TEMP_OUTPUT"
+}
+trap cleanup EXIT INT TERM
+
+notify_message() {
+  local urgency="$1" title="$2" message="$3"
+  (( SEND_NOTIFICATION == 1 )) || return 0
+  command -v notify-send >/dev/null 2>&1 || return 0
+  notify-send -a "$APP_NAME" -u "$urgency" "$title" "$message" 2>/dev/null || true
+}
+
+fail() {
+  local status="$1" message="$2"
+  printf 'transcode: %s\n' "$message" >&2
+  notify_message critical "Transcode failed" "$message"
+  exit "$status"
+}
+
+require_command() {
+  local command_name="$1" package_name="${2:-$1}"
+  command -v "$command_name" >/dev/null 2>&1 ||
+    fail 3 "$command_name is not installed (Arch package: $package_name)"
+}
+
+media_kind() {
+  local input="$1" mime extension
+  mime=$(file -Lb --mime-type -- "$input" 2>/dev/null || true)
+  case "$mime" in
+    image/*) printf 'image\n'; return 0 ;;
+    video/*) printf 'video\n'; return 0 ;;
+  esac
+
+  extension="${input##*.}"
+  extension="${extension,,}"
+  case "$extension" in
+    jpg|jpeg|png|webp|heic|heif|avif|tif|tiff|bmp) printf 'image\n' ;;
+    mp4|mov|mkv|webm|avi|m4v|mpeg|mpg) printf 'video\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+next_output_path() {
+  local directory="$1" stem="$2" label="$3" extension="$4"
+  local candidate="$directory/$stem-$label.$extension" number=2
+  while [[ -e "$candidate" ]]; do
+    candidate="$directory/$stem-$label-$number.$extension"
+    number=$((number + 1))
+  done
+  printf '%s\n' "$candidate"
+}
+
+image_width() {
+  case "$1" in
+    high) printf '3160\n' ;;
+    medium) printf '2160\n' ;;
+    low) printf '1080\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+image_label() {
+  case "$1" in
+    high) printf '3160p\n' ;;
+    medium) printf '2160p\n' ;;
+    low) printf '1080p\n' ;;
+  esac
+}
+
+video_dimensions() {
+  case "$1" in
+    4k) printf '3840 2160\n' ;;
+    1080p) printf '1920 1080\n' ;;
+    720p) printf '1280 720\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+convert_image() {
+  local input="$1" output_format="$2" preset="$3" temporary="$4"
+  local width
+  width=$(image_width "$preset")
+
+  case "$output_format" in
+    jpg)
+      magick "$input" -auto-orient -resize "${width}x>" \
+        -background white -alpha remove -alpha off -quality 90 "$temporary"
+      ;;
+    png)
+      magick "$input" -auto-orient -resize "${width}x>" \
+        -define png:compression-level=9 "$temporary"
+      ;;
+  esac
+}
+
+convert_video() {
+  local input="$1" output_format="$2" preset="$3" temporary="$4"
+  local max_width max_height scale
+  read -r max_width max_height < <(video_dimensions "$preset")
+  scale="scale=w='min(iw,${max_width})':h='min(ih,${max_height})':force_original_aspect_ratio=decrease:force_divisible_by=2"
+
+  case "$output_format" in
+    mp4)
+      ffmpeg -hide_banner -loglevel error -y -i "$input" \
+        -map 0:v:0 -map '0:a?' -sn -dn -vf "$scale" \
+        -c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p \
+        -c:a aac -b:a 128k -movflags +faststart "$temporary"
+      ;;
+    gif)
+      ffmpeg -hide_banner -loglevel error -y -i "$input" -an \
+        -filter_complex "[0:v]fps=15,${scale},split[frames][palette_source];[palette_source]palettegen=max_colors=256[palette];[frames][palette]paletteuse=dither=sierra2_4a" \
+        -loop 0 "$temporary"
+      ;;
+  esac
+}
+
+copy_file_uri() {
+  local path="$1" uri
+  uri=$(python3 - "$path" <<'PY'
+from pathlib import Path
+import sys
+print(Path(sys.argv[1]).resolve().as_uri())
+PY
+  ) || return 1
+  printf '%s\r\n' "$uri" | wl-copy --type text/uri-list
+}
+
+while (($#)); do
+  case "$1" in
+    --copy) COPY_TO_CLIPBOARD=1; shift ;;
+    --notify) SEND_NOTIFICATION=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    --) shift; break ;;
+    -*) printf 'transcode: unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
+    *) break ;;
+  esac
+done
+
+[[ $# -eq 3 ]] || { usage >&2; exit 2; }
+
+INPUT="$1"
+OUTPUT_FORMAT="${2,,}"
+PRESET="${3,,}"
+
+[[ -f "$INPUT" ]] || fail 3 "input is not a regular file: $INPUT"
+[[ -r "$INPUT" ]] || fail 3 "input is not readable: $INPUT"
+require_command file file
+
+KIND=$(media_kind "$INPUT") || fail 3 "unsupported media type: $INPUT"
+
+case "$KIND" in
+  image)
+    [[ "$OUTPUT_FORMAT" == jpg || "$OUTPUT_FORMAT" == png ]] ||
+      fail 2 "images support only jpg or png output"
+    image_width "$PRESET" >/dev/null ||
+      fail 2 "image presets are high, medium, or low"
+    require_command magick imagemagick
+    LABEL=$(image_label "$PRESET")
+    ;;
+  video)
+    [[ "$OUTPUT_FORMAT" == mp4 || "$OUTPUT_FORMAT" == gif ]] ||
+      fail 2 "videos support only mp4 or gif output"
+    video_dimensions "$PRESET" >/dev/null ||
+      fail 2 "video presets are 4k, 1080p, or 720p"
+    require_command ffmpeg ffmpeg
+    LABEL="$PRESET"
+    ;;
+esac
+
+if (( COPY_TO_CLIPBOARD == 1 )); then
+  require_command python3 python
+  require_command wl-copy wl-clipboard
+fi
+if (( SEND_NOTIFICATION == 1 )); then
+  require_command notify-send libnotify
+fi
+
+INPUT=$(realpath -- "$INPUT") || fail 3 "could not resolve input path"
+DIRECTORY=$(dirname -- "$INPUT")
+[[ -w "$DIRECTORY" ]] || fail 3 "source directory is not writable: $DIRECTORY"
+BASENAME=$(basename -- "$INPUT")
+STEM="${BASENAME%.*}"
+[[ -n "$STEM" ]] || STEM="$BASENAME"
+OUTPUT=$(next_output_path "$DIRECTORY" "$STEM" "$LABEL" "$OUTPUT_FORMAT")
+TEMP_OUTPUT=$(mktemp "$DIRECTORY/.${STEM}-${LABEL}.tmp.XXXXXX.${OUTPUT_FORMAT}") ||
+  fail 3 "could not create a temporary output beside the source"
+
+if [[ "$KIND" == image ]]; then
+  convert_image "$INPUT" "$OUTPUT_FORMAT" "$PRESET" "$TEMP_OUTPUT" ||
+    fail 4 "ImageMagick could not convert $(basename -- "$INPUT")"
+else
+  convert_video "$INPUT" "$OUTPUT_FORMAT" "$PRESET" "$TEMP_OUTPUT" ||
+    fail 4 "FFmpeg could not convert $(basename -- "$INPUT")"
+fi
+
+[[ -s "$TEMP_OUTPUT" ]] || fail 4 "conversion produced an empty output"
+chmod 0644 "$TEMP_OUTPUT"
+
+# A hard link installs the completed file atomically and refuses to overwrite a
+# racing destination. Recompute the collision suffix if another process won.
+until ln -- "$TEMP_OUTPUT" "$OUTPUT" 2>/dev/null; do
+  [[ -e "$OUTPUT" ]] || fail 4 "could not install the completed output"
+  OUTPUT=$(next_output_path "$DIRECTORY" "$STEM" "$LABEL" "$OUTPUT_FORMAT")
+done
+rm -f -- "$TEMP_OUTPUT"
+TEMP_OUTPUT=""
+
+printf '%s\n' "$OUTPUT"
+
+if (( COPY_TO_CLIPBOARD == 1 )) && ! copy_file_uri "$OUTPUT"; then
+  notify_message critical "Converted; clipboard failed" "Saved $(basename -- "$OUTPUT"), but its file URI was not copied"
+  printf 'transcode: converted successfully, but clipboard copy failed\n' >&2
+  exit 5
+fi
+
+notify_message normal "Transcode complete" "$(basename -- "$OUTPUT") is ready to paste"

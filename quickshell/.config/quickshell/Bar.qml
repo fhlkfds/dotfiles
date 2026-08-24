@@ -18,12 +18,22 @@ Scope {
     function toggle(): void {
       NetworkState.togglePanel(bar.focusedScreen())
     }
+    function manage(): void {
+      NetworkState.openNmtui()
+    }
   }
 
   IpcHandler {
     target: "audio"
     function toggle(): void {
       AudioState.togglePanel(bar.focusedScreen())
+    }
+  }
+
+  IpcHandler {
+    target: "bluetooth"
+    function toggle(): void {
+      BluetoothState.togglePanel(bar.focusedScreen())
     }
   }
 
@@ -200,6 +210,7 @@ Scope {
 
         DisplayIcon { screenName: panel.modelData.name; barScale: panel.barScale }
         NetworkIcon { screenName: panel.modelData.name; barScale: panel.barScale }
+        BluetoothIcon { screenName: panel.modelData.name; barScale: panel.barScale }
         AudioIcon { screenName: panel.modelData.name; barScale: panel.barScale }
 
         // Only rendered while a screen recording is running.

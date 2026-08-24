@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: bluetooth-control COMMAND [ARGUMENT]
+
+Commands:
+  status                 print adapter and known-device state as JSON
+  power on|off           enable or disable the default adapter
+  scan [SECONDS]         discover nearby devices (default: 12 seconds)
+  connect MAC            connect a paired device
+  disconnect MAC         disconnect a device
+  pair MAC               pair, trust, and connect a discovered device
+EOF
+}
+
+require_bluetoothctl() {
+  command -v bluetoothctl >/dev/null 2>&1 || {
+    printf 'bluetooth-control: bluetoothctl is not installed\n' >&2
+    exit 127
+  }
+}
+
+bt() {
+  LC_ALL=C NO_COLOR=1 bluetoothctl "$@"
+}
+
+valid_mac() {
+  [[ "$1" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]]
+}
+
+require_mac() {
+  local address="${1:-}"
+  valid_mac "$address" || {
+    printf 'bluetooth-control: invalid Bluetooth address: %s\n' "$address" >&2
+    exit 2
+  }
+}
+
+has_device() {
+  local listing="$1" address="$2" line
+  while IFS= read -r line; do
+    [[ "$line" == "Device $address" || "$line" == "Device $address "* ]] && return 0
+  done <<< "$listing"
+  return 1
+}
+
+status_json() {
+  command -v jq >/dev/null 2>&1 || {
+    printf 'bluetooth-control: jq is not installed\n' >&2
+    exit 127
+  }
+
+  local controller error powered=false scanning=false
+  if ! controller=$(bt show 2>&1); then
+    error=$(printf '%s\n' "$controller" | sed -n '/[^[:space:]]/{s/^[[:space:]]*//;p;q;}')
+    jq -cn --arg error "${error:-Bluetooth controller unavailable}" \
+      '{available:false,powered:false,scanning:false,devices:[],error:$error}'
+    return 0
+  fi
+  if [[ "$controller" == *"No default controller available"* ||
+        "$controller" != *"Controller "* ]]; then
+    jq -cn '{available:false,powered:false,scanning:false,devices:[],error:"No Bluetooth controller available"}'
+    return 0
+  fi
+
+  grep -Eq '^[[:space:]]*Powered:[[:space:]]+yes' <<< "$controller" && powered=true
+  grep -Eq '^[[:space:]]*Discovering:[[:space:]]+yes' <<< "$controller" && scanning=true
+
+  local devices_raw paired_raw connected_raw devices_json='[]'
+  devices_raw=$(bt devices 2>/dev/null || true)
+  paired_raw=$(bt devices Paired 2>/dev/null || bt paired-devices 2>/dev/null || true)
+  connected_raw=$(bt devices Connected 2>/dev/null || true)
+
+  local prefix address name paired connected entry
+  while IFS=' ' read -r prefix address name; do
+    [[ "$prefix" == Device ]] || continue
+    valid_mac "$address" || continue
+    paired=false
+    connected=false
+    has_device "$paired_raw" "$address" && paired=true
+    has_device "$connected_raw" "$address" && connected=true
+    [[ -n "${name:-}" ]] || name="$address"
+    entry=$(jq -cn --arg address "${address^^}" --arg name "$name" \
+      --argjson paired "$paired" --argjson connected "$connected" \
+      '{address:$address,name:$name,paired:$paired,connected:$connected}')
+    devices_json=$(jq -cn --argjson items "$devices_json" --argjson item "$entry" \
+      '$items + [$item]')
+  done <<< "$devices_raw"
+
+  jq -cn --argjson powered "$powered" --argjson scanning "$scanning" \
+    --argjson devices "$devices_json" \
+    '{available:true,powered:$powered,scanning:$scanning,devices:$devices,error:""}'
+}
+
+require_bluetoothctl
+command_name="${1:-status}"
+shift || true
+
+case "$command_name" in
+  status)
+    [[ $# -eq 0 ]] || { usage >&2; exit 2; }
+    status_json
+    ;;
+  power)
+    [[ $# -eq 1 && ( "$1" == on || "$1" == off ) ]] || { usage >&2; exit 2; }
+    bt power "$1"
+    ;;
+  scan)
+    seconds="${1:-12}"
+    [[ $# -le 1 && "$seconds" =~ ^[0-9]+$ && "$seconds" -ge 1 && "$seconds" -le 60 ]] || {
+      printf 'bluetooth-control: scan duration must be 1-60 seconds\n' >&2
+      exit 2
+    }
+    bt --timeout "$seconds" scan on
+    ;;
+  connect|disconnect)
+    [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+    require_mac "$1"
+    bt "$command_name" "${1^^}"
+    ;;
+  pair)
+    [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+    require_mac "$1"
+    address="${1^^}"
+    bt --agent NoInputNoOutput --timeout 45 pair "$address"
+    bt trust "$address"
+    bt connect "$address"
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    printf 'bluetooth-control: unknown command: %s\n' "$command_name" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+

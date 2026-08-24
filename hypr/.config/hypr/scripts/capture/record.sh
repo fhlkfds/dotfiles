@@ -8,6 +8,8 @@
 #   record.sh stop               graceful SIGINT stop
 #   record.sh status             prints "recording" or "idle" (for the bar)
 #   record.sh menu               audio/target chooser, then start
+#   record.sh webcam-size smaller|larger
+#                                step a live webcam overlay between presets
 #
 # Options for start/toggle:
 #   --audio=none|desktop|mic|both   (default: desktop)
@@ -26,6 +28,8 @@ source "$_dir/select.sh"
 PIDFILE="$CAPTURE_RUNTIME/record.pid"
 OUTFILE_REF="$CAPTURE_RUNTIME/record.out"
 WEBCAM_PIDFILE="$CAPTURE_RUNTIME/webcam.pid"
+WEBCAM_SIZEFILE="$CAPTURE_RUNTIME/webcam.size"
+WEBCAM_SOCKET="$CAPTURE_RUNTIME/webcam.sock"
 THUMB="$CAPTURE_RUNTIME/record-thumb.png"
 
 RECORDER=gpu-screen-recorder
@@ -117,11 +121,102 @@ webcam_device() {
 }
 
 webcam_overlay_size() {
-  case "$WEBCAM_DEFAULT_SIZE" in
+  case "${1:-$WEBCAM_DEFAULT_SIZE}" in
     small)  printf '320x180' ;;
     large)  printf '640x360' ;;
     *)      printf '480x270' ;;
   esac
+}
+
+webcam_live_pid() {
+  [ -f "$WEBCAM_PIDFILE" ] || return 1
+  local pid
+  pid=$(cat "$WEBCAM_PIDFILE" 2>/dev/null || true)
+  if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+    printf '%s' "$pid"
+    return 0
+  fi
+  rm -f "$WEBCAM_PIDFILE" "$WEBCAM_SIZEFILE" "$WEBCAM_SOCKET"
+  return 1
+}
+
+webcam_send_geometry() {
+  local geometry="$1"
+
+  # Tests can replace the transport without opening a live mpv socket.
+  if [ -n "${WEBCAM_IPC_HELPER:-}" ]; then
+    "$WEBCAM_IPC_HELPER" "$WEBCAM_SOCKET" "$geometry"
+    return
+  fi
+
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 - "$WEBCAM_SOCKET" "$geometry" <<'PY'
+import json
+import socket
+import sys
+
+socket_path, geometry = sys.argv[1:]
+request = json.dumps({"command": ["set_property", "geometry", geometry]}) + "\n"
+
+with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+    client.settimeout(1.0)
+    client.connect(socket_path)
+    client.sendall(request.encode())
+    response = b""
+    while b"\n" not in response:
+        chunk = client.recv(4096)
+        if not chunk:
+            break
+        response += chunk
+
+result = json.loads(response.split(b"\n", 1)[0] or b"{}")
+if result.get("error") != "success":
+    raise SystemExit(1)
+PY
+}
+
+webcam_resize_via_hyprland() {
+  local pid="$1" size="$2"
+  local hyprctl_command=${WEBCAM_HYPRCTL:-hyprctl}
+  command -v "$hyprctl_command" >/dev/null 2>&1 || return 1
+  "$hyprctl_command" dispatch resizewindowpixel "exact $size,pid:$pid" >/dev/null
+}
+
+webcam_resize() {
+  local direction="$1" current next geometry size pid
+  case "$direction" in smaller|larger) ;; *) return 2 ;; esac
+
+  # Do nothing when recording is idle. If screen recording is active but its
+  # webcam overlay is absent, explain why the resize key has no visible effect.
+  record_pid >/dev/null || return 0
+  if ! pid=$(webcam_live_pid); then
+    notify "Recording" "No webcam overlay is active"
+    return 0
+  fi
+
+  current=$(cat "$WEBCAM_SIZEFILE" 2>/dev/null || printf '%s' "$WEBCAM_DEFAULT_SIZE")
+  case "$current:$direction" in
+    small:smaller|large:larger) next="$current" ;;
+    medium:smaller) next=small ;;
+    large:smaller) next=medium ;;
+    small:larger) next=medium ;;
+    medium:larger) next=large ;;
+    *) next=medium ;;
+  esac
+  [ "$next" = "$current" ] && return 0
+
+  size=$(webcam_overlay_size "$next")
+  geometry="${size}-20-60"
+  if ! webcam_send_geometry "$geometry"; then
+    # Covers overlays started before IPC support and mpv backends that reject
+    # changing geometry at runtime. The PID selector avoids resizing any other
+    # mpv window the user may have open.
+    if ! webcam_resize_via_hyprland "$pid" "$size"; then
+      notify_error "Could not resize the webcam overlay"
+      return 0
+    fi
+  fi
+  printf '%s\n' "$next" > "$WEBCAM_SIZEFILE"
 }
 
 webcam_start() {
@@ -134,14 +229,17 @@ webcam_start() {
 
   # Borderless, no OSD, no audio, always on top, parked bottom-right so it does
   # not sit over what is being demonstrated.
+  rm -f "$WEBCAM_SOCKET" "$WEBCAM_SIZEFILE"
   mpv av://v4l2:"$dev" \
     --profile=low-latency --untimed \
     --no-audio --no-osc --no-osd-bar --no-border --ontop \
     --geometry="${w}x${h}-20-60" \
     --title="capture-webcam" \
+    --input-ipc-server="$WEBCAM_SOCKET" \
     --demuxer-lavf-o=input_format=mjpeg,video_size="$WEBCAM_RESOLUTION" \
     >/dev/null 2>&1 &
   echo $! > "$WEBCAM_PIDFILE"
+  printf '%s\n' "$WEBCAM_DEFAULT_SIZE" > "$WEBCAM_SIZEFILE"
 }
 
 webcam_stop() {
@@ -149,7 +247,7 @@ webcam_stop() {
   local pid
   pid=$(cat "$WEBCAM_PIDFILE" 2>/dev/null || true)
   [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
-  rm -f "$WEBCAM_PIDFILE"
+  rm -f "$WEBCAM_PIDFILE" "$WEBCAM_SIZEFILE" "$WEBCAM_SOCKET"
 }
 
 # --- start -------------------------------------------------------------------
@@ -228,13 +326,15 @@ record_start() {
 
   [ "$webcam" -eq 1 ] && webcam_start
 
-  # -k auto lets gsr choose the codec for whichever GPU it binds to; this box
-  # has both an NVIDIA and an AMD card, so hardcoding nvenc/vaapi would be wrong.
+  # Prefer the GPU and let gsr choose its codec. If no supported hardware
+  # encoder is available (or the capture is too large for it), fall back to the
+  # CPU encoder instead of exiting immediately.
   "$RECORDER" \
     "${gsr_args[@]}" \
     -f "$SCREENRECORD_FPS" \
     -fm cfr \
     -k auto \
+    -fallback-cpu-encoding yes \
     -c mp4 \
     "${aargs[@]}" \
     -o "$outfile" \
@@ -412,6 +512,10 @@ case "$ACTION" in
   start)   record_start "$@" ;;
   stop)    record_stop ;;
   menu)    record_menu ;;
+  webcam-size)
+    [ $# -eq 1 ] || { printf 'record.sh: webcam-size requires smaller or larger\n' >&2; exit 2; }
+    webcam_resize "$1"
+    ;;
   toggle)
     if record_pid >/dev/null; then
       record_stop

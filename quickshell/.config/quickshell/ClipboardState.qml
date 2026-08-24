@@ -116,20 +116,19 @@ Singleton {
   Process {
     id: listProc
     command: ["cliphist", "list"]
-    stdout: StdioCollector {
-      onTextChanged: {
-        if (text === "")
-          return
-        root.rawLines = text.split("\n").filter(l => l.trim() !== "")
-        root.rebuild()
-      }
-    }
+    stdout: StdioCollector { id: listOut }
     stderr: StdioCollector { id: listErr }
     onExited: function (code) {
-      if (code !== 0)
+      if (code !== 0) {
         root.lastError = "cliphist unavailable: " + listErr.text.trim()
-      else
+      } else {
+        // Reconcile only after the complete command output is available. An
+        // empty successful result is meaningful: it must clear stale rows
+        // after the history has been wiped.
+        root.rawLines = listOut.text.split("\n").filter(l => l.trim() !== "")
+        root.rebuild()
         root.lastError = ""
+      }
     }
   }
 
@@ -222,7 +221,6 @@ Singleton {
     actionProc.command = ["sh", "-c",
       "cliphist list | grep -m1 '^" + id + "\t' | cliphist delete"]
     actionProc.running = true
-    pendingRefresh.restart()
   }
 
   // Wipe, preserving pinned entries (they are decoded and re-stored).
@@ -232,7 +230,6 @@ Singleton {
     actionProc.command = ["sh", "-c",
       "$HOME/.config/hypr/scripts/clipboard-wipe.sh " + pinned.join(" ")]
     actionProc.running = true
-    pendingRefresh.restart()
   }
 
   Process {
@@ -242,6 +239,11 @@ Singleton {
     onExited: function (code) {
       if (code !== 0)
         root.lastError = actionErr.text.trim() || "clipboard action failed"
+      else
+        root.lastError = ""
+      // Refresh after the mutation has completed, not a fixed interval after
+      // it started. The timer then gives cliphist's watcher time to settle.
+      pendingRefresh.restart()
     }
   }
 

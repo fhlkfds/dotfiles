@@ -14,7 +14,7 @@ One top-layer bar is created per screen. Its active layout is:
 | --- | --- |
 | Left | Arch/dashboard button, fixed workspace cells 1–10 |
 | Center | MPRIS media display |
-| Right | display, network, audio, recording status, DND status, clipboard, clock |
+| Right | display, network, Bluetooth, audio, recording status, DND status, clipboard, clock |
 
 Workspace buttons switch to their numbered workspace. Other interactions include:
 
@@ -22,6 +22,7 @@ Workspace buttons switch to their numbered workspace. Other interactions include
 - Media: media panel.
 - Display: display panel; wheel adjusts DDC/CI brightness.
 - Network: panel, or `kitty -e nmtui` for the Wi-Fi path.
+- Bluetooth: enable/disable, scan, pair, connect, and disconnect devices.
 - Audio: panel on left/middle click, mute on right click, 3% wheel adjustment.
 - Recording indicator: appears while recording and stops it when clicked.
 - DND indicator: appears only while DND is enabled and disables it on click.
@@ -34,6 +35,7 @@ Workspace buttons switch to their numbered workspace. Other interactions include
 | Panel | Implementation / external interfaces |
 | --- | --- |
 | Network | `nmcli`, `ping`, IP/gateway/DNS queries; `pkexec` for DNS changes |
+| Bluetooth | Hyprland script backend over `bluetoothctl` |
 | Audio | Quickshell PipeWire API |
 | Media | Quickshell MPRIS; recent/pinned players; lyrics from `lrclib.net` |
 | Display | Hyprland monitor model, `ddcutil`, monitor-scale helper |
@@ -44,8 +46,8 @@ Workspace buttons switch to their numbered workspace. Other interactions include
 | Wallpaper | local/Wallhaven wallpaper backend |
 | Web apps | shell backend creating/removing launchers |
 
-IPC targets let keybindings toggle network, display, media, clipboard, dashboard,
-keybindings, theme, wallpaper, and web-app panels.
+IPC targets let keybindings toggle network, Bluetooth, display, media, clipboard,
+dashboard, keybindings, theme, wallpaper, and web-app panels.
 
 `quickshell/.config/quickshell/Theme.qml` watches
 `~/.config/hypr/themes/.active/theme.json` and updates live. It uses a sans-serif
@@ -99,9 +101,10 @@ Rofi is active. `SUPER+A` opens `drun` using generated
 and current palette. The launcher uses Papirus icons, Nerd Font glyphs, fuzzy
 matching, an approximately 42% width, and eight visible rows.
 
-Rofi also drives the power menu, key hints, calculator chooser, emoji helper,
-and legacy clipboard UI. Some auxiliary theme references are missing; see
-[Known script issues](./scripts.md#known-script-issues).
+Rofi also drives the power menu, qalc-backed calculator, transcoding menus, and
+emoji picker. The calculator has a compact layout over the generated palette;
+the emoji picker imports the same palette and Comet Glass layout as the
+application launcher, with a wider ten-row search view.
 
 `wofi/` is a retained alternative configured for fuzzy `drun` search in a
 Kitty-styled window. It is not bound or autostarted.
@@ -111,7 +114,10 @@ Kitty-styled window. It is not bound or autostarted.
 `SUPER+SHIFT+W` calls `~/.local/bin/hypr-wallpaper-picker` with no arguments,
 which toggles the Quickshell cover-flow UI. The same tracked script at
 `hypr/.local/bin/hypr-wallpaper-picker` implements the `index`, `search`, `apply`,
-`activate`, and `cleanup` operations used by that UI.
+`activate`, `restore`, and `cleanup` operations used by that UI. Successful
+standalone and theme wallpaper applications atomically save the selected path
+to `$XDG_STATE_HOME/hyprland-desktop/wallpaper/current`; autostart restores it.
+Missing or stale state falls back to starting plain Hyprpaper.
 
 Search order is intentional:
 

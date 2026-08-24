@@ -5,7 +5,7 @@ All bindings in this file come from
 extension commands. `$mainMod` resolves to `SUPER`.
 
 Hyprland's `bindd` descriptions also feed the live Quickshell keybinding palette,
-opened with `SUPER+K`. The Rofi cheat sheet on `SUPER+H` is a separate fallback.
+opened with `SUPER+K`.
 
 ## Session and general tools
 
@@ -14,16 +14,12 @@ opened with `SUPER+K`. The Rofi cheat sheet on `SUPER+H` is a separate fallback.
 | `SUPER+Return` | terminal | `kitty` |
 | `SUPER+SHIFT+Return` | drop-down terminal | `Dropterminal.sh kitty` |
 | `SUPER+Q` | close active window | `killactive` |
-| `SUPER+SHIFT+Q` | exit Hyprland | `exit` dispatcher |
 | `SUPER+L` | lock screen | start Hyprlock if not already running |
 | `SUPER+P` | power menu | Waybar package's launcher-neutral power script |
-| `SUPER+H` | help / cheat sheet | `KeyHints.sh` (Rofi) |
 | `SUPER+K` | searchable bindings | Quickshell keybinding panel |
 | `SUPER+I` | coding agent | `kitty -e ~/.local/bin/ai-agent` |
+| `SUPER+CTRL+T` | activity | `btop` in the configured terminal |
 | `SUPER+SHIFT+G` | start Gaming VM | starts `Gaming-VM`, waits 15 seconds, then Looking Glass |
-
-`SUPER+SHIFT+Q` exits the compositor immediately; it does not show the power-menu
-confirmation.
 
 ## Applications and panels
 
@@ -32,6 +28,7 @@ confirmation.
 | `SUPER+A` | application menu | Rofi `drun` with current generated theme |
 | `SUPER+SHIFT+A` | web-app manager | Quickshell web-app panel |
 | `SUPER+W` | browser | `brave` |
+| `SUPER+SHIFT+ALT+W` | private browser window | XDG default browser's declared private action |
 | `SUPER+S` | Spotify | `spotify` |
 | `SUPER+O` | Obsidian | `obsidian` |
 | `SUPER+R` | voice dictation | `hyprvoice toggle` |
@@ -40,12 +37,14 @@ confirmation.
 | `SUPER+SHIFT+E` | Files | same as `SUPER+E` |
 | `SUPER+SHIFT+ALT+F` | Files at terminal directory | `files-here.sh` |
 | `SUPER+SHIFT+D` | Disks | `gnome-disks` through `$Disks` |
-| `SUPER+CTRL+I` | network panel | Quickshell IPC |
+| `SUPER+CTRL+I` | network status panel | Quickshell IPC |
+| `SUPER+CTRL+W` | Wi-Fi/network manager | existing `kitty -e nmtui` action |
+| `SUPER+CTRL+A` | audio panel | Quickshell IPC |
+| `SUPER+CTRL+B` | Bluetooth panel | Quickshell IPC |
 | `SUPER+CTRL+D` | display panel | Quickshell IPC |
 | `SUPER+CTRL+M` | media panel | Quickshell IPC |
-| `SUPER+CTRL+A` | dashboard | Quickshell IPC |
 
-## Clipboard, emoji, and calculator
+## Sharing, clipboard, emoji, calculator, and transcoding
 
 | Keys | Action | Notes |
 | --- | --- | --- |
@@ -53,12 +52,15 @@ confirmation.
 | `SUPER+X` | universal cut | terminal cut intentionally does nothing |
 | `SUPER+V` | universal paste | sends terminal-appropriate shortcut |
 | `SUPER+CTRL+V` | clipboard history | active Quickshell/cliphist panel |
-| `SUPER+ALT+V` | legacy clipboard manager | Rofi script; its referenced theme file is missing |
-| `SUPER+ALT+E` | emoji menu | Rofi script; its referenced theme file is missing |
-| `SUPER+SHIFT+C` | calculator modes | Rofi chooser and its helpers lack executable bits, so the binding cannot start as checked in |
+| `SUPER+CTRL+S` | share | opens LocalSend; its window is floated and centered |
+| `SUPER+ALT+E` | emoji menu | themed Rofi fuzzy search; copies the selected emoji |
+| `SUPER+CTRL+Q` | calculator | themed Rofi prompt backed by `qalc`; Enter on the answer copies it |
+| `SUPER+SHIFT+C` | calculator | alternate binding for the same calculator |
+| `SUPER+CTRL+.` | transcode media | fuzzy picker over `~/Pictures` and `~/Videos`; copies the result as a file URI |
 
-See [Known script issues](./scripts.md#known-script-issues) before relying on the
-three affected Rofi entries.
+LocalSend and btop are optional applications; install them before using their
+bindings. The transcoder's CLI and output behavior are documented in
+[Scripts and command-line tools](./scripts.md#transcoding-before-sharing).
 
 ## Notifications
 
@@ -78,10 +80,10 @@ These commands target the active Quickshell notification service through
 | Keys | Action | Capture command |
 | --- | --- | --- |
 | `SUPER+SHIFT+S` | smart screenshot | drag for region; click to snap window under pointer |
-| `SUPER+CTRL+S` | active-window screenshot | `screenshot window` |
 | `SUPER+ALT+S` | focused-monitor screenshot | `screenshot monitor` |
 | `SUPER+ALT+CTRL+S` | screenshot monitor after 5 seconds | `--delay=5` |
 | `SUPER+CTRL+SHIFT+S` | screenshot monitor after 10 seconds | `--delay=10` |
+| `SUPER+ALT+[` / `SUPER+ALT+]` | make the active webcam overlay smaller / larger | three 16:9 presets; no-op without a webcam recording |
 | `SUPER+SHIFT+R` | toggle screen recording | `record toggle` |
 | `SUPER+SHIFT+P` | color picker | `color` |
 | `SUPER+SHIFT+T` | OCR / extract text | `ocr` |
@@ -107,6 +109,9 @@ The implementation and optional features are described in
 | --- | --- |
 | `SUPER+1` … `SUPER+9` | workspaces 1 … 9 |
 | `SUPER+ALT+1` … `SUPER+ALT+5` | workspaces 11 … 15 |
+| `SUPER+TAB` / `SUPER+SHIFT+TAB` | next / previous open workspace |
+| `SUPER+CTRL+TAB` | former workspace |
+| `SUPER+wheel down` / `SUPER+wheel up` | next / previous open workspace |
 
 There is no direct select-workspace-10 binding.
 
@@ -119,6 +124,7 @@ to the physical `1` through `0` keys regardless of the displayed symbol.
 | --- | --- |
 | `SUPER+SHIFT+1` … `SUPER+SHIFT+0` | move to workspace 1 … 10 and follow |
 | `SUPER+CTRL+1` … `SUPER+CTRL+0` | move to workspace 1 … 10 without following |
+| `SUPER+SHIFT+ALT+1` … `SUPER+SHIFT+ALT+4` | move to workspace 1 … 4 without following |
 | `SUPER+SHIFT+[` / `SUPER+SHIFT+]` | move and follow to previous / next workspace |
 | `SUPER+CTRL+[` / `SUPER+CTRL+]` | move silently to previous / next workspace |
 
@@ -133,9 +139,14 @@ Output placement for these numbered workspaces is profile-dependent; see
 | `SUPER+CTRL+F` | maximize while retaining bar/gaps (mode 1) |
 | `SUPER+Arrow` | move focus in that direction |
 | `SUPER+CTRL+Arrow` | move window in that direction |
-| `SUPER+ALT+Arrow` | swap window in that direction |
-| `SUPER+SHIFT+Left/Right` | resize width by −/+50 pixels |
-| `SUPER+SHIFT+Up/Down` | resize height by −/+50 pixels |
+| `SUPER+SHIFT+Arrow` | swap window in that direction |
+| `SUPER+SHIFT+ALT+Arrow` | move current workspace to directional monitor |
+| `SUPER+Minus` / `SUPER+Equal` | resize horizontally by −/+100 pixels |
+| `SUPER+SHIFT+Minus` / `SUPER+SHIFT+Equal` | resize vertically by −/+100 pixels |
+| `SUPER+ALT+Minus` / `SUPER+ALT+Equal` | fine horizontal resize by −/+10 pixels |
+| `SUPER+CTRL+Minus` / `SUPER+CTRL+Equal` | coarse horizontal resize by −/+300 pixels |
+| `SUPER+ALT+Home` | save active window width for this session |
+| `SUPER+Home` | restore saved width while preserving current height |
 | `SUPER+Left mouse drag` | move window |
 | `SUPER+SHIFT+Right mouse drag` | resize window |
 

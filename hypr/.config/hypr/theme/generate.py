@@ -33,6 +33,11 @@ STATE_FILE = THEMES_DIR / "current-theme"
 
 CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
 CACHE_HOME = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+WALLPAPER_STATE_FILE = Path(os.environ.get(
+    "HYPR_WALLPAPER_STATE_FILE",
+    Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
+    / "hyprland-desktop/wallpaper/current",
+))
 
 # Colour output only when a human is watching.
 _TTY = sys.stdout.isatty()
@@ -155,7 +160,7 @@ def reload_apps(theme: tl.Theme, kitty_conf: Path) -> tuple[list[str], list[str]
 
 def link_rofi(prefix: Path, slug: str) -> None:
     """Rofi is pointed at the theme by a symlink, which is what Super+A,
-    KeyHints.sh, the capture menu and the calculators all already read."""
+    the emoji picker, capture menu and calculators all already read."""
     themes = prefix / "rofi/color-themes"
     generated = themes / "current.rasi"
     slug_copy = themes / f"{slug}.rasi"
@@ -269,6 +274,22 @@ def apply_wallpaper(theme: tl.Theme) -> str:
     if not _run(["hyprctl", "hyprpaper", "wallpaper", f",{target}"], timeout=10):
         return f"failed to set {path.name}"
     _run(["hyprctl", "hyprpaper", "unload", "unused"], timeout=10)
+    try:
+        WALLPAPER_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        fd, state_tmp_name = tempfile.mkstemp(
+            prefix=".current.", dir=WALLPAPER_STATE_FILE.parent
+        )
+        state_tmp = Path(state_tmp_name)
+        with os.fdopen(fd, "w") as state_handle:
+            json.dump({"path": str(path.resolve())}, state_handle)
+            state_handle.write("\n")
+        os.replace(state_tmp, WALLPAPER_STATE_FILE)
+    except OSError:
+        try:
+            state_tmp.unlink(missing_ok=True)
+        except (NameError, OSError):
+            pass
+        return f"{path.name} (state not saved)"
     return path.name
 
 

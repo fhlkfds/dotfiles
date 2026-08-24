@@ -124,9 +124,9 @@ display panel's scale helper persists only to the desktop profile.
 
 | Symptom | Repository-specific cause |
 | --- | --- |
-| emoji menu has theme error | missing `config-emoji.rasi` |
-| legacy clipboard menu has theme error | missing `config-clipboard.rasi` |
-| calculator says permission denied | the chooser and its three calculators are mode `0644` |
+| calculator reports a missing command | install `libqalculate`, Rofi, and `wl-clipboard` |
+| HEIC transcode fails | install `libheif` so ImageMagick can load its HEIC/HEIF delegate |
+| LocalSend or activity binding does nothing | install `localsend` or `btop` from Arch repositories |
 | old wallpaper selector has theme error | missing `config-wallpaper.rasi` |
 | Waybar network/Bluetooth action fails | scripts request `open-terminal.sh`, but only `open-terninal.sh` exists |
 

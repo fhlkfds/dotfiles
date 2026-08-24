@@ -32,6 +32,7 @@ notify-send() {
 
 wallpaper_dir="$test_root/wallpapers"
 runtime_dir="$test_root/runtime"
+state_file="$test_root/state/current"
 mkdir -p "$wallpaper_dir/one" "$wallpaper_dir/two"
 printf x > "$wallpaper_dir/b space.JPG"
 printf x > "$wallpaper_dir/a-雪.png"
@@ -141,6 +142,47 @@ grep -Fq "hyprpaper failed to set the wallpaper" "$test_root/notifications" || \
 
 hyprctl() { return 0; }
 set_wallpaper "$downloaded" || fail "successful mocked application failed"
+jq -e --arg path "$(realpath -e -- "$downloaded")" '.path == $path' \
+    "$state_file" >/dev/null || fail "successful application was not persisted"
+
+applied_log="$test_root/applied"
+apply_wallpaper() { printf '%s\n' "$1" >> "$applied_log"; }
+restore_wallpaper || fail "saved wallpaper did not restore"
+assert_contains "$applied_log" "$(realpath -e -- "$downloaded")"
+
+printf '{"path":"%s"}\n' "$test_root/missing.jpg" > "$state_file"
+hyprpaper_started=0
+ensure_hyprpaper_running() { hyprpaper_started=1; }
+restore_wallpaper || fail "missing saved wallpaper did not fall back cleanly"
+assert_eq 1 "$hyprpaper_started"
+
+# Theme selection is the other active wallpaper setter. It must write the same
+# state document so the most recent explicit choice wins at the next login.
+python3 - "$repo_root/hypr/.config/hypr/theme/generate.py" "$downloaded" \
+    "$test_root/theme-state/current" <<'PY'
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+module_path, wallpaper, state = map(Path, sys.argv[1:])
+spec = importlib.util.spec_from_file_location("theme_generate_fixture", module_path)
+module = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(module)
+module.WALLPAPER_STATE_FILE = state
+module.tl.resolve_wallpaper = lambda _name: wallpaper
+module.shutil.which = lambda _name: "/fixture"
+module._pids_of = lambda _name: [1]
+module._run = lambda *_args, **_kwargs: True
+
+class Theme:
+    wallpaper = "fixture"
+
+result = module.apply_wallpaper(Theme())
+assert result == wallpaper.name, result
+assert json.loads(state.read_text()) == {"path": str(wallpaper.resolve())}
+PY
 
 [[ -d "$runtime_dir" ]] || fail "search runtime directory was not created"
 cleanup

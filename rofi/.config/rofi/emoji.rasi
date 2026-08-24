@@ -1,0 +1,43 @@
+/**
+ * Emoji picker overlay.
+ *
+ * The active generated theme supplies the palette and shared Comet Glass
+ * layout. These overrides give dmenu an emoji-specific prompt and a little
+ * more room for searchable names and keywords.
+ */
+
+@theme "~/.config/rofi/current-theme.rasi"
+
+configuration {
+    show-icons: false;
+}
+
+window {
+    width: 48%;
+}
+
+mainbox {
+    children: [ "inputbar", "listview", "message" ];
+}
+
+textbox-prompt-colon {
+    str: "󰞅";
+}
+
+entry {
+    placeholder: "Search emoji by name…";
+}
+
+listview {
+    lines: 10;
+}
+
+message {
+    padding: 2px 6px 0px 6px;
+    background-color: transparent;
+}
+
+textbox {
+    background-color: transparent;
+    text-color: @fg2;
+}

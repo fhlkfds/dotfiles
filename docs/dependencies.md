@@ -30,6 +30,7 @@ can run without it, but that feature cannot.
 | `udiskie` | configured startup tool | removable media |
 | PipeWire/WirePlumber tools | configured audio path | `wpctl`, Quickshell PipeWire |
 | NetworkManager | configured network path | `nmcli`, `nmtui` |
+| `bluez-utils` | configured Bluetooth widget | `bluetoothctl` |
 | `iputils` | dashboard/network checks | `ping` |
 | `polkit` provider / `pkexec` | privileged panel action | DNS changes |
 
@@ -42,6 +43,7 @@ Hyprlock service, and ordinary core utilities (`bash`, `sh`, `realpath`, `flock`
 | Command | Role / binding |
 | --- | --- |
 | `brave` | `SUPER+W`, browser autostart, browser extensions |
+| XDG default browser (currently Helium via `helium.desktop`) | `SUPER+SHIFT+ALT+W` private-window launcher |
 | `nautilus` | `SUPER+E`, file-manager helpers |
 | `gnome-disks` | `SUPER+SHIFT+D` |
 | `spotify` | `SUPER+S`, autostart/workspace rule |
@@ -50,6 +52,8 @@ Hyprlock service, and ordinary core utilities (`bash`, `sh`, `realpath`, `flock`
 | `hermes` | `SUPER+SHIFT+H`, autostart/workspace rule |
 | `hyprvoice` | `SUPER+R` |
 | `virsh`, `looking-glass-client` | Gaming VM binding |
+| `localsend` (LocalSend) | `SUPER+CTRL+S`, local-network sharing |
+| `btop` | `SUPER+CTRL+T`, terminal activity monitor |
 | Helium | XDG default HTTP/HTML handler |
 | `imv`, `mpv`, Zathura, Neovim | XDG MIME handlers |
 | Cisco Packet Tracer, T3 Code, Claude Code handlers | externally referenced XDG file/URL handlers |
@@ -92,6 +96,27 @@ Run `capture.sh doctor` for the suite's own availability report.
 | FFmpeg | completion thumbnail |
 | mpv | notification action |
 | Quickshell | progress OSD; failure notification still has fallback behavior |
+
+### Transcoder and calculator
+
+| Command / package | Feature |
+| --- | --- |
+| FFmpeg with `libx264` | MP4 and palette-based GIF conversion |
+| ImageMagick (`magick`) | JPG/PNG conversion and resizing |
+| `libheif` | optional HEIC/HEIF delegate for ImageMagick |
+| `file` | selected-media detection |
+| Rofi | file, format, size, expression, and result menus |
+| `wl-clipboard` | `text/uri-list` outputs and calculator results |
+| Python 3 | standards-compliant file URI encoding |
+| `libqalculate` / `qalc` | calculator expression engine |
+| `libnotify` / `notify-send` | success and failure feedback |
+
+On Arch, the currently optional additions are installed separately rather than
+by these dotfiles:
+
+```bash
+sudo pacman -S --needed btop libheif localsend
+```
 
 ### Wallpaper and themes
 

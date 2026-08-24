@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
-# /* ---- 💫 https://github.com/JaKooLit 💫 ---- */  ##
+set -euo pipefail
 
-# Variables
-rofi_theme="$HOME/.config/rofi/config-emoji.rasi"
-msg='** note ** 👀 Click or Return to choose || Ctrl V to Paste'
-
-# Check if rofi is already running
-if pidof rofi > /dev/null; then
-  pkill rofi
+rofi_theme="$HOME/.config/rofi/emoji.rasi"
+if [[ ! -r "$rofi_theme" ]]; then
+  rofi_theme="$HOME/.config/rofi/current-theme.rasi"
 fi
 
-sed '1,/^# # DATA # #$/d' "$0" | \
-rofi -i -dmenu -mesg "$msg" -config $rofi_theme | \
-awk '{print $1}' | \
-head -n 1 | \
-tr -d '\n' | \
-wl-copy
+selection=$(
+  sed -n '/^# # DATA # #$/,/^# # END DATA # #$/p' "$0" | sed '1d;$d' |
+    rofi -dmenu -i -no-custom \
+      -matching fuzzy -sorting-method fzf \
+      -p "Emoji" \
+      -mesg "Search by name, then press Enter to copy" \
+      -theme "$rofi_theme"
+) || exit 0
 
-exit
+[[ -n "$selection" ]] || exit 0
+emoji=${selection%% *}
+printf '%s' "$emoji" | wl-copy
+exit 0
 
+: <<'EMOJI_DATA'
 # # DATA # #
 😀 grinning face face smile happy joy :D grin
 😃 grinning face with big eyes face happy joy haha :D :) smile funny
@@ -1869,3 +1871,5 @@ ycap  symbol blue-square twitter
 🫧 bubbles soap fun carbonation sparkling
 🪪 identification card document
 🟰 heavy equals sign math%  
+# # END DATA # #
+EMOJI_DATA

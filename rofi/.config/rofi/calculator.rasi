@@ -1,21 +1,5 @@
-/**
- * Minimal calculator surface: an expressive input and a large, readable answer.
- */
-
-* {
-    font: "JetBrainsMono Nerd Font 13";
-
-    bg: rgba(18, 22, 48, 97%);
-    panel: rgba(42, 48, 94, 90%);
-    text: #F3F3FF;
-    muted: #B8BDE5;
-    accent: #67E7F7;
-    border: rgba(126, 134, 217, 72%);
-    selected: rgba(103, 231, 247, 17%);
-
-    background-color: transparent;
-    text-color: @text;
-}
+/** Compact calculator layout over the generated active desktop palette. */
+@theme "~/.config/rofi/current-theme.rasi"
 
 window {
     transparency: "real";
@@ -23,10 +7,10 @@ window {
     anchor: center;
     width: 540px;
     padding: 24px;
-    border: 2px solid;
-    border-radius: 24px;
-    border-color: @border;
-    background-color: @bg;
+    border: @border-width;
+    border-radius: @radius-window;
+    border-color: @window-border;
+    background-color: @bg0;
 }
 
 mainbox {
@@ -39,9 +23,9 @@ inputbar {
     spacing: 12px;
     padding: 16px 18px;
     border: 1px solid;
-    border-radius: 17px;
-    border-color: rgba(103, 231, 247, 38%);
-    background-color: @panel;
+    border-radius: @radius-input;
+    border-color: @selected-border;
+    background-color: @bg1;
     children: [ "textbox-prompt-colon", "entry" ];
 }
 
@@ -53,8 +37,8 @@ textbox-prompt-colon {
 
 entry {
     placeholder: "Type an expression…";
-    placeholder-color: @muted;
-    text-color: @text;
+    placeholder-color: @fg2;
+    text-color: @fg0;
     cursor: text;
     background-color: transparent;
 }
@@ -66,7 +50,7 @@ message {
 
 textbox {
     background-color: transparent;
-    text-color: @muted;
+    text-color: @fg2;
     vertical-align: 0.5;
 }
 
@@ -82,16 +66,16 @@ listview {
 element {
     padding: 18px;
     border: 1px solid;
-    border-radius: 17px;
-    border-color: rgba(103, 231, 247, 32%);
-    background-color: @selected;
-    text-color: @text;
+    border-radius: @radius-row;
+    border-color: @selected-border;
+    background-color: @selected-bg;
+    text-color: @fg0;
 }
 
 element selected.normal {
     border-color: @accent;
-    background-color: rgba(103, 231, 247, 25%);
-    text-color: @text;
+    background-color: @selected-bg;
+    text-color: @fg0;
 }
 
 element-text {

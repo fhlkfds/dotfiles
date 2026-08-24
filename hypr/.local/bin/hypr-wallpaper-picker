@@ -2,6 +2,7 @@
 
 wallpaper_dir="${HYPR_WALLPAPER_DIR:-/home/liam/Pictures/wallpapers}"
 runtime_dir="${HYPR_WALLPAPER_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-/tmp}/hypr-wallpaper-picker-$UID}"
+state_file="${HYPR_WALLPAPER_STATE_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprland-desktop/wallpaper/current}"
 
 notify() {
     notify-send "Wallpaper picker" "$1"
@@ -176,7 +177,13 @@ download_wallhaven() {
     printf '%s\n' "$target"
 }
 
-set_wallpaper() {
+ensure_hyprpaper_running() {
+    if ! pgrep -x hyprpaper >/dev/null; then
+        hyprpaper >/dev/null 2>&1 &
+    fi
+}
+
+apply_wallpaper() {
     local wallpaper="$1"
     [[ -f "$wallpaper" ]] || {
         printf 'Wallpaper does not exist: %s\n' "$wallpaper" >&2
@@ -207,6 +214,46 @@ set_wallpaper() {
     return 1
 }
 
+persist_wallpaper() {
+    local wallpaper="$1" state_dir tmp
+    wallpaper="$(realpath -e -- "$wallpaper")" || return 1
+    state_dir="$(dirname -- "$state_file")"
+    mkdir -p -- "$state_dir" || return 1
+    tmp="$(mktemp "$state_dir/.current.XXXXXX")" || return 1
+    if ! jq -n --arg path "$wallpaper" '{path: $path}' > "$tmp" || \
+        ! mv -f -- "$tmp" "$state_file"; then
+        rm -f -- "$tmp"
+        return 1
+    fi
+}
+
+set_wallpaper() {
+    local wallpaper="$1"
+    apply_wallpaper "$wallpaper" || return 1
+    if ! persist_wallpaper "$wallpaper"; then
+        notify "Wallpaper applied, but its persistent state could not be saved"
+        printf 'Wallpaper state could not be saved: %s\n' "$state_file" >&2
+        return 1
+    fi
+}
+
+restore_wallpaper() {
+    local wallpaper=""
+    if [[ -f "$state_file" ]]; then
+        wallpaper="$(jq -er '.path | select(type == "string" and length > 0)' \
+            "$state_file" 2>/dev/null)" || wallpaper=""
+    fi
+
+    if [[ -n "$wallpaper" && -f "$wallpaper" ]]; then
+        apply_wallpaper "$wallpaper"
+        return
+    fi
+
+    # Missing, malformed, or stale state is intentionally non-fatal. This is
+    # the same blank/default hyprpaper behavior autostart used previously.
+    ensure_hyprpaper_running
+}
+
 cleanup() {
     if [[ -d "$runtime_dir" ]]; then
         rm -rf -- "$runtime_dir"
@@ -220,7 +267,7 @@ activate_wallhaven() {
 }
 
 usage() {
-    printf 'usage: hypr-wallpaper-picker [index|search QUERY PAGE|apply PATH|activate ID URL|cleanup]\n' >&2
+    printf 'usage: hypr-wallpaper-picker [index|search QUERY PAGE|apply PATH|activate ID URL|restore|cleanup]\n' >&2
     return 2
 }
 
@@ -242,6 +289,10 @@ main() {
         activate)
             (($# == 3)) || { usage; return; }
             activate_wallhaven "$2" "$3"
+            ;;
+        restore)
+            (($# == 1)) || { usage; return; }
+            restore_wallpaper
             ;;
         cleanup)
             (($# == 1)) || { usage; return; }

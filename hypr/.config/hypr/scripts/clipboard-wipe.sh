@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Wipe clipboard history while preserving pinned entries.
+# Clear the active Wayland clipboard and wipe clipboard history while preserving
+# pinned entries.
 #
 # Usage: clipboard-wipe.sh [pinned-id ...]
 #
@@ -21,6 +22,10 @@ for id in "$@"; do
     rm -f "$tmp/$n.bin"
   fi
 done
+
+# Clear the live clipboard before mutating history. If this fails, leave the
+# database untouched so the UI can report the failure without losing entries.
+wl-copy --clear || exit 1
 
 cliphist wipe || exit 1
 

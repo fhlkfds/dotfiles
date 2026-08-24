@@ -7,25 +7,53 @@ These scripts are below `hypr/.config/hypr/scripts/`.
 | Script | Invocation | Purpose and effects | Main dependencies |
 | --- | --- | --- | --- |
 | `Dropterminal.sh` | `SUPER+SHIFT+Return` | toggles a Kitty scratchpad on a special workspace | `hyprctl`, Kitty |
-| `KeyHints.sh` | `SUPER+H` | displays a static Rofi shortcut cheat sheet | Rofi |
-| `RofiCalc.sh` | `SUPER+SHIFT+C` | selects classic/scientific/technical calculator mode | Rofi, calculator helpers |
-| `RofiEmoji.sh` | `SUPER+ALT+E` | searches emoji data and copies the chosen glyph | Rofi, `wl-copy` |
+| `calculator.sh` | `SUPER+CTRL+Q`, `SUPER+SHIFT+C` | evaluates a `qalc` expression and copies the selected answer | Rofi, `qalc`, `wl-copy` |
+| `transcode-menu.sh` | `SUPER+CTRL+.` | fuzzy media/format/size picker; delegates conversion and clipboard work to `transcode` | Rofi, `file`, `transcode` |
+| `RofiEmoji.sh` | `SUPER+ALT+E` | fuzzy-searches emoji data with the active application-menu theme and copies the chosen glyph | Rofi, `wl-copy` |
 | `universal-clipboard.sh` | `SUPER+C/X/V` | detects terminal classes and sends the correct copy/cut/paste shortcut | `hyprctl` |
 | `files-here.sh` | `SUPER+SHIFT+ALT+F` | discovers a focused terminal's current directory and opens Nautilus there | terminal APIs, `hyprctl`, Nautilus |
 | `night-light.sh` | `SUPER+CTRL+N` | toggles Hyprsunset between 1000 K and 6500 K; persists transient state and notifies | `hyprctl`, `hyprsunset`, notifications |
 | `spotify-notify.sh` | autostart | watches Spotify metadata and sends track-change notifications | `playerctl`, `curl`, notification command |
 | `clipboard-store.sh` | `wl-paste --watch` | stores text/images in cliphist | `cliphist` |
 | `clipboard-wipe.sh` | manual | clears clipboard/history data | `wl-copy`, `cliphist` |
-| `clipboard.sh` | `SUPER+ALT+V` | legacy Rofi cliphist selector | Rofi, `cliphist`, `wl-copy` |
 
 `hypr/.config/hypr/scripts/lib/terminals.sh` is sourced by clipboard and
 file-manager helpers. It centralizes terminal-class detection and terminal-specific
 current-directory queries; it is not a standalone command.
 
+`window-width.sh` backs `SUPER+ALT+Home` and `SUPER+Home`. It saves one width in
+the login session's runtime directory, then restores that width while retaining
+the active window's current height.
+
+`hypr/.config/hypr/scripts/bluetooth-control` is the fixture-testable backend for the
+Quickshell Bluetooth widget. It reports adapter/device state as JSON and provides
+validated power, scan, pair, connect, and disconnect commands over `bluetoothctl`.
+
 `LayoutToggle.sh` can switch between master and dwindle layouts, but no current
 binding invokes it. The older `Screenshot.sh`, `shot-copy.sh`, `shot-edit.sh`, and
 `shot-save.sh` predate the active capture suite and are also not bound. `dnd.sh`
 targets the retained SwayNC workflow; active DND uses `notificationctl` instead.
+
+## Transcoding before sharing
+
+`hypr/.local/bin/transcode` is the reusable backend for images and videos. Its
+desktop frontend searches supported media below `~/Pictures` and `~/Videos`,
+then calls the same CLI with `--copy --notify`.
+
+```bash
+transcode ~/Videos/demo.mov mp4 1080p
+transcode --copy --notify ~/Pictures/photo.heic jpg medium
+```
+
+Images support JPG or PNG with `high`, `medium`, and `low` maximum widths of
+3160, 2160, and 1080 pixels. Videos support MP4 or GIF with `4k`, `1080p`, and
+`720p` bounding boxes. Neither path upscales. JPEG flattens transparency onto
+white; MP4 uses H.264/AAC with fast-start metadata; GIF uses a generated palette.
+
+Outputs stay beside their source and use the requested size label, such as
+`photo-2160p.jpg` or `demo-1080p.mp4`. Existing names gain `-2`, `-3`, and so on.
+`--copy` writes a percent-encoded, CRLF-terminated file URI to the Wayland
+clipboard with MIME type `text/uri-list`; `--notify` reports the final state.
 
 ## Capture suite
 
@@ -43,6 +71,7 @@ selection; `common.sh` and `config.sh` are sourced libraries.
 | `capture.sh screenshot window` | captures active window geometry | screenshot directory and clipboard |
 | `capture.sh screenshot monitor [--delay=N]` | captures focused output, optionally delayed | screenshot directory and clipboard |
 | `capture.sh record toggle` | starts/stops GPU screen recording with optional audio/webcam and post-processing | recording directory; runtime PID/state files |
+| `capture.sh record webcam-size smaller\|larger` | steps a live webcam overlay through small, medium, and large presets | mpv JSON IPC with PID-scoped Hyprland fallback |
 | `capture.sh ocr` | selects/freeze-captures, preprocesses, runs Tesseract, copies text | Wayland clipboard |
 | `capture.sh color` | picks a screen color | Wayland clipboard and notification |
 | `capture.sh menu` | interactive operation chooser | depends on selection |
@@ -65,11 +94,12 @@ variables before launch.
 | webcam mode | auto, 1280×720, medium preset |
 | smart-click threshold | 20 pixels |
 
-Recording uses `gpu-screen-recorder`, selects an available GPU codec, stops it
-with a graceful signal, and can use FFmpeg for normalization/trimming. Selection
-and screenshots use `hyprctl`, `jq`, `slurp`, `hyprpicker`, and `grim`; OCR also
-uses Tesseract and ImageMagick. `satty`, mpv, and `v4l2-ctl` enable editing,
-playback, and webcam discovery respectively.
+Recording uses `gpu-screen-recorder`, selects an available GPU codec, falls back
+to CPU encoding when no hardware encoder supports the capture, stops with a
+graceful signal, and can use FFmpeg for normalization/trimming. Selection and
+screenshots use `hyprctl`, `jq`, `slurp`, `hyprpicker`, and `grim`; OCR also uses
+Tesseract and ImageMagick. `satty`, mpv, and `v4l2-ctl` enable editing, playback,
+and webcam discovery respectively.
 
 ## Monitor tools
 
@@ -101,13 +131,20 @@ calling the user profile script. The paired udev rule is not installed by Stow.
 
 | Tool | Purpose |
 | --- | --- |
-| `hypr/.local/bin/hypr-wallpaper-picker` | with no arguments, toggles the Quickshell panel; subcommands list/search local and Wallhaven images, cache previews, and download/validate/apply images |
+| `hypr/.local/bin/hypr-wallpaper-picker` | toggles the Quickshell panel; subcommands list/search/apply images and restore the last successful selection |
 | `WallpaperSwitch.sh` | retained older image/video picker using Hyprpaper/mpvpaper and autostart edits |
 | `WallpaperEffects.sh` | retained effect helper; not currently bound |
 
 The active tool depends on Bash, `curl`, `jq`, ImageMagick, Hyprpaper,
-Hyprland IPC, and desktop notifications. It honors `HYPR_WALLPAPER_DIR` and
-`HYPR_WALLPAPER_RUNTIME_DIR`.
+Hyprland IPC, and desktop notifications. It honors `HYPR_WALLPAPER_DIR`,
+`HYPR_WALLPAPER_RUNTIME_DIR`, and `HYPR_WALLPAPER_STATE_FILE`. Successful
+selections are stored under `$XDG_STATE_HOME/hyprland-desktop/wallpaper/current`
+and restored by Hyprland autostart.
+
+`hypr/.config/hypr/scripts/default-browser-private` resolves the XDG default
+browser desktop entry and launches its declared private-window action. Known
+Firefox/Chromium-family flags are used only when the entry lacks that action;
+unknown browsers fail with a notification instead of opening a normal window.
 
 ## Theme tools
 
@@ -182,18 +219,9 @@ preview command.
 
 ## Known script issues
 
-- `RofiEmoji.sh` references `~/.config/rofi/config-emoji.rasi`, which is not
-  tracked.
-- `clipboard.sh` references `~/.config/rofi/config-clipboard.rasi`, which is not
-  tracked.
 - retained `WallpaperSwitch.sh` references a missing
   `~/.config/rofi/config-wallpaper.rasi`.
-- `RofiCalc.sh`, `CalcClassic.sh`, `CalcScientific.sh`, and `CalcTechnical.sh` are
-  all mode `0644`. The binding executes `RofiCalc.sh` directly, and that chooser
-  in turn directly executes the selected helper, so the calculator path fails
-  with “permission denied” as checked in.
 - Waybar's network and Bluetooth scripts call `open-terminal.sh`, but the tracked
   file is named `open-terninal.sh`.
 
-These findings describe the current repository; the documentation task does not
-alter the scripts or their permissions.
+The older calculator mode scripts remain as unbound historical helpers.
