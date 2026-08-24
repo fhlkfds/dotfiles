@@ -182,6 +182,90 @@ PopupWindow {
 
         Rectangle { width: parent.width; height: 1; color: Theme.surface }
 
+        // --- THEME ---
+        // A launcher, not a second picker: this opens the same fullscreen
+        // gallery the Super+Ctrl+Shift+Space chord does, so there is one theme
+        // UI and one backend. Appearance lives here because this panel is
+        // already where the shell's look is adjusted (text size, scale).
+        Rectangle {
+          width: parent.width
+          height: 1
+          color: Theme.surface
+        }
+
+        Column {
+          width: parent.width
+          spacing: Theme.itemSpacing
+
+          Text {
+            text: "THEME"
+            color: Theme.textDim
+            font.pixelSize: Theme.fs(10)
+            font.bold: true
+          }
+
+          Rectangle {
+            id: themeRow
+            width: parent.width
+            height: Theme.fs(34)
+            radius: Theme.radiusCell
+            color: themeRowMouse.containsMouse
+              ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06)
+              : "transparent"
+            border.width: Theme.borderWidth
+            border.color: themeRowMouse.containsMouse
+              ? Qt.rgba(Theme.borderActive1.r, Theme.borderActive1.g,
+                        Theme.borderActive1.b, 0.35)
+              : Theme.surface
+
+            Text {
+              id: themeGlyph
+              anchors.left: parent.left
+              anchors.leftMargin: Theme.fs(9)
+              anchors.verticalCenter: parent.verticalCenter
+              text: ThemeState.glyphPalette
+              font.family: Theme.glyphFamily
+              font.pixelSize: Theme.fs(13)
+              color: Theme.accent
+            }
+
+            Text {
+              anchors.left: themeGlyph.right
+              anchors.leftMargin: Theme.fs(8)
+              anchors.right: themeChevron.left
+              anchors.rightMargin: Theme.fs(6)
+              anchors.verticalCenter: parent.verticalCenter
+              elide: Text.ElideRight
+              text: Theme.themeName
+              color: Theme.text
+              font.pixelSize: Theme.fs(12)
+            }
+
+            Text {
+              id: themeChevron
+              anchors.right: parent.right
+              anchors.rightMargin: Theme.fs(9)
+              anchors.verticalCenter: parent.verticalCenter
+              text: "›"
+              color: Theme.textMuted
+              font.pixelSize: Theme.fs(15)
+            }
+
+            MouseArea {
+              id: themeRowMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                // This popup holds grabFocus, so it has to go before a
+                // layer-shell overlay can take exclusive keyboard focus.
+                DisplayState.panelVisible = false
+                ThemeState.togglePanel(panel.ownerScreen)
+              }
+            }
+          }
+        }
+
         // --- TEXT SIZE ---
         Column {
           width: parent.width
@@ -224,7 +308,7 @@ PopupWindow {
                 height: Theme.fs(26)
                 radius: Theme.radiusCell
                 color: isActive ? Theme.accent : "transparent"
-                border.width: 1
+                border.width: Theme.borderWidth
                 border.color: isActive ? Theme.accent : Theme.surface
 
                 Text {
@@ -289,11 +373,11 @@ PopupWindow {
                 height: Theme.fs(26)
                 radius: Theme.radiusCell
                 color: isActive ? Theme.accent : "transparent"
-                border.width: 1
+                border.width: Theme.borderWidth
                 border.color: isActive ? Theme.accent : Theme.surface
                 // Presets that would not divide this monitor's mode into whole
                 // logical pixels are shown but not selectable.
-                opacity: isValid ? 1 : 0.35
+                opacity: isValid ? 1 : Theme.opacityDisabled
 
                 Text {
                   anchors.centerIn: parent

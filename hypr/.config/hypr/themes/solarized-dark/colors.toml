@@ -1,0 +1,72 @@
+[theme]
+name = "Solarized Dark"
+slug = "solarized-dark"
+mode = "dark"
+description = "Warm scientific palette with balanced contrast on deep teal"
+family = "solarized"
+wallpaper = "solarized-dark"
+
+[colors]
+# Ported from the pre-refactor themes.json, corrected to Ethan Schoonover's
+# actual values. Solarized's base01/base0/base1 are the text ramp; the UI
+# foreground uses base1 so it clears the low-contrast base0 on base03.
+background       = "#002b36"
+background_alt   = "#00212b"
+surface          = "#073642"
+surface_alt      = "#0f4c5c"
+overlay          = "#586e75"
+
+foreground       = "#93a1a1"
+foreground_bright = "#eee8d5"
+muted            = "#839496"
+disabled         = "#586e75"
+
+accent           = "#268bd2"
+accent_alt       = "#2aa198"
+
+red              = "#dc322f"
+green            = "#859900"
+yellow           = "#b58900"
+blue             = "#268bd2"
+magenta          = "#d33682"
+cyan             = "#2aa198"
+
+selection        = "#073642"
+border           = "#0f4c5c"
+border_active    = "#268bd2"
+urgent           = "#dc322f"
+shadow           = "#00141b"
+
+# Solarized's orange, its designated warning hue.
+warning          = "#cb4b16"
+
+[ansi]
+# The canonical Solarized terminal mapping: the bright row is the base* ramp
+# plus orange and violet, not a lightened copy of the accent row. That is what
+# makes Solarized-aware tools render correctly.
+black          = "#073642"
+red            = "#dc322f"
+green          = "#859900"
+yellow         = "#b58900"
+blue           = "#268bd2"
+magenta        = "#d33682"
+cyan           = "#2aa198"
+white          = "#eee8d5"
+bright_black   = "#586e75"
+bright_red     = "#cb4b16"
+bright_green   = "#586e75"
+bright_yellow  = "#657b83"
+bright_blue    = "#839496"
+bright_magenta = "#6c71c4"
+bright_cyan    = "#93a1a1"
+bright_white   = "#fdf6e3"
+
+[style]
+rounding = 8
+border_width = 2
+surface_opacity = 0.95
+scrim_opacity = 0.48
+shadow_opacity = 0.33
+blur = true
+blur_size = 7
+blur_passes = 2

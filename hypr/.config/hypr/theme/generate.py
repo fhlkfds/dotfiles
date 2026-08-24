@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -222,6 +223,55 @@ def sync_fastfetch(prefix: Path, theme: tl.Theme) -> None:
         os.replace(tmp, cfg)
 
 
+# ── Wallpaper ────────────────────────────────────────────────────────────────
+# Deliberately outside the atomic guarantee: this is a runtime action like the
+# app reloads, not a generated file. A wallpaper daemon problem must never fail
+# a colour switch that has already been installed successfully.
+
+def apply_wallpaper(theme: tl.Theme) -> str:
+    """Set the desktop wallpaper for `theme`. Returns a one-line status."""
+    path = tl.resolve_wallpaper(theme.wallpaper)
+    if path is None:
+        # A theme with no asset leaves whatever is on screen alone. Clearing it
+        # would be worse than doing nothing -- you would lose your wallpaper by
+        # switching to a theme that simply has not been given one yet.
+        return f"unchanged (no asset for {theme.slug})"
+
+    if not shutil.which("hyprctl") or not shutil.which("hyprpaper"):
+        return "skipped (hyprpaper not installed)"
+
+    # hyprpaper.conf sets ipc = true, so a running daemon takes hyprctl commands.
+    # It is started here as well as from autostart so a first switch works
+    # without needing to log out.
+    if not _pids_of("hyprpaper"):
+        try:
+            subprocess.Popen(
+                ["hyprpaper"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            return f"failed to start hyprpaper: {exc}"
+        # Give the daemon a moment to create its IPC socket before talking to it.
+        for _ in range(20):
+            time.sleep(0.05)
+            if _pids_of("hyprpaper"):
+                break
+
+    target = str(path)
+    # `preload` and `unload` are best-effort: hyprpaper up to 0.7 required an
+    # explicit preload before a wallpaper could be set, while 0.8 (verified here
+    # on 0.8.4) removed them from the IPC surface and loads on demand -- it
+    # answers both with "invalid hyprpaper request". Only the `wallpaper` call is
+    # treated as authoritative, so this works on either version.
+    _run(["hyprctl", "hyprpaper", "preload", target], timeout=10)
+    # An empty monitor field means every output.
+    if not _run(["hyprctl", "hyprpaper", "wallpaper", f",{target}"], timeout=10):
+        return f"failed to set {path.name}"
+    _run(["hyprctl", "hyprpaper", "unload", "unused"], timeout=10)
+    return path.name
+
+
 def write_state(theme: tl.Theme) -> None:
     """One authority for the active theme, plus a cache mirror so non-Hyprland
     tooling can ask for the mode without parsing TOML."""
@@ -343,6 +393,9 @@ def cmd_set(args: argparse.Namespace) -> int:
         print(DIM("  reload skipped"))
         return 0
 
+    if not args.no_wallpaper:
+        print(DIM("  wallpaper: " + apply_wallpaper(theme)))
+
     kitty_conf = prefix / "kitty/theme/current-theme.conf"
     done, deferred = reload_apps(theme, kitty_conf)
     if done:
@@ -350,6 +403,78 @@ def cmd_set(args: argparse.Namespace) -> int:
     if deferred:
         print(DIM("  on next launch: " + ", ".join(deferred)))
     return 0
+
+
+# Palette subset the picker needs to draw a preview. Kept explicit so the UI
+# contract is visible here rather than implied by whatever the theme happens to
+# define, and so QML never has to handle a missing key.
+INDEX_COLORS = (
+    ("background", "background"), ("backgroundAlt", "background_alt"),
+    ("surface", "surface"), ("surfaceAlt", "surface_alt"),
+    ("overlay", "overlay"),
+    ("foreground", "foreground"), ("foregroundBright", "foreground_bright"),
+    ("muted", "muted"),
+    ("accent", "accent"), ("accentAlt", "accent_alt"),
+    ("border", "border"), ("borderActive", "border_active"),
+    ("red", "red"), ("green", "green"), ("yellow", "yellow"),
+    ("blue", "blue"), ("magenta", "magenta"), ("cyan", "cyan"),
+)
+
+
+def build_index() -> dict:
+    """Everything a visual picker needs, in one JSON document.
+
+    All filesystem probing (wallpaper resolution) happens here so the shell UI
+    stays pure QML with no Process per tile. Broken themes are reported rather
+    than raised, so one bad file cannot blank the picker.
+    """
+    themes, errors = tl.load_all_tolerant(THEMES_DIR)
+    active = current_slug() or ""
+    rows = []
+    for slug, theme in themes.items():
+        wallpaper = tl.resolve_wallpaper(theme.wallpaper)
+        rows.append({
+            "slug": slug,
+            "name": theme.name,
+            "mode": theme.mode,
+            "description": theme.description,
+            "family": theme.family,
+            "wallpaper": str(wallpaper) if wallpaper else "",
+            "colors": {
+                key: theme.colors[src] for key, src in INDEX_COLORS
+            } | {"onAccent": tl.namespace(theme)["fg_on"](theme.colors["accent"])},
+            "style": {
+                "rounding": int(theme.style["rounding"]),
+                "borderWidth": int(theme.style["border_width"]),
+                "surfaceOpacity": float(theme.style["surface_opacity"]),
+            },
+        })
+    return {"active": active, "themes": rows, "errors": errors}
+
+
+def cmd_index(args: argparse.Namespace) -> int:
+    index = build_index()
+    if args.json:
+        json.dump(index, sys.stdout)
+        sys.stdout.write("\n")
+        return 0
+
+    print(f"{len(index['themes'])} theme(s), active: {index['active'] or 'none'}")
+    missing = []
+    for row in index["themes"]:
+        mark = GREEN("*") if row["slug"] == index["active"] else " "
+        wp = row["wallpaper"]
+        print(f" {mark} {BOLD(row['slug']):<32} {row['name']:<22} "
+              f"{DIM(row['mode']):<10} {'wallpaper' if wp else DIM('no wallpaper')}")
+        if not wp:
+            missing.append(row["slug"])
+    if missing:
+        print(f"\n{len(missing)} theme(s) with no wallpaper asset: "
+              + ", ".join(missing))
+        print(DIM("  drop an image at Wallpapers/theme/<name>.jpg to fill one in"))
+    for err in index["errors"]:
+        print(f" {RED('FAIL')} {err['slug']}: {err['error']}", file=sys.stderr)
+    return 1 if index["errors"] else 0
 
 
 def cmd_current(args: argparse.Namespace) -> int:
@@ -385,6 +510,7 @@ def cmd_cycle(args: argparse.Namespace) -> int:
     step = 1 if args.direction == "next" else -1
     args.slug = slugs[(i + step) % len(slugs)]
     args.no_reload = False
+    args.no_wallpaper = False
     args.prefix = None
     return cmd_set(args)
 
@@ -407,9 +533,15 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("set")
     p.add_argument("slug")
     p.add_argument("--no-reload", action="store_true")
+    p.add_argument("--no-wallpaper", action="store_true",
+                   help="apply colours only, leave the desktop wallpaper alone")
     p.add_argument("--prefix", help="render into DIR instead of ~/.config "
                                    "(implies no state write, no reload)")
     p.set_defaults(func=cmd_set)
+
+    p = sub.add_parser("index", help="machine-readable theme list for the picker")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_index)
 
     sub.add_parser("current").set_defaults(func=cmd_current)
     sub.add_parser("mode").set_defaults(func=cmd_mode)

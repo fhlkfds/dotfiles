@@ -59,7 +59,7 @@ bright_white   = "#ecf2ed"
 [style]
 rounding = 8
 border_width = 2
-surface_opacity = 0.92
+surface_opacity = 0.95
 scrim_opacity = 0.50
 shadow_opacity = 0.40
 blur = true

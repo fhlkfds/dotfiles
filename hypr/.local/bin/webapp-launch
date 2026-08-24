@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# webapp-launch <id> — open a managed web app in a standalone browser window.
+#
+# This is what every generated .desktop file execs. It takes only an app id: the
+# URL lives in the app's metadata, so no part of a website address ever appears
+# in an Exec line or on a command line built by the shell.
+#
+# All browser flags are centralised in the manager, not here and not in the
+# .desktop files.
+
+set -euo pipefail
+
+if [ $# -ne 1 ]; then
+  printf 'usage: webapp-launch <id>\n' >&2
+  exit 2
+fi
+
+MANAGER="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/webapp/manager.py"
+if [ ! -f "$MANAGER" ]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  MANAGER="$(dirname "$(dirname "$SCRIPT_DIR")")/.config/hypr/webapp/manager.py"
+fi
+if [ ! -f "$MANAGER" ]; then
+  msg="web app manager not found at $MANAGER"
+  command -v notify-send >/dev/null 2>&1 \
+    && notify-send -a "Web Apps" -u critical -h boolean:swaync-bypass-dnd:true \
+         "Web app failed to launch" "$msg" \
+    || printf 'webapp-launch: %s\n' "$msg" >&2
+  exit 1
+fi
+
+# On failure surface it where a user launching from a menu will actually see it:
+# a .desktop launcher has no terminal to print to.
+if ! err="$(python3 "$MANAGER" launch "$1" 2>&1)"; then
+  command -v notify-send >/dev/null 2>&1 \
+    && notify-send -a "Web Apps" -u critical -h boolean:swaync-bypass-dnd:true \
+         "Could not launch $1" "${err:-unknown error}" \
+    || printf 'webapp-launch: %s\n' "${err:-unknown error}" >&2
+  exit 1
+fi

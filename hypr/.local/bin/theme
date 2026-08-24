@@ -2,6 +2,8 @@
 # theme — thin user-facing wrapper around the theme generator.
 #
 #   theme list             list themes
+#   theme index [--json]   list themes with palettes + wallpapers (drives the picker)
+#   theme validate [--all] validate palettes and generated output
 #   theme current          print the active theme slug
 #   theme mode             print the active theme's mode (dark|light)
 #   theme set <slug>       apply a theme
@@ -15,7 +17,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: theme <list|current|mode|set SLUG|next|previous>\n' >&2
+  printf 'usage: theme <list|index|validate|current|mode|set SLUG|next|previous>\n' >&2
   exit 2
 }
 
@@ -36,6 +38,8 @@ shift
 
 case "$cmd" in
   list)     exec python3 "$GENERATOR" list "$@" ;;
+  index)    exec python3 "$GENERATOR" index "$@" ;;
+  validate) exec python3 "$GENERATOR" validate "$@" ;;
   current)  exec python3 "$GENERATOR" current "$@" ;;
   mode)     exec python3 "$GENERATOR" mode "$@" ;;
   set)      exec python3 "$GENERATOR" set "$@" ;;

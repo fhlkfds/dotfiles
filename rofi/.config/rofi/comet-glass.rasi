@@ -48,6 +48,18 @@ configuration {
     selected-urgent-border: rgba(242, 162, 198, 34%);
     button-selected-bg: rgba(166, 179, 255, 16%);
 
+    /* Structural tokens. The generated color-themes/<slug>.rasi overrides these
+     * so a squarer theme (Lumon, Retro 82, Hackerman) squares the launcher too.
+     * The values here are the defaults, used when this file is loaded directly
+     * as the fallback theme. */
+    radius-window: 22px;
+    radius-input:  16px;
+    radius-row:    15px;
+    radius-button: 12px;
+    /* Distance only, no `solid` keyword: rofi rejects a theme that writes
+     * `border: @var solid`, but accepts `border: @var`. Solid is its default. */
+    border-width:  2px;
+
     background-color: transparent;
     text-color: @fg0;
 }
@@ -62,8 +74,8 @@ window {
     padding: 24px;
     margin: 0px;
 
-    border: 2px solid;
-    border-radius: 22px;
+    border: @border-width;
+    border-radius: @radius-window;
     border-color: @window-border;
     background-color: @bg0;
     cursor: "default";
@@ -82,7 +94,7 @@ inputbar {
     spacing: 12px;
     padding: 14px 16px;
     border: 0px;
-    border-radius: 16px;
+    border-radius: @radius-input;
     background-color: @bg1;
     text-color: @fg0;
     children: [ "textbox-prompt-colon", "entry" ];
@@ -127,7 +139,7 @@ element {
     spacing: 12px;
     padding: 12px 14px;
     border: 1px solid;
-    border-radius: 15px;
+    border-radius: @radius-row;
     border-color: transparent;
     background-color: transparent;
     text-color: @fg1;
@@ -195,7 +207,7 @@ mode-switcher {
 button {
     padding: 10px 14px;
     border: 0px;
-    border-radius: 12px;
+    border-radius: @radius-button;
     background-color: @bg1;
     text-color: @fg2;
 }

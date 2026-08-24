@@ -2,43 +2,47 @@
 name = "Rosé Pine"
 slug = "rose-pine"
 mode = "dark"
-description = "Elegant plum and soft rose — Rosé Pine, gentle and refined"
+description = "Soft plum with rose, gold, pine, foam and iris — boutique and elegant"
 family = "rose-pine"
 wallpaper = "rose-pine"
 
 [colors]
-# Plum base. Surfaces step up through soft violet; warm, never harsh.
+# Rosé Pine main. The rose is deliberately not the accent: foam carries focus so
+# the rose stays a highlight rather than saturating the whole desktop.
 background       = "#191724"
-background_alt   = "#131018"
+background_alt   = "#13111e"
 surface          = "#1f1d2e"
 surface_alt      = "#26233a"
-overlay          = "#6e6a86"
+overlay          = "#403d52"
 
 foreground       = "#e0def4"
-foreground_bright = "#e0def4"
-muted            = "#6e6a86"
+foreground_bright = "#f2f0ff"
+muted            = "#908caa"
 disabled         = "#6e6a86"
 
-# Iris leads; rose is the softer companion.
-accent           = "#c4a7e7"
-accent_alt       = "#ebbcba"
+accent           = "#9ccfd8"
+accent_alt       = "#c4a7e7"
 
 red              = "#eb6f92"
-green            = "#31748f"
+green            = "#3e8fb0"
 yellow           = "#f6c177"
 blue             = "#9ccfd8"
 magenta          = "#c4a7e7"
-cyan             = "#ebbcba"
+cyan             = "#9ccfd8"
 
-selection        = "#26233a"
+selection        = "#2a2739"
 border           = "#26233a"
-border_active    = "#c4a7e7"
+border_active    = "#9ccfd8"
 urgent           = "#eb6f92"
-shadow           = "#000000"
+shadow           = "#0e0c15"
+
+# Rosé Pine has no true green; pine is its positive colour.
+success          = "#31748f"
 
 [ansi]
-# Upstream Rosé Pine terminal palette.
-black          = "#191724"
+# Rosé Pine's own terminal set. `green` is pine (a teal-blue) because the
+# palette genuinely has no green — substituting one would break its identity.
+black          = "#26233a"
 red            = "#eb6f92"
 green          = "#31748f"
 yellow         = "#f6c177"
@@ -47,20 +51,21 @@ magenta        = "#c4a7e7"
 cyan           = "#ebbcba"
 white          = "#e0def4"
 bright_black   = "#6e6a86"
-bright_red     = "#eb6f92"
-bright_green   = "#31748f"
-bright_yellow  = "#f6c177"
-bright_blue    = "#9ccfd8"
-bright_magenta = "#c4a7e7"
-bright_cyan    = "#ebbcba"
-bright_white   = "#e0def4"
+bright_red     = "#f083a2"
+bright_green   = "#3e8fb0"
+bright_yellow  = "#f9cf94"
+bright_blue    = "#b3dbe2"
+bright_magenta = "#d3bcee"
+bright_cyan    = "#f0cecd"
+bright_white   = "#f2f0ff"
 
 [style]
-rounding = 12
-border_width = 2
-surface_opacity = 0.92
-scrim_opacity = 0.45
-shadow_opacity = 0.35
+# Softer rounding suits it; soft rather than heavy transparency.
+rounding = 16
+border_width = 1
+surface_opacity = 0.90
+scrim_opacity = 0.46
+shadow_opacity = 0.40
 blur = true
-blur_size = 8
+blur_size = 9
 blur_passes = 2

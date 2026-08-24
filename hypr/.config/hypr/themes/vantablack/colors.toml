@@ -59,9 +59,9 @@ bright_white   = "#f2f2f2"
 [style]
 rounding = 3
 border_width = 1
-surface_opacity = 0.99
+surface_opacity = 1.0
 scrim_opacity = 0.60
 shadow_opacity = 0.55
-blur = true
+blur = false
 blur_size = 6
 blur_passes = 2

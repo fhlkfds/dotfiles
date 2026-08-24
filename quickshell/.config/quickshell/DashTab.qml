@@ -82,6 +82,68 @@ Item {
     }
 
     // --- row 3: calendar ---
+    // Second entry point to the web app manager, so it is discoverable without
+    // knowing the keybinding. Opens the same overlay Super+Shift+A does.
+    Card {
+      id: webappCard
+      title: "WEB APPS"
+      radius: Theme.radiusXL
+      implicitWidth: root.implicitWidth
+      implicitHeight: Theme.fs(64)
+
+      Item {
+        anchors.fill: parent
+
+        Text {
+          id: webappGlyph
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          text: WebAppState.glyphWeb
+          font.family: Theme.glyphFamily
+          font.pixelSize: Theme.fs(20)
+          color: Theme.accent
+        }
+
+        Text {
+          anchors.left: webappGlyph.right
+          anchors.leftMargin: Theme.gapM
+          anchors.right: webappChevron.left
+          anchors.rightMargin: Theme.gapM
+          anchors.verticalCenter: parent.verticalCenter
+          elide: Text.ElideRight
+          text: {
+            const n = WebAppState.apps.length
+            if (n === 0)
+              return "Turn a website into an app"
+            return n + (n === 1 ? " web app installed" : " web apps installed")
+          }
+          color: Theme.text
+          font.pixelSize: Theme.fs(12)
+        }
+
+        Text {
+          id: webappChevron
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          text: "\u203a"
+          color: Theme.textMuted
+          font.pixelSize: Theme.fs(16)
+        }
+
+        MouseArea {
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: {
+            // The dashboard drawer holds focus, so it has to close before a
+            // layer-shell overlay can take exclusive keyboard focus.
+            DashboardState.panelVisible = false
+            WebAppState.togglePanel(DashboardState.panelScreen)
+          }
+        }
+      }
+    }
+
     Card {
       title: "CALENDAR"
       radius: Theme.radiusXL

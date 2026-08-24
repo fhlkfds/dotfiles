@@ -3,7 +3,7 @@
 #
 # Bound to Super+Ctrl+N. One press warms the screen, the next puts it back.
 #
-#   Super+Ctrl+N -> WARM_TEMP (4000K) -> COOL_TEMP (6500K) -> WARM_TEMP -> ...
+#   Super+Ctrl+N -> WARM_TEMP (1000K) -> COOL_TEMP (6500K) -> WARM_TEMP -> ...
 #
 # hyprsunset is started from conf/autostart.conf with an identity profile, so it
 # is normally already running and does nothing to the display until asked. This
@@ -17,7 +17,7 @@
 
 set -uo pipefail
 
-WARM_TEMP=4000
+WARM_TEMP=1000
 COOL_TEMP=6500
 # Anything at or below this counts as "warm" when deciding which way to flip.
 WARM_THRESHOLD=$(( (WARM_TEMP + COOL_TEMP) / 2 ))

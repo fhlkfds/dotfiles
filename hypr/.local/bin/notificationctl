@@ -1,0 +1,428 @@
+#!/usr/bin/env python3
+"""Control and support the Quickshell notification service.
+
+Public commands are a stable wrapper around Quickshell IPC.  Commands prefixed
+with ``_`` are used by NotificationPersistence.qml for filesystem operations;
+they deliberately accept JSON on stdin so notification text is never parsed by
+a shell.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.parse
+from pathlib import Path
+from typing import Any
+
+
+STATE_HOME = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
+STATE_DIR = STATE_HOME / "hyprland-desktop" / "notifications"
+ACTIVE_DIR = STATE_DIR / "active"
+HISTORY_DIR = STATE_DIR / "history"
+IMAGES_DIR = STATE_DIR / "images"
+SETTINGS_FILE = STATE_DIR / "state.json"
+MAX_JSON_BYTES = 1024 * 1024
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
+SAFE_KEY = re.compile(r"^[0-9]{1,20}-[0-9]{1,10}$")
+
+
+PUBLIC_IPC = {
+    "dismiss-one": "dismissOne",
+    "dismiss-all": "dismissAll",
+    "dnd-toggle": "toggleDnd",
+    "dnd-on": "dndOn",
+    "dnd-off": "dndOff",
+    "invoke-latest": "invokeLatest",
+    "history": "showHistory",
+}
+
+
+def ensure_dirs() -> None:
+    for directory in (STATE_DIR, ACTIVE_DIR, HISTORY_DIR, IMAGES_DIR):
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+
+def safe_key(value: str) -> str:
+    if not SAFE_KEY.fullmatch(value):
+        raise ValueError("invalid notification key")
+    return value
+
+
+def read_stdin(limit: int = MAX_JSON_BYTES) -> str:
+    data = sys.stdin.buffer.readline(limit + 1)
+    if len(data) > limit:
+        raise ValueError("input is too large")
+    return data.decode("utf-8")
+
+
+def parse_entry(raw: str, expected_key: str | None = None) -> dict[str, Any]:
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise ValueError("notification entry must be an object")
+    key = safe_key(str(value.get("key", "")))
+    if expected_key is not None and key != expected_key:
+        raise ValueError("notification key does not match destination")
+    return value
+
+
+def fsync_dir(directory: Path) -> None:
+    try:
+        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def atomic_write(path: Path, text: str) -> None:
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            if not text.endswith("\n"):
+                handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+        fsync_dir(path.parent)
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def entry_path(directory: Path, key: str) -> Path:
+    return directory / f"{safe_key(key)}.json"
+
+
+def image_paths(key: str) -> list[Path]:
+    safe_key(key)
+    return list(IMAGES_DIR.glob(f"{key}-*"))
+
+
+def remove_images(key: str) -> None:
+    for path in image_paths(key):
+        if path.is_file() or path.is_symlink():
+            path.unlink(missing_ok=True)
+
+
+def local_image_path(value: Any) -> Path | None:
+    text = str(value or "")
+    if text.startswith("file://"):
+        text = urllib.parse.unquote(urllib.parse.urlparse(text).path)
+    if not text.startswith("/"):
+        return None
+    return Path(text)
+
+
+def copy_image(source: Path, key: str, role: str) -> Path | None:
+    safe_key(key)
+    if role not in {"image", "appIcon"}:
+        raise ValueError("invalid image role")
+    if not source.is_absolute() or not source.is_file() or source.is_symlink():
+        return None
+    size = source.stat().st_size
+    if size < 1 or size > MAX_IMAGE_BYTES:
+        return None
+    destination = IMAGES_DIR / f"{key}-{role}"
+    if source == destination:
+        return destination
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{destination.name}.", dir=IMAGES_DIR)
+    tmp = Path(tmp_name)
+    try:
+        with source.open("rb") as src, os.fdopen(fd, "wb") as dst:
+            remaining = MAX_IMAGE_BYTES + 1
+            while remaining > 0:
+                chunk = src.read(min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                dst.write(chunk)
+                remaining -= len(chunk)
+            if src.read(1):
+                return None
+            dst.flush()
+            os.fsync(dst.fileno())
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, destination)
+        fsync_dir(IMAGES_DIR)
+        return destination
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def persist_images(entry: dict[str, Any]) -> dict[str, Any]:
+    out = dict(entry)
+    key = safe_key(str(out["key"]))
+    for role in ("image", "appIcon"):
+        value = str(out.get(role, ""))
+        source = local_image_path(value)
+        if source is not None:
+            copied = copy_image(source, key, role)
+            out[role] = copied.as_uri() if copied is not None else ""
+        elif value.startswith("image://"):
+            # Quickshell's in-process image provider cannot outlive the native
+            # Notification object. The restored card falls back to appIcon.
+            out[role] = ""
+    return out
+
+
+def load_entries(directory: Path) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    if not directory.is_dir():
+        return entries
+    for path in directory.glob("*.json"):
+        try:
+            raw = path.read_text(encoding="utf-8")
+            entry = parse_entry(raw, path.stem)
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+            continue
+        entries.append(entry)
+    entries.sort(key=lambda item: float(item.get("timestamp", 0)), reverse=True)
+    return entries
+
+
+def prune_history(limit: int) -> None:
+    entries = load_entries(HISTORY_DIR)
+    for entry in entries[max(0, limit):]:
+        key = safe_key(str(entry["key"]))
+        entry_path(HISTORY_DIR, key).unlink(missing_ok=True)
+        remove_images(key)
+
+
+def ipc_call(method: str) -> subprocess.CompletedProcess[str]:
+    binary = shutil.which("quickshell") or shutil.which("qs")
+    if not binary:
+        return subprocess.CompletedProcess([], 127, "", "quickshell is not installed")
+    return subprocess.run(
+        [binary, "ipc", "call", "notifications", method],
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+
+
+def persisted_status() -> dict[str, Any]:
+    dnd = False
+    try:
+        value = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        dnd = bool(value.get("dnd", False)) if isinstance(value, dict) else False
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        pass
+    return {
+        "available": False,
+        "dnd": dnd,
+        "visible": len(load_entries(ACTIVE_DIR)),
+        "history": len(load_entries(HISTORY_DIR)),
+    }
+
+
+def normalize(value: Any) -> str:
+    text = str(value or "").lower()
+    text = text.removesuffix(".desktop")
+    return re.sub(r"[^a-z0-9]+", "", text)
+
+
+ALIASES = {
+    "discord": ("discord", "vesktop"),
+    "vesktop": ("vesktop", "discord"),
+    "slack": ("slack",),
+    "spotify": ("spotify",),
+    "kitty": ("kitty",),
+    "obsidian": ("obsidian",),
+    "brave": ("bravebrowser", "brave"),
+    "chromium": ("chromium",),
+    "firefox": ("firefox",),
+    "helium": ("helium",),
+}
+
+
+def focus_candidates(entry: dict[str, Any]) -> list[str]:
+    seeds = [entry.get("desktopEntry"), entry.get("app"), entry.get("appIcon")]
+    out: list[str] = []
+    for seed in seeds:
+        value = normalize(seed)
+        if not value:
+            continue
+        if value not in out:
+            out.append(value)
+        for name, aliases in ALIASES.items():
+            if value == name or value in aliases:
+                for alias in aliases:
+                    if alias not in out:
+                        out.append(alias)
+    return out
+
+
+def score_window(window: dict[str, Any], candidates: list[str]) -> tuple[int, int, str]:
+    initial = normalize(window.get("initialClass"))
+    current = normalize(window.get("class"))
+    best = 0
+    for index, candidate in enumerate(candidates):
+        priority = max(0, 20 - index)
+        for value, base in ((initial, 400), (current, 350)):
+            if not value:
+                continue
+            if value == candidate:
+                best = max(best, base + priority)
+            elif value.startswith(candidate) or candidate.startswith(value):
+                best = max(best, base - 100 + priority)
+            elif candidate in value:
+                best = max(best, base - 200 + priority)
+    history = window.get("focusHistoryID", 2**31 - 1)
+    try:
+        history_id = int(history)
+    except (TypeError, ValueError):
+        history_id = 2**31 - 1
+    return best, -history_id, str(window.get("address", ""))
+
+
+def focus_app(entry: dict[str, Any]) -> bool:
+    candidates = focus_candidates(entry)
+    if not candidates or not shutil.which("hyprctl"):
+        return False
+    try:
+        result = subprocess.run(
+            ["hyprctl", "clients", "-j"], capture_output=True, text=True,
+            timeout=5, check=False,
+        )
+        windows = json.loads(result.stdout) if result.returncode == 0 else []
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        return False
+    if not isinstance(windows, list):
+        return False
+    ranked = [(score_window(w, candidates), w) for w in windows if isinstance(w, dict)]
+    ranked = [item for item in ranked if item[0][0] > 0 and item[1].get("address")]
+    if not ranked:
+        return False
+    _, winner = max(ranked, key=lambda item: item[0])
+    address = str(winner["address"])
+    result = subprocess.run(
+        ["hyprctl", "dispatch", "focuswindow", f"address:{address}"],
+        capture_output=True, text=True, timeout=5, check=False,
+    )
+    return result.returncode == 0
+
+
+def internal_command(args: argparse.Namespace) -> int:
+    ensure_dirs()
+    command = args.command
+    if command == "_init":
+        return 0
+    if command in {"_write-active", "_write-history"}:
+        key = safe_key(args.key)
+        entry = parse_entry(args.role if args.role is not None else read_stdin(), key)
+        entry = persist_images(entry)
+        directory = ACTIVE_DIR if command == "_write-active" else HISTORY_DIR
+        atomic_write(entry_path(directory, key), json.dumps(entry, separators=(",", ":")))
+        if directory == HISTORY_DIR:
+            prune_history(args.limit)
+        return 0
+    if command == "_archive":
+        key = safe_key(args.key)
+        source = entry_path(ACTIVE_DIR, key)
+        destination = entry_path(HISTORY_DIR, key)
+        if source.is_file():
+            os.replace(source, destination)
+            fsync_dir(ACTIVE_DIR)
+            fsync_dir(HISTORY_DIR)
+        prune_history(args.limit)
+        return 0
+    if command == "_remove-active":
+        key = safe_key(args.key)
+        entry_path(ACTIVE_DIR, key).unlink(missing_ok=True)
+        remove_images(key)
+        return 0
+    if command in {"_read-active", "_read-history"}:
+        directory = ACTIVE_DIR if command == "_read-active" else HISTORY_DIR
+        print(json.dumps(load_entries(directory), separators=(",", ":")))
+        return 0
+    if command == "_clear-history":
+        for entry in load_entries(HISTORY_DIR):
+            key = safe_key(str(entry["key"]))
+            entry_path(HISTORY_DIR, key).unlink(missing_ok=True)
+            remove_images(key)
+        return 0
+    if command == "_copy-image":
+        key = safe_key(args.key)
+        role = args.role
+        source = Path(args.source)
+        destination = copy_image(source, key, role)
+        if destination is None:
+            return 1
+        print(destination.as_uri())
+        return 0
+    if command == "_focus":
+        entry = json.loads(args.key if args.key is not None else read_stdin())
+        return 0 if isinstance(entry, dict) and focus_app(entry) else 1
+    if command == "_sweep":
+        owned = {str(item["key"]) for item in load_entries(ACTIVE_DIR) + load_entries(HISTORY_DIR)}
+        for path in IMAGES_DIR.iterdir():
+            if path.is_file() and not any(path.name.startswith(f"{key}-") for key in owned):
+                path.unlink(missing_ok=True)
+        return 0
+    raise ValueError(f"unknown internal command: {command}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="notificationctl")
+    parser.add_argument("command")
+    parser.add_argument("key", nargs="?")
+    parser.add_argument("role", nargs="?")
+    parser.add_argument("source", nargs="?")
+    parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+
+    if args.command.startswith("_"):
+        return internal_command(args)
+
+    if args.command == "status":
+        result = ipc_call("statusJson")
+        if result.returncode == 0 and result.stdout.strip():
+            raw = result.stdout.strip()
+            if args.json:
+                print(raw)
+            else:
+                try:
+                    value = json.loads(raw)
+                    print(f"dnd={'on' if value.get('dnd') else 'off'} "
+                          f"visible={value.get('visible', 0)} history={value.get('history', 0)}")
+                except json.JSONDecodeError:
+                    print(raw)
+            return 0
+        value = persisted_status()
+        print(json.dumps(value, separators=(",", ":")) if args.json else
+              f"dnd={'on' if value['dnd'] else 'off'} visible={value['visible']} history={value['history']}")
+        return 1
+
+    method = PUBLIC_IPC.get(args.command)
+    if method is None:
+        parser.error("unknown command")
+    result = ipc_call(method)
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+    if result.returncode != 0 and result.stderr:
+        sys.stderr.write(result.stderr)
+    return result.returncode
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        print(f"notificationctl: {exc}", file=sys.stderr)
+        raise SystemExit(2)

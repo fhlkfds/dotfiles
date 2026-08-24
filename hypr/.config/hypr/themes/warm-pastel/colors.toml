@@ -1,0 +1,70 @@
+[theme]
+name = "Warm Pastel"
+slug = "warm-pastel"
+mode = "dark"
+description = "Soft warm pastels — peach, mint and lavender on creamy dark plum"
+family = "pastel"
+wallpaper = "warm-pastel"
+
+[colors]
+# Ported from the pre-refactor themes.json. Everything is desaturated and warm;
+# the accent is a rose rather than a blue, which is what keeps it from reading
+# as just another dark theme.
+background       = "#2a2430"
+background_alt   = "#211c26"
+surface          = "#3a3342"
+surface_alt      = "#4a4352"
+overlay          = "#7a6f7c"
+
+foreground       = "#d8ccd8"
+foreground_bright = "#e8dde8"
+muted            = "#ab9fad"
+disabled         = "#7a6f7c"
+
+accent           = "#f2a7b3"
+accent_alt       = "#c4a7d4"
+
+red              = "#f2a4a4"
+green            = "#c4e8b4"
+yellow           = "#e8d8a4"
+blue             = "#a4b8e8"
+magenta          = "#d4a4d4"
+cyan             = "#c4e8e8"
+
+selection        = "#4a4352"
+border           = "#4a4352"
+border_active    = "#f2a7b3"
+urgent           = "#f2a4a4"
+shadow           = "#1a141e"
+
+warning          = "#f2c4a4"
+
+[ansi]
+# Pastel throughout, but the normal row is pulled down in lightness so the
+# bright row has somewhere to go and the terminal keeps a usable contrast step.
+black          = "#3a3342"
+red            = "#d98d8d"
+green          = "#a8cf98"
+yellow         = "#cfbf8b"
+blue           = "#8b9fcf"
+magenta        = "#bb8bbb"
+cyan           = "#a8cfcf"
+white          = "#d8ccd8"
+bright_black   = "#7a6f7c"
+bright_red     = "#f2a4a4"
+bright_green   = "#c4e8b4"
+bright_yellow  = "#e8d8a4"
+bright_blue    = "#a4b8e8"
+bright_magenta = "#d4a4d4"
+bright_cyan    = "#c4e8e8"
+bright_white   = "#f2e8f2"
+
+[style]
+rounding = 14
+border_width = 2
+surface_opacity = 0.92
+scrim_opacity = 0.48
+shadow_opacity = 0.30
+blur = true
+blur_size = 8
+blur_passes = 2

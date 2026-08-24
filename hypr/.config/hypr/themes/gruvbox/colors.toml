@@ -1,13 +1,14 @@
 [theme]
-name = "Gruvbox Dark"
+name = "Gruvbox"
 slug = "gruvbox"
 mode = "dark"
-description = "Warm retro workstation — Gruvbox Dark, sun-faded browns and a warm aqua"
+description = "Warm retro — brown-black, cream, muted aqua, earthy ANSI"
 family = "gruvbox"
-wallpaper = "gruvbox"
+wallpaper = "gruvbox-dark"
 
 [colors]
-# Gruvbox Dark. Three surface steps of sun-faded brown, warm and even.
+# Gruvbox dark, hard-ish. Brown-black rather than neutral black; the warmth is
+# the point.
 background       = "#282828"
 background_alt   = "#1d2021"
 surface          = "#3c3836"
@@ -16,28 +17,33 @@ overlay          = "#665c54"
 
 foreground       = "#ebdbb2"
 foreground_bright = "#fbf1c7"
-muted            = "#7daea3"
-disabled         = "#665c54"
+muted            = "#a89984"
+disabled         = "#7c6f64"
 
-# Warm orange leads, the muted aqua backs it up.
-accent           = "#d65d0e"
-accent_alt       = "#83a598"
+# The faded aqua, not the neon orange — orange is reserved for warnings.
+accent           = "#7daea3"
+accent_alt       = "#d3869b"
 
-red              = "#cc241d"
-green            = "#98971a"
-yellow           = "#d79921"
-blue             = "#458588"
-magenta          = "#b16286"
-cyan             = "#689d6a"
+red              = "#ea6962"
+green            = "#a9b665"
+yellow           = "#d8a657"
+blue             = "#7daea3"
+magenta          = "#d3869b"
+cyan             = "#89b482"
 
 selection        = "#504945"
-border           = "#3c3836"
-border_active    = "#d65d0e"
-urgent           = "#fb4934"
-shadow           = "#000000"
+border           = "#504945"
+border_active    = "#7daea3"
+urgent           = "#ea6962"
+shadow           = "#141617"
+
+# Burnt orange reads as a warning far better than gruvbox's faded yellow.
+warning          = "#e78a4e"
 
 [ansi]
-# Upstream Gruvbox Dark terminal palette.
+# Gruvbox's earthy set: rusty red, olive green, faded yellow, dusty blue.
+# Nothing is brightened toward neon — the bright row is the "bright" gruvbox
+# variant, which is genuinely a different set rather than a lift.
 black          = "#282828"
 red            = "#cc241d"
 green          = "#98971a"
@@ -56,11 +62,12 @@ bright_cyan    = "#8ec07c"
 bright_white   = "#ebdbb2"
 
 [style]
+# Modest corners, mostly solid — an old workstation, not a glass panel.
 rounding = 6
 border_width = 2
-surface_opacity = 0.92
-scrim_opacity = 0.50
-shadow_opacity = 0.40
-blur = true
-blur_size = 8
-blur_passes = 2
+surface_opacity = 0.98
+scrim_opacity = 0.52
+shadow_opacity = 0.42
+blur = false
+blur_size = 4
+blur_passes = 1

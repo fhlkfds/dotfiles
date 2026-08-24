@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# Launch one of the supported interactive coding agents without changing cwd.
+
+set -euo pipefail
+
+PROGRAM=${0##*/}
+
+usage() {
+  cat <<EOF
+Usage: $PROGRAM [--agent NAME] [--] [AGENT_ARGS...]
+
+Launch the configured coding agent in the current directory.
+
+Supported agents:
+  claude    Claude Code (executable: claude)
+  codex     Codex (executable: codex)
+  opencode  OpenCode (executable: opencode)
+
+Selection precedence:
+  1. --agent NAME
+  2. AI_AGENT_DEFAULT
+  3. default_agent in AI_AGENT_CONFIG or
+     \${XDG_CONFIG_HOME:-\$HOME/.config}/ai-agent/config
+
+Options:
+  --agent NAME   Select an agent for this invocation.
+  -h, --help     Show this help and exit.
+  --             Pass all remaining arguments to the selected agent.
+
+Examples:
+  $PROGRAM
+  $PROGRAM --agent claude
+  $PROGRAM --agent codex -- --help
+EOF
+}
+
+fail() {
+  printf '%s: %s\n' "$PROGRAM" "$*" >&2
+  exit 1
+}
+
+selected_agent=
+agent_option_seen=false
+
+while (( $# > 0 )); do
+  case $1 in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --agent)
+      $agent_option_seen && fail "--agent may only be specified once"
+      (( $# >= 2 )) || fail "--agent requires a name"
+      selected_agent=$2
+      agent_option_seen=true
+      shift 2
+      ;;
+    --agent=*)
+      $agent_option_seen && fail "--agent may only be specified once"
+      selected_agent=${1#--agent=}
+      [[ -n $selected_agent ]] || fail "--agent requires a name"
+      agent_option_seen=true
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if [[ -z $selected_agent && ${AI_AGENT_DEFAULT+x} ]]; then
+  selected_agent=$AI_AGENT_DEFAULT
+fi
+
+if [[ -z $selected_agent ]]; then
+  config_file=${AI_AGENT_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/ai-agent/config}
+  [[ -r $config_file ]] || fail "configuration not readable: $config_file"
+
+  config_default=
+  while IFS= read -r line || [[ -n $line ]]; do
+    line=${line%$'\r'}
+    case $line in
+      ''|'#'*)
+        ;;
+      default_agent=*)
+        [[ -z $config_default ]] || fail "duplicate default_agent in $config_file"
+        config_default=${line#default_agent=}
+        ;;
+      *)
+        fail "invalid configuration line in $config_file: $line"
+        ;;
+    esac
+  done < "$config_file"
+
+  [[ -n $config_default ]] || fail "default_agent is missing or empty in $config_file"
+  selected_agent=$config_default
+fi
+
+case $selected_agent in
+  claude) executable=claude ;;
+  codex) executable=codex ;;
+  opencode) executable=opencode ;;
+  *) fail "invalid agent '$selected_agent' (expected: claude, codex, or opencode)" ;;
+esac
+
+command -v "$executable" >/dev/null 2>&1 \
+  || fail "agent '$selected_agent' is unavailable: executable '$executable' was not found on PATH"
+
+exec "$executable" "$@"

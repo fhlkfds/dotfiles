@@ -37,12 +37,15 @@ urgent           = "#d20f39"
 shadow           = "#4c4f69"
 
 [ansi]
-# Catppuccin Latte's own terminal palette. Yellow is the darker #df8e1d rather
-# than a pastel, because pale yellow on cream is unreadable.
+# Catppuccin Latte's terminal palette, with two deliberate departures from
+# upstream: `yellow`/`bright_yellow` and `magenta`/`bright_magenta` are darkened.
+# Latte's own #df8e1d and #ea76cb sit at ~2.3:1 on this cream background, which
+# makes ordinary shell output (warnings, ls colours, diff markers) hard to read.
+# The hues are kept; only the lightness is pulled down until they carry.
 black          = "#5c5f77"
 red            = "#d20f39"
 green          = "#40a02b"
-yellow         = "#df8e1d"
+yellow         = "#bf7714"
 blue           = "#1e66f5"
 magenta        = "#8839ef"
 cyan           = "#179299"
@@ -50,9 +53,9 @@ white          = "#acb0be"
 bright_black   = "#6c6f85"
 bright_red     = "#de293e"
 bright_green   = "#49af3d"
-bright_yellow  = "#eea02d"
+bright_yellow  = "#cc8018"
 bright_blue    = "#456eff"
-bright_magenta = "#fe85d8"
+bright_magenta = "#d95fb2"
 bright_cyan    = "#2d9fa8"
 bright_white   = "#bcc0cc"
 

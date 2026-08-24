@@ -14,13 +14,13 @@ Item {
 
   implicitWidth: size
   implicitHeight: size
-  opacity: enabled ? 1 : 0.35
+  opacity: enabled ? 1 : Theme.opacityDisabled
 
   Rectangle {
     anchors.fill: parent
     radius: Theme.radiusCell
     color: root.active ? Theme.accent : "transparent"
-    border.width: 1
+    border.width: Theme.borderWidth
     border.color: root.active ? Theme.accent : Theme.surface
   }
 

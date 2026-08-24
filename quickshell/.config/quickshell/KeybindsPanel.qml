@@ -227,7 +227,7 @@ PanelWindow {
             color: isCurrent
               ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, Theme.menuSelectedAlpha)
               : "transparent"
-            border.width: 1
+            border.width: Theme.borderWidth
             border.color: isCurrent
               ? Qt.rgba(Theme.borderActive1.r, Theme.borderActive1.g,
                         Theme.borderActive1.b, Theme.menuBorderAlpha)

@@ -1,2 +1,25 @@
 *.bak-lockfix
 .qmlls.ini
+
+# ── Generated theme outputs ───────────────────────────────────────────────────
+# Sources of truth are hypr/.config/hypr/themes/<slug>/colors.toml plus the
+# generator and templates in hypr/.config/hypr/theme/. Everything below is
+# derived from those by `theme set <slug>`, so it is not tracked -- a fresh
+# clone runs `theme set <slug>` once to materialise it.
+hypr/.config/hypr/conf/decorations.conf
+hypr/.config/hypr/themes/.active/
+hypr/.config/hypr/themes/current-theme
+waybar/.config/waybar/colors.css
+kitty/.config/kitty/theme/
+rofi/.config/rofi/color-themes/
+rofi/.config/rofi/current-theme.rasi
+hyprlock/.config/hyprlock/colors.conf
+hyprlock/.config/hyprlock/layouts/colors.conf
+swaync/.config/swaync/style.css
+wofi/.config/wofi/style.css
+noctalia/.config/noctalia/colors.json
+noctalia/.config/noctalia/colorschemes/
+
+# Python bytecode from the theme generator
+__pycache__/
+*.pyc

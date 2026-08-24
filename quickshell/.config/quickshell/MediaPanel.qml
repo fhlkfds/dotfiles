@@ -154,7 +154,7 @@ PopupWindow {
             Item {
               width: parent.width
               height: Theme.fs(16)
-              opacity: MediaState.canSeek ? 1 : 0.5
+              opacity: MediaState.canSeek ? 1 : Theme.opacityUnavailable
 
               Text {
                 id: elapsed

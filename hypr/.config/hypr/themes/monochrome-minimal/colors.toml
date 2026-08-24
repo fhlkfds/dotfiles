@@ -1,0 +1,67 @@
+[theme]
+name = "Monochrome Minimal"
+slug = "monochrome-minimal"
+mode = "dark"
+description = "Clean greyscale with a single soft blue accent"
+family = "monochrome"
+wallpaper = "monochrome-minimal"
+
+[colors]
+# Ported from the pre-refactor themes.json. Neutral greys throughout; the blue
+# is the only chroma, and it only appears on focus and active states.
+background       = "#202124"
+background_alt   = "#17181a"
+surface          = "#2d2e30"
+surface_alt      = "#3c4043"
+overlay          = "#4e5256"
+
+foreground       = "#c4c7c5"
+foreground_bright = "#e8eaed"
+muted            = "#9aa0a6"
+disabled         = "#606468"
+
+accent           = "#8ab4f8"
+accent_alt       = "#aecbfa"
+
+red              = "#f28b82"
+green            = "#81c995"
+yellow           = "#fdd663"
+blue             = "#8ab4f8"
+magenta          = "#c58af9"
+cyan             = "#78d9ec"
+
+selection        = "#3c4043"
+border           = "#3c4043"
+border_active    = "#8ab4f8"
+urgent           = "#f28b82"
+shadow           = "#000000"
+
+[ansi]
+# Greyscale-leaning, but the six hues stay genuinely distinguishable — a
+# monochrome desktop is not a reason to lose colour in diffs and log output.
+black          = "#2d2e30"
+red            = "#f28b82"
+green          = "#81c995"
+yellow         = "#fdd663"
+blue           = "#8ab4f8"
+magenta        = "#c58af9"
+cyan           = "#78d9ec"
+white          = "#c4c7c5"
+bright_black   = "#80868b"
+bright_red     = "#f6aaa4"
+bright_green   = "#a1d9af"
+bright_yellow  = "#fee18c"
+bright_blue    = "#aecbfa"
+bright_magenta = "#d7aefb"
+bright_cyan    = "#9ce4f2"
+bright_white   = "#f1f3f4"
+
+[style]
+rounding = 8
+border_width = 1
+surface_opacity = 0.94
+scrim_opacity = 0.45
+shadow_opacity = 0.27
+blur = true
+blur_size = 6
+blur_passes = 1

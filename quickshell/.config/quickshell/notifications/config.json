@@ -1,0 +1,28 @@
+{
+  "position": "top-right",
+  "historyLimit": 10,
+  "defaultDnd": false,
+  "lowTimeoutMs": 5000,
+  "normalTimeoutMs": 8000,
+  "ordinaryMaxTimeoutMs": 30000,
+  "cardWidth": 380,
+  "stackGap": 8,
+  "sidePadding": 12,
+  "singleLinePadding": 7,
+  "multiLinePadding": 10,
+  "iconSize": 40,
+  "iconGap": 12,
+  "glyphGap": 8,
+  "closeSize": 18,
+  "countdownHeight": 2,
+  "animationMs": 130,
+  "closeFadeMs": 100,
+  "borderWidths": [],
+  "debug": false,
+  "dndBypassApps": [
+    "Do Not Disturb",
+    "Night Light",
+    "Capture",
+    "Web Apps"
+  ]
+}

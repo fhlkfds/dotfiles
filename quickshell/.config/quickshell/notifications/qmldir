@@ -1,0 +1,11 @@
+module Notifications
+singleton NotificationConfig 1.0 NotificationConfig.qml
+singleton NotificationService 1.0 NotificationService.qml
+NotificationRoot 1.0 NotificationRoot.qml
+NotificationOverlay 1.0 NotificationOverlay.qml
+NotificationStack 1.0 NotificationStack.qml
+NotificationCard 1.0 NotificationCard.qml
+NotificationBorder 1.0 NotificationBorder.qml
+NotificationPersistence 1.0 NotificationPersistence.qml
+NotificationActions 1.0 NotificationActions.qml
+NotificationServer 1.0 NotificationServer.qml

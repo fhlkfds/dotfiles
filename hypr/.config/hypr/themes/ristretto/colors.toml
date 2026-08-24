@@ -2,65 +2,68 @@
 name = "Ristretto"
 slug = "ristretto"
 mode = "dark"
-description = "Espresso and cream — Monokai Pro Ristretto, warm coffee with orange and coral"
-family = "monokai"
-wallpaper = "ristretto"
+description = "Espresso and coffee — warm cream on roasted brown, orange and coral"
+family = "monokai-pro"
 
 [colors]
-# Espresso brown base. Surfaces step up through warm coffee tones, never cool.
-background       = "#2c2520"
-background_alt   = "#242020"
-surface          = "#332b26"
-surface_alt      = "#3a312b"
-overlay          = "#463a32"
+# Monokai Pro Ristretto. Warmer than any of the other dark themes: every
+# surface is a brown, not a neutral or a navy.
+background       = "#2c2525"
+background_alt   = "#211c1c"
+surface          = "#403838"
+surface_alt      = "#5b5353"
+overlay          = "#72696a"
 
-foreground       = "#efe3df"
-foreground_bright = "#fff5f0"
-muted            = "#a89890"
-disabled         = "#6b5f58"
+foreground       = "#e6d9db"
+foreground_bright = "#fff1f3"
+muted            = "#a39e9b"
+disabled         = "#72696a"
 
-# Warm orange leads; coral red is its sharper companion.
-accent           = "#fd9353"
-accent_alt       = "#fd6883"
+accent           = "#f38d70"
+accent_alt       = "#a8a9eb"
 
 red              = "#fd6883"
 green            = "#adda78"
 yellow           = "#f9cc6c"
-blue             = "#78dce8"
-magenta          = "#f8b8c2"
+blue             = "#85dacc"
+magenta          = "#a8a9eb"
 cyan             = "#85dacc"
 
-selection        = "#3a312b"
-border           = "#332b26"
-border_active    = "#fd9353"
+selection        = "#5b5353"
+border           = "#403838"
+border_active    = "#f38d70"
 urgent           = "#fd6883"
-shadow           = "#000000"
+shadow           = "#171313"
+
+warning          = "#f38d70"
 
 [ansi]
-# Warm Monokai-family terminal palette (Ristretto filter).
-black          = "#2c2520"
+# Monokai Pro Ristretto's terminal set. Coral rather than a true red, and no
+# cool blue at all — the palette's `blue` slot is its aqua.
+black          = "#2c2525"
 red            = "#fd6883"
 green          = "#adda78"
 yellow         = "#f9cc6c"
-blue           = "#78dce8"
-magenta        = "#f8b8c2"
+blue           = "#f38d70"
+magenta        = "#a8a9eb"
 cyan           = "#85dacc"
-white          = "#efe3df"
-bright_black   = "#6b5f58"
-bright_red     = "#ff7a9c"
-bright_green   = "#c5f09a"
-bright_yellow  = "#ffd580"
-bright_blue    = "#8fd0d6"
-bright_magenta = "#ffcfd6"
-bright_cyan    = "#a5e8dd"
-bright_white   = "#fff5f0"
+white          = "#e6d9db"
+bright_black   = "#72696a"
+bright_red     = "#fd8a9f"
+bright_green   = "#bfe295"
+bright_yellow  = "#fbd98c"
+bright_blue    = "#f6a68e"
+bright_magenta = "#bcbdf0"
+bright_cyan    = "#a0e3d8"
+bright_white   = "#fff1f3"
 
 [style]
+# Solid and warm — no glass.
 rounding = 8
 border_width = 2
-surface_opacity = 0.93
-scrim_opacity = 0.50
-shadow_opacity = 0.40
-blur = true
-blur_size = 8
-blur_passes = 2
+surface_opacity = 1.0
+scrim_opacity = 0.55
+shadow_opacity = 0.45
+blur = false
+blur_size = 4
+blur_passes = 1

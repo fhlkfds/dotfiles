@@ -50,5 +50,6 @@
     radius-window: {{ radius_panel }}px;
     radius-input:  {{ radius_input }}px;
     radius-row:    {{ radius_row }}px;
+    radius-button: {{ radius_row }}px;
     border-width:  {{ border_width }}px;
 }

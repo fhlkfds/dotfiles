@@ -64,6 +64,20 @@ Scope {
     }
   }
 
+  IpcHandler {
+    target: "theme"
+    function toggle(): void {
+      ThemeState.togglePanel(bar.focusedScreen())
+    }
+  }
+
+  IpcHandler {
+    target: "webapps"
+    function toggle(): void {
+      WebAppState.togglePanel(bar.focusedScreen())
+    }
+  }
+
   // The keybindings palette is a fullscreen overlay rather than a bar-anchored
   // popup, so it gets its own per-screen instance instead of living inside a
   // bar widget. Only the one on the focused monitor ever becomes visible.
@@ -71,6 +85,29 @@ Scope {
     model: Quickshell.screens
 
     KeybindsPanel {
+      required property var modelData
+      screen: modelData
+      ownerScreen: modelData.name
+    }
+  }
+
+  // Same arrangement for the theme gallery: fullscreen, so per-screen instances
+  // gated on ThemeState.panelScreen rather than one window that has to move.
+  Variants {
+    model: Quickshell.screens
+
+    ThemePicker {
+      required property var modelData
+      screen: modelData
+      ownerScreen: modelData.name
+    }
+  }
+
+  // And the web app manager, same arrangement again.
+  Variants {
+    model: Quickshell.screens
+
+    WebAppPanel {
       required property var modelData
       screen: modelData
       ownerScreen: modelData.name

@@ -18,23 +18,124 @@ import QtQuick
 Singleton {
   id: root
 
-  // --- palette ---
-  // Semantic keys, exposed through the names the rest of the shell already uses.
-  readonly property color bg: col("background", "#2b2430")        // bar + panel background
-  readonly property color bgDeep: col("backgroundAlt", "#1c1720") // deepest bg / text on accent
-  readonly property color surface: col("surface", "#3a3240")      // rows, dividers, borders
-  readonly property color accent: col("accent", "#8a6fae")        // active / focused / filled
-  readonly property color text: col("foreground", "#d7d2db")      // primary text
-  readonly property color textDim: col("muted", "#a89fb0")        // secondary text
-  readonly property color textMuted: col("disabled", "#7d7686")   // disabled / muted
-  readonly property color textFaint: col("overlay", "#5b5560")    // out-of-range
-  readonly property color error: col("red", "#e08a8a")            // error text
+  // --- semantic palette --------------------------------------------------------
+  // These are the roles the theme system defines, in the same vocabulary Waybar,
+  // Rofi, Kitty and Hyprland receive. New shell code should use these names.
+  //
+  // Surfaces, deepest to nearest. Cards should step up one level, not pick an
+  // arbitrary shade: background -> surface -> surfaceAlt.
+  readonly property color background: col("background", "#2b2430")
+  readonly property color backgroundAlt: col("backgroundAlt", "#1c1720")
+  readonly property color surfaceColor: col("surface", "#3a3240")
+  readonly property color surfaceAlt: col("surfaceAlt", "#4a4150")
+  readonly property color overlay: col("overlay", "#5b5560")
 
-  // Hyprland's own window border colours, so shell chrome can match the borders
-  // the compositor draws. Same source, the theme's accent.
-  readonly property color borderActive1: col("accent", "#8a6fae")
-  readonly property color borderActive2: col("accent", "#8a6fae")
+  // Text, brightest to faintest.
+  readonly property color foregroundBright: col("foregroundBright", "#e7e2eb")
+  readonly property color foreground: col("foreground", "#d7d2db")
+  readonly property color muted: col("muted", "#a89fb0")
+  readonly property color disabled: col("disabled", "#7d7686")
+
+  readonly property color accent: col("accent", "#8a6fae")
+  readonly property color accentAlt: col("accentAlt", "#a98fce")
+  // Whatever reads on top of an accent-filled shape. Picked by contrast in the
+  // generator, so it is dark on the light themes instead of a hardcoded white.
+  readonly property color onAccent: col("onAccent", "#1c1720")
+
+  readonly property color red: col("red", "#e08a8a")
+  readonly property color green: col("green", "#8ac08a")
+  readonly property color yellow: col("yellow", "#e0c48a")
+  readonly property color blue: col("blue", "#8aa2e0")
+  readonly property color magenta: col("magenta", "#c48ae0")
+  readonly property color cyan: col("cyan", "#8ad0e0")
+
+  // Status roles. Separate from the raw hues so a theme can move "warning" onto
+  // its own orange without repainting everything that is literally yellow.
+  readonly property color success: col("success", "#8ac08a")
+  readonly property color warning: col("warning", "#e0c48a")
+  readonly property color critical: col("critical", "#e08a8a")
+  readonly property color info: col("info", "#8ad0e0")
+
+  readonly property color selection: col("selection", "#4a4150")
+  readonly property color borderColor: col("border", "#3a3240")
+  readonly property color borderAccent: col("borderActive", "#8a6fae")
+  readonly property color urgent: col("urgent", "#e08a8a")
+  readonly property color shadowColor: col("shadow", "#000000")
+
+  // --- structural tokens -------------------------------------------------------
+  // Corner treatment, border weight and transparency are part of a theme's
+  // personality, so they travel with the palette rather than being fixed here.
   readonly property int hyprRounding: num("rounding", 4)
+  readonly property int borderWidth: num("borderWidth", 1)
+  readonly property real surfaceOpacity: num("surfaceOpacity", 0.92)
+  readonly property real scrimOpacity: num("scrimOpacity", 0.50)
+  readonly property real shadowOpacity: num("shadowOpacity", 0.40)
+
+  readonly property string mode: {
+    const m = (root.themeData["theme"] || ({}))["mode"]
+    return m === "light" ? "light" : "dark"
+  }
+  readonly property bool isDark: root.mode === "dark"
+
+  // Identity of the active theme, for UI that names it rather than uses it.
+  readonly property var themeMeta: root.themeData["theme"] || ({})
+  readonly property string themeName: root.themeMeta["name"] || "unknown"
+  readonly property string themeSlug: root.themeMeta["slug"] || ""
+
+  // A one-pixel separator that has to be visible on both a near-black and a
+  // cream background, so it is derived from the theme's own foreground rather
+  // than being a hardcoded translucent white.
+  readonly property color hairline: Qt.rgba(
+    root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+
+  // Opacity for states rather than colours: an unavailable control keeps its
+  // colour and loses presence.
+  readonly property real opacityDisabled: 0.35
+  readonly property real opacityInactive: 0.55
+  readonly property real opacityUnavailable: 0.45
+
+  // --- legacy aliases ----------------------------------------------------------
+  // The 50 other QML files were written against these names. They are kept as
+  // aliases onto the semantic roles above so the whole shell picked up the theme
+  // system without being rewritten, and so the tuned hierarchy is unchanged.
+  readonly property color bg: root.background          // bar + panel background
+  readonly property color bgDeep: root.backgroundAlt   // deepest bg / text on accent
+  readonly property color surface: root.surfaceColor   // rows, dividers, borders
+  readonly property color text: root.foregroundBright  // primary text
+  readonly property color textDim: root.foreground     // secondary text
+  readonly property color textMuted: root.muted        // de-emphasised
+  readonly property color textFaint: root.disabled     // out-of-range
+  readonly property color error: root.red              // error text
+
+  // Hyprland draws its active border as a two-stop gradient; matching both
+  // stops lets shell chrome sit flush against the compositor's own borders.
+  readonly property color borderActive1: root.borderAccent
+  readonly property color borderActive2: root.accentAlt
+
+  // Notification chrome is generated for every theme from the same semantic
+  // palette. It remains a separate block so notification-specific mappings can
+  // evolve without teaching cards about palette names or literal colours.
+  readonly property var notificationTheme: root.themeData["notifications"] || ({})
+  function notificationCol(key, fallback) {
+    const value = root.notificationTheme[key]
+    return (typeof value === "string" && value.length > 0) ? value : fallback
+  }
+  function notificationNum(key, fallback) {
+    const value = root.notificationTheme[key]
+    if (typeof value === "number") return value
+    const parsed = parseFloat(value)
+    return isNaN(parsed) ? fallback : parsed
+  }
+  readonly property color notificationBackground: notificationCol("background", root.background)
+  readonly property color notificationText: notificationCol("text", root.foregroundBright)
+  readonly property color notificationBodyText: notificationCol("bodyText", root.foreground)
+  readonly property color notificationBorder1: notificationCol("border1", root.borderActive1)
+  readonly property color notificationBorder2: notificationCol("border2", root.borderActive2)
+  readonly property real notificationBorderAlpha: notificationNum("borderAlpha", 1.0)
+  readonly property real notificationBorderAngle: notificationNum("borderAngle", 45)
+  readonly property color notificationCountdown: notificationCol("countdown", root.accent)
+  readonly property color notificationClose: notificationCol("close", root.muted)
+  readonly property int notificationRadius: fs(Math.max(0, root.hyprRounding))
 
   // --- theme source -----------------------------------------------------------
   // theme.json is generated by `theme-generate set` and carries the full
@@ -123,7 +224,7 @@ Singleton {
   // Page intrinsic sizes. These are what the drawer animates between.
   readonly property int dashPageW: fs(720)
   // Tall enough for the full 6-week calendar grid (~250px) plus both rows.
-  readonly property int dashPageH: fs(694)
+  readonly property int dashPageH: fs(770)   // + the web apps launcher tile
   readonly property int mediaPageW: fs(900)
   readonly property int mediaPageH: fs(480)
   readonly property int perfPageW: fs(860)
@@ -168,16 +269,70 @@ Singleton {
   readonly property int menuPadding: fs(24)      // generous side padding, as in the reference
   readonly property int menuFontBody: fs(12)
   readonly property int menuFontTitle: fs(14)
-  readonly property int menuBorderWidth: fs(2)
+  readonly property int menuBorderWidth: fs(Math.max(1, root.borderWidth))
   readonly property int menuRadius: fs(6)        // near-square, matching Hyprland's rounding
   readonly property int menuOuterMargin: fs(40)  // smallest gap to the screen edge
   // Shortcut column is measured from the longest visible shortcut, then clamped
   // here so the arrow never drifts between rows.
   readonly property int menuColumnMin: fs(160)
   readonly property int menuColumnMax: fs(260)
-  readonly property real menuScrimOpacity: 0.50
+  // The scrim follows the theme: a translucent theme like Ethereal dims gently,
+  // a solid one like Lumon or Vantablack dims hard.
+  readonly property real menuScrimOpacity: root.scrimOpacity
   readonly property real menuSelectedAlpha: 0.08 // selected row bg: foreground @ 8%
   readonly property real menuBorderAlpha: 0.25   // selected row border
+
+  // --- theme picker (cover-flow carousel) -------------------------------------
+  // Design-space geometry for the Super+Ctrl+Shift+Space carousel, in the units
+  // the layout was designed at. These deliberately do NOT go through fs():
+  // the carousel scales from monitor geometry (see ThemePicker.scale) rather
+  // than from the Text Size setting, because a preview is a picture of a
+  // desktop -- growing it with the UI font would overflow the portrait monitor.
+  //
+  // The picker's chrome uses the semantic colour roles above, i.e. the theme
+  // that is currently applied. Each preview paints itself from its own palette
+  // out of the index model. That split is what keeps the picker Everforest-
+  // coloured while you are browsing Tokyo Night.
+  readonly property real coverSelectedW: 768
+  readonly property real coverSelectedH: 475      // aspect 1.617
+  readonly property real coverSliceW: 108
+  readonly property real coverSliceH: 432
+  readonly property real coverSliceSpacing: -30   // negative: slices overlap
+  readonly property real coverItemStep: root.coverSliceW + root.coverSliceSpacing  // 78
+  readonly property real coverSkew: 28            // outer-edge pull-in per corner
+  readonly property real coverSelectedBorder: 3
+  readonly property real coverSliceBorder: 1
+  readonly property real coverSideDim: 0.42       // unselected dim, over theme bg
+  readonly property real coverTopMargin: 30
+  readonly property real coverLabelGap: 16
+  readonly property real coverLabelFont: 26       // theme name under the carousel
+  readonly property real coverFilterFont: 15      // filter echo, only while typing
+  readonly property real coverLabelH: 34
+  readonly property real coverFilterH: 26
+  // How many slices are built each side. Beyond this nothing is instantiated,
+  // which is also what bounds how many wallpapers can be in flight.
+  readonly property int coverVisibleRadius: 7
+  // How far out a wallpaper Image is allowed a source at all.
+  readonly property int coverLoadRadius: 8
+  readonly property real coverScrimOpacity: Math.min(0.94, root.scrimOpacity + 0.34)
+
+  // --- web app manager tokens -------------------------------------------------
+  // The Super+Shift+A overlay. Sized in scaled units like the rest of the shell
+  // (unlike the theme carousel, which is a picture of a desktop and scales from
+  // the monitor instead).
+  readonly property int webappCardW: fs(560)
+  readonly property int webappCardH: fs(520)
+  readonly property int webappOuterMargin: fs(48)
+  readonly property int webappPadding: fs(22)
+  readonly property int webappFieldH: fs(34)
+  readonly property int webappRowH: fs(52)
+  readonly property int webappIconPlate: fs(44)
+  readonly property int webappPreview: fs(64)
+  readonly property int webappFontTitle: fs(15)
+  readonly property int webappFontBody: fs(12)
+  readonly property int webappFontSmall: fs(10)
+  readonly property int webappButtonH: fs(30)
+  readonly property real webappScrimOpacity: Math.min(0.92, root.scrimOpacity + 0.3)
 
   // Shared easing for drawer resize and indicator movement.
   readonly property int animFast: 130

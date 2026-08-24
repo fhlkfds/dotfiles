@@ -56,7 +56,7 @@ Row {
         height: root.s(15)
         source: modelData.svg !== undefined ? modelData.svg : ""
         smooth: true
-        opacity: cell.isFocused ? 1 : 0.55
+        opacity: cell.isFocused ? 1 : Theme.opacityInactive
       }
 
       MouseArea {

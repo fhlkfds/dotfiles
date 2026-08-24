@@ -37,6 +37,17 @@
     "critical": "{{ critical }}",
     "info": "{{ info }}"
   },
+  "notifications": {
+    "background": "{{ background }}",
+    "text": "{{ foreground_bright }}",
+    "bodyText": "{{ foreground }}",
+    "border1": "{{ border_active }}",
+    "border2": "{{ accent_alt }}",
+    "borderAlpha": 1.0,
+    "borderAngle": "{{ border_angle }}",
+    "countdown": "{{ accent }}",
+    "close": "{{ muted }}"
+  },
   "ansi": {
     "black": "{{ ansi.black }}",
     "red": "{{ ansi.red }}",

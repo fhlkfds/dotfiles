@@ -4,7 +4,7 @@ import QtQuick
 // desktop has been silenced deliberately. Clicking it turns DND back off.
 //
 // Nothing is lost while it is showing -- silenced notifications still go to
-// swaync's control center, which Super+Shift+Alt+, opens.
+// the native Quickshell history, which Super+Shift+Alt+, opens.
 Item {
   id: root
 

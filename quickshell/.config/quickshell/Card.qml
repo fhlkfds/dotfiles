@@ -18,9 +18,9 @@ Rectangle {
 
   radius: Theme.radiusL
   color: Theme.surface
-  border.width: 1
-  border.color: Qt.rgba(1, 1, 1, 0.04)
-  opacity: unavailable ? 0.45 : 1
+  border.width: Theme.borderWidth
+  border.color: Theme.hairline
+  opacity: unavailable ? Theme.opacityUnavailable : 1
 
   Text {
     id: heading

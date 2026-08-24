@@ -1,13 +1,13 @@
 [theme]
-name = "Kanagawa Wave"
+name = "Kanagawa"
 slug = "kanagawa"
 mode = "dark"
-description = "Deep ink navy and warm beige — Kanagawa Wave, a storm over the sea"
+description = "Japanese ink painting — deep ink navy, warm beige, desaturated blue"
 family = "kanagawa"
-wallpaper = "kanagawa"
 
 [colors]
-# Kanagawa Wave. Deep ink navy base; surfaces step up toward a cooler slate.
+# Kanagawa Wave. The warm/cool balance is the identity: cool ink surfaces under
+# a warm beige foreground, with controlled warm orange and red as the only heat.
 background       = "#1f1f28"
 background_alt   = "#16161d"
 surface          = "#2a2a37"
@@ -15,30 +15,34 @@ surface_alt      = "#363646"
 overlay          = "#54546d"
 
 foreground       = "#dcd7ba"
-foreground_bright = "#e6e0c8"
-muted            = "#938aa9"
-disabled         = "#54546d"
+foreground_bright = "#f2ecdc"
+muted            = "#9c9b93"
+disabled         = "#727169"
 
-# Desaturated spring blue leads; the ink purple backs it up.
 accent           = "#7e9cd8"
 accent_alt       = "#957fb8"
 
-red              = "#c34043"
-green            = "#76946a"
-yellow           = "#c0a36e"
+red              = "#e46876"
+green            = "#98bb6c"
+yellow           = "#dca561"
 blue             = "#7e9cd8"
 magenta          = "#957fb8"
-cyan             = "#6a9589"
+cyan             = "#7aa89f"
 
 selection        = "#2d4f67"
 border           = "#363646"
 border_active    = "#7e9cd8"
 urgent           = "#e82424"
-shadow           = "#000000"
+shadow           = "#0d0c12"
+
+# Kanagawa's surimiOrange — the palette's designated warm signal.
+warning          = "#ffa066"
 
 [ansi]
-# Upstream Kanagawa Wave terminal palette.
-black          = "#090618"
+# Kanagawa Wave's terminal set. The bright row is a genuinely warmer, more
+# saturated family rather than a lift, which is what preserves the painterly
+# warm/cool contrast in the terminal.
+black          = "#16161d"
 red            = "#c34043"
 green          = "#76946a"
 yellow         = "#c0a36e"
@@ -56,11 +60,11 @@ bright_cyan    = "#7aa89f"
 bright_white   = "#dcd7ba"
 
 [style]
-rounding = 7
+rounding = 8
 border_width = 2
-surface_opacity = 0.92
+surface_opacity = 0.94
 scrim_opacity = 0.50
-shadow_opacity = 0.40
+shadow_opacity = 0.45
 blur = true
-blur_size = 8
+blur_size = 6
 blur_passes = 2

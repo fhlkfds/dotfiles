@@ -1,0 +1,68 @@
+[theme]
+name = "Windows 7 Aero"
+slug = "windows-7"
+mode = "dark"
+description = "Classic Aero blue glass with crisp silver highlights"
+family = "aero"
+wallpaper = "arch-windows"
+
+[colors]
+# Ported from the pre-refactor themes.json. Aero's identity is a lit blue glass
+# panel, so the surfaces are saturated blues rather than neutral greys.
+background       = "#102a43"
+background_alt   = "#0b1f33"
+surface          = "#173f5f"
+surface_alt      = "#205493"
+overlay          = "#527da3"
+
+foreground       = "#c7dced"
+foreground_bright = "#f2f8fc"
+muted            = "#9bb8d1"
+disabled         = "#527da3"
+
+accent           = "#4fc3f7"
+accent_alt       = "#90caf9"
+
+red              = "#ef5350"
+green            = "#9ccc65"
+yellow           = "#ffd54f"
+blue             = "#4fc3f7"
+magenta          = "#90caf9"
+cyan             = "#81d4fa"
+
+selection        = "#205493"
+border           = "#536d82"
+border_active    = "#4fc3f7"
+urgent           = "#ef5350"
+shadow           = "#00111f"
+
+[ansi]
+# A Windows console palette pulled toward the Aero blues, so the terminal reads
+# as part of the same glass rather than as a stock cmd.exe window.
+black          = "#0b1f33"
+red            = "#c75450"
+green          = "#7cb342"
+yellow         = "#c9a227"
+blue           = "#2196f3"
+magenta        = "#7e57c2"
+cyan           = "#0097a7"
+white          = "#c7dced"
+bright_black   = "#527da3"
+bright_red     = "#ef5350"
+bright_green   = "#9ccc65"
+bright_yellow  = "#ffd54f"
+bright_blue    = "#4fc3f7"
+bright_magenta = "#b39ddb"
+bright_cyan    = "#81d4fa"
+bright_white   = "#f2f8fc"
+
+[style]
+# Aero was squarer than modern desktops, and heavily glassy.
+rounding = 4
+border_width = 2
+surface_opacity = 0.88
+scrim_opacity = 0.45
+shadow_opacity = 0.53
+blur = true
+blur_size = 6
+blur_passes = 2

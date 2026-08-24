@@ -86,7 +86,7 @@ PopupWindow {
         height: Theme.fs(30)
         radius: Theme.radiusS
         color: Theme.bgDeep
-        border.width: 1
+        border.width: Theme.borderWidth
         border.color: Theme.surface
 
         Text {
@@ -191,7 +191,7 @@ PopupWindow {
           height: modelData.isImage ? Theme.fs(74) : Theme.fs(56)
           radius: Theme.radiusM
           color: isCurrent ? Theme.surface : "transparent"
-          border.width: 1
+          border.width: Theme.borderWidth
           border.color: isCurrent ? Theme.accent : "transparent"
 
           // Thumbnails are only decoded once a row is actually on screen.

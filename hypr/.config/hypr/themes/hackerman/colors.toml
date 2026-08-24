@@ -63,6 +63,6 @@ border_width = 1
 surface_opacity = 1.0
 scrim_opacity = 0.60
 shadow_opacity = 0.50
-blur = true
+blur = false
 blur_size = 6
 blur_passes = 2

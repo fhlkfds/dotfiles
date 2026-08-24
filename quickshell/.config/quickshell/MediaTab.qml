@@ -96,7 +96,7 @@ Item {
         Item {
           width: parent.width
           height: Theme.fs(20)
-          opacity: MediaState.canSeek ? 1 : 0.5
+          opacity: MediaState.canSeek ? 1 : Theme.opacityUnavailable
 
           Text {
             id: elapsed

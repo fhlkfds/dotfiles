@@ -30,12 +30,13 @@ Each top-level directory is a Stow package. Run `stow <package>` to symlink its 
 **Deploy everything at once:**
 
 ```bash
-stow fastfetch hypr hyprlock kitty noctalia rofi swaync Wallpapers wofi zsh
+stow ai fastfetch hypr hyprlock kitty noctalia quickshell rofi swaync Wallpapers wofi zsh
 ```
 
 **Or deploy packages individually:**
 
 ```bash
+stow ai          # ~/.local/bin/ai-agent, ~/.config/ai-agent
 stow hypr        # ~/.config/hypr
 stow hyprlock    # ~/.config/hyprlock
 stow kitty       # ~/.config/kitty
@@ -44,6 +45,7 @@ stow wofi        # ~/.config/wofi
 stow swaync      # ~/.config/swaync
 stow fastfetch   # ~/.config/fastfetch
 stow noctalia    # ~/.config/noctalia
+stow quickshell  # ~/.config/quickshell
 stow zsh         # ~/.zshrc, ~/.p10k.zsh, ~/.oh-my-zsh
 ```
 
@@ -67,20 +69,71 @@ stow --simulate hypr
 
 ---
 
+## AI Agent Launcher
+
+The standalone `ai` package provides one launcher for Claude Code, Codex, and
+OpenCode. It does not install or authenticate any agent and has no Omarchy
+dependency.
+
+The default is configured in `ai/.config/ai-agent/config`:
+
+```text
+default_agent=codex
+```
+
+Selection priority is `--agent`, then `AI_AGENT_DEFAULT`, then the config file.
+Invalid names and unavailable executables fail clearly; the launcher never
+silently switches to another agent.
+
+After stowing both `ai` and `zsh`, these commands are available in a new shell:
+
+```bash
+ai                         # configured default
+ai-claude                  # Claude Code directly
+ai-codex                   # Codex directly
+ai-opencode                # OpenCode directly
+ai-agent --agent claude    # one-invocation override
+ai-agent --agent codex -- --help  # pass --help to the selected agent
+```
+
+The aliases are only defined when their names are otherwise unused. The
+launcher preserves the current working directory and passes agent arguments
+through unchanged.
+
+`SUPER + I` opens the configured default in the terminal defined by Hyprland's
+`$Terminal` variable. Change or remove that single binding in
+`hypr/.config/hypr/conf/keybinding.conf` to alter or disable it. It is not active
+until the relevant packages are stowed and Hyprland is reloaded by the user.
+
+---
+
 ## Theme System
 
-This repo includes a **semantic, switchable theme system** with **18 themes**. Press **`SUPER + T`** for the Rofi selector, or use the `theme` CLI.
+This repo includes a **semantic, switchable theme system** with **23 themes**.
+
+| Open with | What you get |
+|---|---|
+| **`SUPER + CTRL + SHIFT + SPACE`** | Fullscreen cover-flow picker — one large preview, skewed slices either side |
+| **`SUPER + T`** | The same visual picker, on an easier chord |
+| **`SUPER + CTRL + D`** → THEME | The Display panel's launcher row, opens the same visual picker |
+| `theme set <slug>` | The CLI, and what everything above ends up calling |
 
 ### How It Works
 
 1. **`hypr/.config/hypr/themes/<slug>/colors.toml`** — One palette per theme. This is the single source of truth: semantic colour roles (`background`, `surface`, `accent`, `red`, …), a complete 16-colour ANSI terminal palette, and optional `[style]` overrides (rounding, border width, opacity, blur).
 2. **`hypr/.config/hypr/theme/generate.py`** (+ `themelib.py`) — Validates the palette (including WCAG AA contrast checks), renders every application's config from `hypr/.config/hypr/theme/templates/*`, and installs it atomically. A broken theme leaves the previous one running.
-3. **`hypr/.config/hypr/scripts/theme-switcher.sh`** — Rofi menu (Super+T) that lists themes and applies the selection.
+3. **`quickshell/.config/quickshell/ThemePicker.qml`** — the fullscreen cover-flow
+   picker, reached from `Super+T`, `Super+Ctrl+Shift+Space`, or the Display
+   panel's THEME row. Every entry point is only a front-end: they all hand a slug
+   to `theme set`, which stays the single source of truth for what is active.
 
 ### `theme` CLI
 
 ```bash
 theme list              # list themes (active marked *)
+theme index             # themes + wallpapers, human readable
+theme index --json      # same as JSON; this is what the visual picker reads
+theme validate --all    # check every palette
 theme current           # print the active slug
 theme mode              # print dark|light
 theme set <slug>        # apply a theme
@@ -90,26 +143,69 @@ theme previous          # cycle to the previous theme
 
 ### Available Themes
 
+**23 themes** — the 18 designed for this system, plus 5 carried over from
+the previous `themes.json` so nothing that was in use was lost.
+
 | Slug | Theme | Mode |
 |---|---|---|
-| tokyo-night | Tokyo Night | dark |
-| catppuccin | Catppuccin Mocha | dark |
-| lumon | Lumon | dark |
-| ethereal | Ethereal | dark |
-| everforest | Everforest | dark |
-| gruvbox | Gruvbox Dark | dark |
-| miasma | Miasma | dark |
-| hackerman | Hackerman | dark |
-| osaka-jade | Osaka Jade | dark |
-| kanagawa | Kanagawa Wave | dark |
-| nord | Nord | dark |
-| matte-black | Matte Black | dark |
-| vantablack | Vantablack | dark |
-| ristretto | Ristretto | dark |
-| retro-82 | Retro 82 | dark |
-| flexoki-light | Flexoki Light | light |
-| rose-pine | Rosé Pine | dark |
-| catppuccin-latte | Catppuccin Latte | light |
+| `tokyo-night` | Tokyo Night | dark |
+| `catppuccin` | Catppuccin Mocha | dark |
+| `lumon` | Lumon | dark |
+| `ethereal` | Ethereal | dark |
+| `everforest` | Everforest | dark |
+| `gruvbox` | Gruvbox | dark |
+| `miasma` | Miasma | dark |
+| `hackerman` | Hackerman | dark |
+| `osaka-jade` | Osaka Jade | dark |
+| `kanagawa` | Kanagawa | dark |
+| `nord` | Nord | dark |
+| `matte-black` | Matte Black | dark |
+| `vantablack` | Vantablack | dark |
+| `ristretto` | Ristretto | dark |
+| `retro-82` | Retro 82 | dark |
+| `flexoki-light` | Flexoki Light | light |
+| `rose-pine` | Rosé Pine | dark |
+| `catppuccin-latte` | Catppuccin Latte | light |
+
+Carried over from the previous theme set:
+
+| Slug | Theme | Mode |
+|---|---|---|
+| `windows-7` | Windows 7 Aero | dark |
+| `cyberpunk-neon` | Cyberpunk Neon | dark |
+| `monochrome-minimal` | Monochrome Minimal | dark |
+| `solarized-dark` | Solarized Dark | dark |
+| `warm-pastel` | Warm Pastel | dark |
+
+### Visual Theme Picker
+
+`SUPER + CTRL + SHIFT + SPACE` opens a fullscreen Quickshell overlay showing a
+preview tile per theme. It runs inside the already-running shell process (over
+`quickshell ipc call theme toggle`), so there is nothing to start.
+
+```
+type            filter by name
+← →             previous / next theme
+↑ ↓             move a row
+Home / End      first / last result
+Enter / click   apply the focused theme
+Escape          clear the search, or close if it is already empty
+```
+
+Two things worth knowing:
+
+- **Moving the selection never applies anything.** Only Enter or a click runs the
+  backend, so you can browse the whole gallery for free.
+- **The picker wears the theme you are currently using**, not the one under the
+  cursor. Each tile paints itself from its own palette; the chrome around them
+  follows the active theme.
+
+Each tile is drawn in QML from the theme's palette — a simulated bar, a simulated
+terminal showing the semantic colours, and the theme's wallpaper behind it if one
+exists. No thumbnails are generated or cached, and no processes are spawned per
+tile. A theme with no wallpaper (12 of the 23) falls back to a palette gradient;
+drop an image at `Wallpapers/theme/<name>.jpg` and it starts being used with no
+config change.
 
 ### What Changes Per Theme
 
@@ -122,11 +218,13 @@ Each theme consistently updates:
 - **Rofi** — launcher colours via generated `current.rasi`
 - **Zsh / Powerlevel10k** — prompt colours via generated `current-theme.zsh`
 - **Hyprlock** — lock screen colours
-- **SwayNC** — notification CSS
+- **Quickshell notifications** — cards, gradients, borders, countdown and radius
+- **SwayNC** — rollback notification CSS (not the active backend)
 - **Wofi** — launcher CSS
 - **Noctalia** — shell colour scheme
 - **Fastfetch** — section key colours
-- **Wallpaper** — theme-specific wallpaper (where configured)
+- **Wallpaper** — set via `hyprpaper` over `hyprctl` for the 11 themes that have
+  an asset; the other 12 leave your current wallpaper alone rather than clearing it
 
 ### Dependencies
 
@@ -135,11 +233,11 @@ The theme system requires:
 - `python3` (3.11+, for `tomllib`)
 - `rofi` — theme selection menu
 
-Optional (for live reload):
+Optional (for live reload or rollback):
 
 - `hyprctl` — reloads Hyprland decorations
 - `kitty` — live-applies colours to running terminals
-- `swaync` / `swaync-client` — reloads notification CSS
+- `swaync` / `swaync-client` — only needed when using the rollback backend
 
 ### Switching Manually
 
@@ -169,10 +267,174 @@ No per-application config changes are needed — every app is generated from the
 ### Validation
 
 ```bash
-python3 hypr/.config/hypr/theme/generate.py validate --all
+theme validate --all      # every palette: required roles, 16 ANSI colours, contrast
+theme validate <slug>     # just one
 ```
 
 ---
+
+## Notifications
+
+Notifications are served and rendered natively by the persistent Quickshell
+process. Applications talk to `org.freedesktop.Notifications`; one service then
+normalises the event, persists it, applies DND, and either places it in the
+focused monitor's top-right stack or writes it silently to history.
+
+```text
+application -> Quickshell NotificationServer -> NotificationService
+                                                |-> active/history state
+                                                |-> per-output card stack
+                                                `-> notifications IPC
+```
+
+The full-screen layer-shell surfaces use the overlay layer, request no keyboard
+focus or exclusion zone, and have an input mask made only from the card stack.
+Transparent space is therefore click-through. The active Quickshell bar is the
+authoritative bar, so top notifications clear `Theme.barHeight` plus the normal
+outer gap. Notifications without output metadata go to Hyprland's focused
+monitor; a disconnected output is deterministically remapped to the current
+focused monitor.
+
+### Controls
+
+| Binding | Action |
+|---|---|
+| `Super+,` | dismiss newest visible card |
+| `Super+Shift+,` | dismiss all visible cards |
+| `Super+Ctrl+,` | toggle persistent DND |
+| `Super+Alt+,` | invoke/focus newest card |
+| `Super+Shift+Alt+,` | replay the newest 10 history entries |
+
+The bindings call `notificationctl`; they contain no notification logic.
+
+```bash
+notificationctl dismiss-one
+notificationctl dismiss-all
+notificationctl dnd-toggle
+notificationctl dnd-on
+notificationctl dnd-off
+notificationctl invoke-latest
+notificationctl history
+notificationctl status
+notificationctl status --json
+```
+
+Left click invokes the live default action, then falls back to matching
+`desktop-entry`, app name, and icon against Hyprland window classes. Right click
+or the hover close button dismisses. Hover pauses the deadline. Critical cards
+remain until acted on; low and normal cards last at least 5 and 8 seconds, with
+ordinary requests clamped to 30 seconds.
+
+### State and configuration
+
+User settings live in
+`~/.config/quickshell/notifications/config.json`: position, history limit,
+timeouts, 380 px card width, animation timing, border widths, debug logging and
+the audited DND bypass allow-list. A bypass requires both an allow-listed app
+name and an explicit local bypass hint; urgency alone never bypasses DND.
+
+Runtime state is private and atomic under:
+
+```text
+~/.local/state/hyprland-desktop/notifications/
+├── state.json       # persistent DND
+├── active/          # cards restored after a shell restart
+├── history/         # newest 10 by default
+└── images/          # bounded copies owned by retained records
+```
+
+The card component is shared by live and replayed history. Native actions exist
+only while the originating notification object is live; restored/history cards
+correctly use app-focus fallback instead of claiming an expired action works.
+Malformed JSON is skipped, filenames are validated, notification text is never
+sent through a shell, writes use fsync plus rename, and orphan images are swept.
+
+Theme roles are generated for every palette as `notifications.background`,
+`text`, `bodyText`, `border1`, `border2`, `countdown`, and `close`. QML contains
+no notification palette; corner radius follows the generated Hyprland rounding.
+Per-side borders are configured as `[top, right, bottom, left]`, for example
+`[2, 2, 2, 6]`.
+
+### Debugging and validation
+
+```bash
+# Reload the already-running shell after changing QML
+quickshell ipc call notifications statusJson
+quickshell kill && quickshell --daemonize
+
+# Observe concise service logs
+quickshell log
+
+# Send manual cases
+notify-send "Test notification" "This is the body."
+notify-send -u low "Low urgency" "At least five seconds"
+notify-send -u critical "Critical" "Dismiss explicitly"
+
+# Headless QML and unit checks from the repository root
+QT_QPA_PLATFORM=offscreen quickshell -p quickshell/.config/quickshell/NotificationSmoke.qml
+python3 -m unittest discover -s quickshell/.config/quickshell/notifications/tests -p 'test_*.py'
+node quickshell/.config/quickshell/notifications/tests/notification_logic.test.js
+theme validate --all
+```
+
+For rollback, stop Quickshell, start `swaync.service`, and restore the two former
+comma bindings to `~/.config/hypr/scripts/dnd.sh`. The SwayNC package and theme
+template remain in the repository; no notification data is shared between the
+two backends.
+
+---
+
+## Web Apps
+
+Turn a website into a first-class launcher. `SUPER + SHIFT + A` opens the manager
+(also reachable from the **WEB APPS** tile on the dashboard, `SUPER + CTRL + A`).
+
+```
+Install > Name + URL > icon found automatically > Install
+        > managed .desktop > Rofi / app menu > brave --app= > normal window
+```
+
+Each installed app owns exactly three files, and the manager will only ever
+touch these:
+
+| | |
+|---|---|
+| metadata | `~/.local/share/webapps/apps/<id>.toml` |
+| icon | `~/.local/share/webapps/icons/<id>.png` |
+| launcher | `~/.local/share/applications/webapp-<id>.desktop` |
+
+The metadata file is the ownership marker: an app is removable by this tool only
+if it is listed there, so an unrelated `.desktop` file can never be deleted.
+
+### CLI
+
+```bash
+webapp list                 # installed web apps
+webapp install --name "YouTube" --url https://youtube.com/
+webapp install --name "Local" --url localhost:8080/app --icon ~/pic.png
+webapp remove youtube
+webapp doctor               # browser, tooling and orphan check
+webapp launch youtube       # what the .desktop file runs
+```
+
+Notes worth knowing:
+
+- **Browser**: the launch helper uses `$WEBAPP_BROWSER` if set, else the first of
+  `brave`, `chromium`, `chromium-browser`, `google-chrome`,
+  `google-chrome-stable`, `helium-browser` on `PATH`. Web apps share the normal
+  browser profile, so existing logins just work.
+- **Window class**: Brave ignores `--class` for app-mode windows and derives its
+  own, e.g. `brave-youtube.com__-Default`. That is recorded as `wm_class` in the
+  metadata and is what a per-app Hyprland rule has to match. Usefully it is never
+  plain `brave-browser`, so the `workspace 2 silent` rule in
+  `windows-rules.conf` does not capture web apps.
+- **Icons** are normalised to PNG, because gdk-pixbuf here has no SVG or WebP
+  loader and Rofi could not otherwise render them. Discovery prefers a declared
+  `apple-touch-icon` or sized raster over an SVG favicon; if nothing is found, a
+  letter tile is generated in the active theme's accent colour.
+- Only `http` and `https` are accepted. `file:`, `data:` and `javascript:` are
+  rejected. URLs are never passed through a shell and never appear in an `Exec`
+  line -- the launcher receives only the app id.
 
 ## What's Included
 
@@ -183,7 +445,7 @@ python3 hypr/.config/hypr/theme/generate.py validate --all
 | `kitty` | [Kitty](https://sw.kovidgoyal.net/kitty/) | Terminal emulator with generated theme palette |
 | `rofi` | [Rofi](https://github.com/davatorium/rofi) | App launcher with generated colour theme on comet-glass layout |
 | `wofi` | [Wofi](https://hg.sr.ht/~scoopta/wofi) | Wayland-native app launcher with themed colors |
-| `swaync` | [SwayNC](https://github.com/ErikReider/SwayNotificationCenter) | Notification center with generated stylesheet |
+| `swaync` | [SwayNC](https://github.com/ErikReider/SwayNotificationCenter) | Optional rollback notification backend |
 | `fastfetch` | [Fastfetch](https://github.com/fastfetch-cli/fastfetch) | System info with themed key colors |
 | `noctalia` | Noctalia | Custom plugin system with themed color scheme |
 | `zsh` | Zsh | Shell config — Oh My Zsh, Powerlevel10k, fzf-tab, eza aliases |
@@ -196,7 +458,8 @@ python3 hypr/.config/hypr/theme/generate.py validate --all
 - `hyprland`, `hyprlock`, `hypridle`
 - `kitty`
 - `rofi`, `wofi`
-- `swaync`
+- `quickshell`
+- `swaync` (optional rollback backend)
 - `fastfetch`
 
 **Shell:**

@@ -1,0 +1,66 @@
+[theme]
+name = "Cyberpunk Neon"
+slug = "cyberpunk-neon"
+mode = "dark"
+description = "Near-black violet base with magenta, cyan and yellow neon"
+family = "cyberpunk"
+wallpaper = "cyberpunk-neon"
+
+[colors]
+# Ported from the pre-refactor themes.json. The one theme in the set that is
+# deliberately loud; the muted/foreground values were lifted so text stays
+# readable against the very dark violet surfaces.
+background       = "#0a0a1a"
+background_alt   = "#060612"
+surface          = "#1a1a3a"
+surface_alt      = "#2a1a3e"
+overlay          = "#5a2a7e"
+
+foreground       = "#c8c8e0"
+foreground_bright = "#e0e0ff"
+muted            = "#9494b4"
+disabled         = "#5a2a7e"
+
+accent           = "#00ffc8"
+accent_alt       = "#ff00aa"
+
+red              = "#ff4466"
+green            = "#44ff88"
+yellow           = "#ffee44"
+blue             = "#4488ff"
+magenta          = "#ff00aa"
+cyan             = "#00ccff"
+
+selection        = "#2a1a3e"
+border           = "#2a1a3e"
+border_active    = "#00ffc8"
+urgent           = "#ff4466"
+shadow           = "#ff00ff"
+
+[ansi]
+black          = "#1a1a3a"
+red            = "#ff4466"
+green          = "#44ff88"
+yellow         = "#ffee44"
+blue           = "#4488ff"
+magenta        = "#ff00aa"
+cyan           = "#00ccff"
+white          = "#c8c8e0"
+bright_black   = "#5a2a7e"
+bright_red     = "#ff6b88"
+bright_green   = "#7dffaa"
+bright_yellow  = "#fff480"
+bright_blue    = "#7dabff"
+bright_magenta = "#ff5cc8"
+bright_cyan    = "#5ce0ff"
+bright_white   = "#e0e0ff"
+
+[style]
+rounding = 12
+border_width = 3
+surface_opacity = 0.88
+scrim_opacity = 0.55
+shadow_opacity = 0.20
+blur = true
+blur_size = 10
+blur_passes = 3

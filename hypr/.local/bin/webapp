@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# webapp — manage web apps: websites promoted to first-class launchers.
+#
+#   webapp list [--json]            installed web apps
+#   webapp get <id>                 one app as JSON
+#   webapp install --name N --url U [--icon PATH] [--id ID]
+#   webapp remove <id>
+#   webapp launch <id>              (webapp-launch is the shorthand)
+#   webapp discover-icon <url>      fetch the best icon for a site
+#   webapp doctor                   browser, tooling and orphan check
+#
+# The engine lives at ~/.config/hypr/webapp/manager.py (this repo is stowed).
+# We resolve it there first and fall back to a path relative to this script, so
+# the wrapper works before the first `stow` too.
+
+set -euo pipefail
+
+MANAGER="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/webapp/manager.py"
+if [ ! -f "$MANAGER" ]; then
+  # Repo layout: hypr/.local/bin/webapp -> hypr/.config/hypr/webapp/manager.py
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  MANAGER="$(dirname "$(dirname "$SCRIPT_DIR")")/.config/hypr/webapp/manager.py"
+fi
+if [ ! -f "$MANAGER" ]; then
+  printf 'webapp: manager not found at %s\n' "$MANAGER" >&2
+  exit 1
+fi
+
+exec python3 "$MANAGER" "$@"

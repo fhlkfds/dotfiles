@@ -319,6 +319,83 @@ def load_all(themes_dir: Path) -> dict[str, Theme]:
     return out
 
 
+def load_all_tolerant(themes_dir: Path) -> tuple[dict[str, Theme], list[dict[str, str]]]:
+    """Same, but a broken theme is collected as an error instead of raising.
+
+    `load_all` deliberately raises: when you are about to *apply* a theme, a
+    malformed file must stop everything. But a listing has the opposite
+    requirement -- one bad colors.toml must not blank out the other 22 entries in
+    the picker. Returns (themes, errors) where each error is {slug, error}.
+    """
+    out: dict[str, Theme] = {}
+    errors: list[dict[str, str]] = []
+    if not themes_dir.is_dir():
+        return out, [{"slug": "", "error": f"no themes directory at {themes_dir}"}]
+    for entry in sorted(themes_dir.iterdir()):
+        toml = entry / "colors.toml"
+        if not (entry.is_dir() and toml.is_file()):
+            continue
+        try:
+            theme = load(toml)
+        except ThemeError as exc:
+            errors.append({"slug": entry.name, "error": str(exc)})
+            continue
+        except Exception as exc:  # a truncated/binary file, a permissions problem
+            errors.append({"slug": entry.name,
+                           "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        out[theme.slug] = theme
+    return out, errors
+
+
+# ── Wallpapers ───────────────────────────────────────────────────────────────
+# A theme's `wallpaper` key is a bare name, not a path, so the same metadata
+# works whether the image lives in the user's own directory or ships with the
+# repo. Resolution is done here (in Python) rather than in the shell UI so that
+# no consumer has to probe the filesystem.
+
+WALLPAPER_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def repo_root() -> Path:
+    """The dotfiles checkout this generator lives in.
+
+    Derived from this file's own resolved location rather than hardcoded, so a
+    clone to a different directory still finds its own Wallpapers/.
+    ~/.config/hypr is a stow symlink into the repo, and .resolve() follows it.
+    """
+    return Path(__file__).resolve().parents[4]
+
+
+def wallpaper_roots() -> list[Path]:
+    """Search order: the user's own directories first, then the repo's."""
+    home = Path.home()
+    root = repo_root()
+    return [
+        home / "Wallpapers" / "theme",
+        home / "Wallpapers" / "static",
+        root / "Wallpapers" / "theme",
+        root / "Wallpapers" / "static",
+    ]
+
+
+def resolve_wallpaper(name: str | None) -> Path | None:
+    """Absolute path to a theme's wallpaper, or None when there is no asset.
+
+    A theme may name a wallpaper that does not exist yet -- that is treated as
+    "no wallpaper", not an error, so dropping the image in later starts working
+    with no change to the theme file.
+    """
+    if not name:
+        return None
+    for root in wallpaper_roots():
+        for ext in WALLPAPER_EXTS:
+            candidate = root / f"{name}{ext}"
+            if candidate.is_file():
+                return candidate
+    return None
+
+
 # ── Contrast ─────────────────────────────────────────────────────────────────
 # Reported, never auto-corrected: silently substituting a colour would make the
 # theme lie about itself (§48). The author gets told which pair to fix.
@@ -541,11 +618,19 @@ def validate_rasi(path: Path) -> None:
         ["rofi", "-no-config", "-theme", str(path), "-dump-theme"],
         capture_output=True, text=True, timeout=15,
     )
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout).strip().splitlines()
+    # rofi exits 0 even when it could not parse the theme -- it warns on stderr
+    # and then dumps its built-in defaults. Trusting the exit status alone would
+    # pass a theme that rofi is silently ignoring, so the warning is the signal.
+    stderr = proc.stderr or ""
+    if "Failed to parse" in stderr or "error" in stderr.lower():
+        detail = [ln for ln in stderr.splitlines() if ln.strip()]
         raise ThemeError(
             f"{path.name}: rofi rejected the generated theme: "
-            + (detail[0] if detail else f"exit {proc.returncode}")
+            + (detail[0].split(": ", 2)[-1] if detail else "unknown parse error")
+        )
+    if proc.returncode != 0:
+        raise ThemeError(
+            f"{path.name}: rofi exited {proc.returncode} on the generated theme"
         )
 
 
