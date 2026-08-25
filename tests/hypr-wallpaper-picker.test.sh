@@ -26,6 +26,10 @@ assert_missing() {
     [[ ! -e "$1" ]] || fail "$1 should not exist"
 }
 
+env -u HYPR_WALLPAPER_DIR "$picker" index > "$test_root/default-index.json"
+jq -e '.items | length > 0' "$test_root/default-index.json" >/dev/null || \
+    fail "default wallpaper directory did not find repository assets"
+
 notify-send() {
     printf '%s\n' "$*" >> "$test_root/notifications"
 }
