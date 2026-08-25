@@ -9,6 +9,18 @@ notify() {
     notify-send "Wallpaper picker" "$1"
 }
 
+wallhaven_dns_blocked() {
+    local host
+    for host in wallhaven.cc th.wallhaven.cc w.wallhaven.cc; do
+        if getent ahostsv4 "$host" 2>/dev/null | \
+            grep -Eq '^146\.112\.61\.(10[4-8]|110)[[:space:]]'; then
+            printf '%s\n' 'Wallhaven is blocked by Cisco Umbrella DNS. Allow wallhaven.cc, th.wallhaven.cc, and w.wallhaven.cc, then retry.' >&2
+            return 0
+        fi
+    done
+    return 1
+}
+
 list_wallpapers() {
     local json
     json="$(find "$wallpaper_dir" -type f \( -iname '*.jpg' -o -iname '*.png' \) \
@@ -33,6 +45,10 @@ search_wallhaven() {
         printf 'Invalid Wallhaven query or page\n' >&2
         return 1
     }
+    if wallhaven_dns_blocked; then
+        notify "Wallhaven is blocked by Cisco Umbrella DNS"
+        return 1
+    fi
 
     mkdir -p "$runtime_dir"
     response_tmp="$(mktemp "$runtime_dir/response.XXXXXX")" || return 1
@@ -158,6 +174,10 @@ download_wallhaven() {
     partial="$target.part"
 
     if [[ ! -s "$target" ]]; then
+        if wallhaven_dns_blocked; then
+            notify "Wallhaven is blocked by Cisco Umbrella DNS"
+            return 1
+        fi
         notify "Downloading wallhaven-$id"
         rm -f -- "$partial"
         if ! curl -fsSL --retry 2 -o "$partial" "$url" || \

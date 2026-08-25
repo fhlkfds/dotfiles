@@ -64,6 +64,15 @@ JSON
 printf preview > "$test_root/preview.jpg"
 printf image > "$test_root/download.png"
 
+dns_mode=allowed
+getent() {
+    if [[ "$dns_mode" == blocked ]]; then
+        printf '146.112.61.104  STREAM %s\n' "$2"
+    else
+        printf '104.21.4.33  STREAM %s\n' "$2"
+    fi
+}
+
 curl_mode=search
 curl() {
     local output="" previous="" argument
@@ -83,6 +92,14 @@ curl() {
             ;;
     esac
 }
+
+dns_mode=blocked
+if search_wallhaven "space cats" 1 > /dev/null 2> "$test_root/dns-blocked.err"; then
+    fail "Cisco-blocked search reported success"
+fi
+assert_contains "$test_root/dns-blocked.err" "Allow wallhaven.cc, th.wallhaven.cc, and w.wallhaven.cc"
+assert_missing "$test_root/curl.log"
+dns_mode=allowed
 
 search_wallhaven "space cats" 1 > "$test_root/results.json"
 assert_eq 1 "$(jq '.items | length' "$test_root/results.json")"
@@ -108,6 +125,15 @@ assert_eq wallhaven "$(jq -r '.items[0].kind' "$test_root/page-two-results.json"
 
 magick_ok=1
 magick() { ((magick_ok == 1)); }
+
+dns_mode=blocked
+if download_wallhaven blocked1 https://w.wallhaven.cc/full/bl/wallhaven-blocked1.png \
+    > /dev/null 2> "$test_root/download-dns-blocked.err"; then
+    fail "Cisco-blocked download reported success"
+fi
+assert_contains "$test_root/download-dns-blocked.err" "Allow wallhaven.cc, th.wallhaven.cc, and w.wallhaven.cc"
+assert_missing "$wallpaper_dir/wallhaven-blocked1.png.part"
+dns_mode=allowed
 
 curl_mode=fail
 if download_wallhaven abc123 https://w.wallhaven.cc/full/ab/wallhaven-abc123.png; then

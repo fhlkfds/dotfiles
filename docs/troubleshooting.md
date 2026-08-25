@@ -105,6 +105,11 @@ README claims. Correct/specially target the package and set
 and recognizes JPEG/PNG files. Empty remote results additionally require `curl`,
 `jq`, DNS/network access, and a successful Wallhaven API response.
 
+If the menu says Wallhaven is blocked by Cisco Umbrella DNS, allow-list
+`wallhaven.cc`, `th.wallhaven.cc`, and `w.wallhaven.cc` on the configured DNS
+service, then retry. Do not disable TLS verification: Cisco's block-page address
+is not the Wallhaven API or an image server.
+
 If selecting a result fails, check ImageMagick validation and Hyprpaper. Applying
 a wallpaper restarts Hyprpaper; an invalid download is rejected rather than sent
 to it.
