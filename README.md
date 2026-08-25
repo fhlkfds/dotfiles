@@ -30,7 +30,7 @@ Each top-level directory is a Stow package. Run `stow <package>` to symlink its 
 **Deploy everything at once:**
 
 ```bash
-stow ai browser fastfetch hypr hyprlock kitty noctalia quickshell rofi swaync Wallpapers wofi zsh
+stow ai browser fastfetch hypr hyprlock kitty noctalia quickshell rofi swaync windows Wallpapers wofi zsh
 ```
 
 **Or deploy packages individually:**
@@ -47,6 +47,7 @@ stow swaync      # ~/.config/swaync
 stow fastfetch   # ~/.config/fastfetch
 stow noctalia    # ~/.config/noctalia
 stow quickshell  # ~/.config/quickshell
+stow windows     # Windows VM helper, Compose template, and application entry
 stow zsh         # ~/.zshrc, ~/.p10k.zsh, ~/.oh-my-zsh
 ```
 
@@ -105,6 +106,28 @@ through unchanged.
 `$Terminal` variable. Change or remove that single binding in
 `hypr/.config/hypr/conf/keybinding.conf` to alter or disable it. It is not active
 until the relevant packages are stowed and Hyprland is reloaded by the user.
+
+---
+
+## Windows VM
+
+The optional `windows` package provides a Dockur Windows 11 VM managed through
+one command:
+
+```bash
+windows-vm install
+windows-vm launch
+windows-vm launch --keep-alive
+windows-vm status
+windows-vm stop
+windows-vm logs
+windows-vm remove
+```
+
+`SUPER+ALT+W` starts or connects to it. RDP and the installation web UI bind to
+localhost only; `~/Windows` is the sole shared host directory. Persistent VM
+data lives in `~/.windows`, while credentials and resource settings remain
+host-local under `~/.config/windows` rather than in this repository.
 
 ---
 

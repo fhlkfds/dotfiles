@@ -133,6 +133,23 @@ display panel's scale helper persists only to the desktop profile.
 Rofi itself also needs the generated current theme. Run the theme bootstrap rather
 than inventing an empty current-theme file.
 
+## Windows VM does not start or connect
+
+Run `windows-vm status`, then `windows-vm logs`. Common causes are an inactive
+Docker daemon, a login session that has not picked up new `docker` group
+membership, inaccessible `/dev/kvm` or `/dev/net/tun`, or ports 3389/8006 already
+being used. The helper never falls back to sudo or exposes either port beyond
+localhost.
+
+During the first installation, open `http://127.0.0.1:8006` to see progress.
+`windows-vm launch` waits for an authenticated RDP endpoint rather than sleeping
+for a fixed interval. If readiness times out or FreeRDP exits with an error, the
+VM remains running so its logs and web console can be inspected.
+
+`windows-vm remove` is non-destructive. Permanent deletion requires
+`windows-vm remove --purge-data` and exact-path confirmation; `~/Windows` is
+always preserved.
+
 ## Capture failures
 
 Run:
@@ -155,7 +172,9 @@ anything.
 
 - Confirm Hypridle and Hyprlock are installed and started.
 - Confirm the generated `~/.config/hyprlock/colors.conf` exists.
-- Check that the active layout's fonts and `1.jpg` background resolve.
+- Run `hypr-wallpaper-picker current` and confirm it prints an existing image;
+  missing wallpaper state should fall back to the active theme color.
+- Check that Noto Sans and JetBrainsMono Nerd Font resolve through Fontconfig.
 - Verify the `hyprlock` PAM service is installed correctly.
 - For suspend, check `systemctl suspend` policy and inhibitors.
 - Alternate layouts may assume `BAT0`, extra fonts, a profile image, playerctl,
@@ -163,10 +182,9 @@ anything.
 
 ## Missing icons or incorrect fonts
 
-Install JetBrainsMono Nerd Font and Papirus icons, then check the exact family
-name exposed by Fontconfig. The active lock layout additionally expects
-AlfaSlabOne. Empty squares in the bar usually mean a Nerd Font mismatch, not a QML
-logic failure.
+Install JetBrainsMono Nerd Font, Noto Sans, and Papirus icons, then check the
+exact family names exposed by Fontconfig. Empty squares in the bar or lock user
+label usually mean a Nerd Font mismatch, not a QML logic failure.
 
 ## Shell startup is slow or noisy
 

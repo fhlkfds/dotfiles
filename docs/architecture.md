@@ -88,6 +88,25 @@ Chrome Native Messaging
 
 See [Desktop components](./components.md) for implementation details.
 
+### Windows VM
+
+```text
+SUPER+ALT+W or Windows.desktop
+        ↓
+windows-vm launch
+        ↓
+Docker Compose → Dockur Windows → KVM
+        ↓
+localhost RDP readiness/authentication probe
+        ↓
+FreeRDP fullscreen on the focused Hyprland monitor
+```
+
+The tracked controller and Compose template are deployed by the `windows` Stow
+package. Resource settings and credentials live under `~/.config/windows`, VM
+storage under `~/.windows`, and the only guest-visible host data under
+`~/Windows`.
+
 ## Persistent and generated state
 
 The repository deliberately ignores generated active-theme outputs. The theme
@@ -111,6 +130,11 @@ Runtime state also lives outside Git, mainly below `$XDG_RUNTIME_DIR`,
 `$XDG_STATE_HOME` (or `~/.local/state`), and `~/.cache`. Examples include monitor
 watcher state, notification history, wallpaper search previews, clipboard data,
 and capture recording state.
+
+The optional Windows VM additionally keeps its launch lock and ephemeral
+credential environment under `$XDG_RUNTIME_DIR/windows-vm-$UID`. Credentials are
+removed after each Compose invocation; persistent credentials remain mode 0600
+under `~/.config/windows`.
 
 ## Active versus retained components
 

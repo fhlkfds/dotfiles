@@ -7,7 +7,7 @@ Singleton {
 
   // Right-click cycles through these, looping back to the start.
   readonly property var formats: [
-    "dddd HH:mm",
+    "dddd h:mm AP",
     "h:mm AP",
     "dddd, MMMM d",
     "yyyy-MM-dd"

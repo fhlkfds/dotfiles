@@ -28,6 +28,7 @@ opened with `SUPER+K`.
 | `SUPER+A` | application menu | Rofi `drun` with current generated theme |
 | `SUPER+SHIFT+A` | web-app manager | Quickshell web-app panel |
 | `SUPER+W` | browser | `brave` |
+| `SUPER+ALT+W` | Windows VM | start/connect through `windows-vm launch` |
 | `SUPER+SHIFT+ALT+W` | private browser window | XDG default browser's declared private action |
 | `SUPER+S` | Spotify | `spotify` |
 | `SUPER+O` | Obsidian | `obsidian` |
@@ -107,13 +108,11 @@ The implementation and optional features are described in
 
 | Keys | Destination |
 | --- | --- |
-| `SUPER+1` … `SUPER+9` | workspaces 1 … 9 |
+| `SUPER+1` … `SUPER+0` | workspaces 1 … 10 |
 | `SUPER+ALT+1` … `SUPER+ALT+5` | workspaces 11 … 15 |
 | `SUPER+TAB` / `SUPER+SHIFT+TAB` | next / previous open workspace |
 | `SUPER+CTRL+TAB` | former workspace |
 | `SUPER+wheel down` / `SUPER+wheel up` | next / previous open workspace |
-
-There is no direct select-workspace-10 binding.
 
 ### Move the active window
 

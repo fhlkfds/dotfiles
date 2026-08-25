@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Windows
+Comment=Start the Windows 11 VM and connect over RDP
+Exec=windows-vm launch
+TryExec=windows-vm
+Icon=windows
+Terminal=false
+Type=Application
+Categories=System;Emulator;
+StartupNotify=true

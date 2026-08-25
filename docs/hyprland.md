@@ -122,9 +122,9 @@ apply.
 
 ## Workspace behavior
 
-Hyprland defines numbered workspace bindings for 1–9 and 11–15. Workspace 10 can
-still be reached through relative navigation or by moving a window with the
-physical-key binding. The monitor profile maps all workspaces 1–15 to outputs.
+Hyprland defines numbered workspace bindings for 1–15: `SUPER+1` through
+`SUPER+0` select workspaces 1–10, and `SUPER+ALT+1` through `SUPER+ALT+5`
+select workspaces 11–15. The monitor profile maps all workspaces 1–15 to outputs.
 See [Keybindings](./keybindings.md#workspaces) and
 [Monitors](./monitors.md#workspace-mapping).
 

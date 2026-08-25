@@ -227,6 +227,15 @@ persist_wallpaper() {
     fi
 }
 
+current_wallpaper() {
+    local wallpaper=""
+    [[ -f "$state_file" ]] || return 1
+    wallpaper="$(jq -er '.path | select(type == "string" and length > 0)' \
+        "$state_file" 2>/dev/null)" || return 1
+    [[ -f "$wallpaper" ]] || return 1
+    realpath -e -- "$wallpaper"
+}
+
 set_wallpaper() {
     local wallpaper="$1"
     apply_wallpaper "$wallpaper" || return 1
@@ -239,12 +248,7 @@ set_wallpaper() {
 
 restore_wallpaper() {
     local wallpaper=""
-    if [[ -f "$state_file" ]]; then
-        wallpaper="$(jq -er '.path | select(type == "string" and length > 0)' \
-            "$state_file" 2>/dev/null)" || wallpaper=""
-    fi
-
-    if [[ -n "$wallpaper" && -f "$wallpaper" ]]; then
+    if wallpaper="$(current_wallpaper)"; then
         apply_wallpaper "$wallpaper"
         return
     fi
@@ -267,7 +271,7 @@ activate_wallhaven() {
 }
 
 usage() {
-    printf 'usage: hypr-wallpaper-picker [index|search QUERY PAGE|apply PATH|activate ID URL|restore|cleanup]\n' >&2
+    printf 'usage: hypr-wallpaper-picker [index|search QUERY PAGE|apply PATH|activate ID URL|current|restore|cleanup]\n' >&2
     return 2
 }
 
@@ -289,6 +293,10 @@ main() {
         activate)
             (($# == 3)) || { usage; return; }
             activate_wallhaven "$2" "$3"
+            ;;
+        current)
+            (($# == 1)) || { usage; return; }
+            current_wallpaper
             ;;
         restore)
             (($# == 1)) || { usage; return; }

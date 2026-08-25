@@ -131,7 +131,7 @@ calling the user profile script. The paired udev rule is not installed by Stow.
 
 | Tool | Purpose |
 | --- | --- |
-| `hypr/.local/bin/hypr-wallpaper-picker` | toggles the Quickshell panel; subcommands list/search/apply images and restore the last successful selection |
+| `hypr/.local/bin/hypr-wallpaper-picker` | toggles the Quickshell panel; subcommands list/search/apply images, print the current image, and restore the last successful selection |
 | `WallpaperSwitch.sh` | retained older image/video picker using Hyprpaper/mpvpaper and autostart edits |
 | `WallpaperEffects.sh` | retained effect helper; not currently bound |
 
@@ -139,7 +139,8 @@ The active tool depends on Bash, `curl`, `jq`, ImageMagick, Hyprpaper,
 Hyprland IPC, and desktop notifications. It honors `HYPR_WALLPAPER_DIR`,
 `HYPR_WALLPAPER_RUNTIME_DIR`, and `HYPR_WALLPAPER_STATE_FILE`. Successful
 selections are stored under `$XDG_STATE_HOME/hyprland-desktop/wallpaper/current`
-and restored by Hyprland autostart.
+and restored by Hyprland autostart. Its read-only `current` command validates and
+prints that path for Hyprlock without changing the live wallpaper.
 
 `hypr/.config/hypr/scripts/default-browser-private` resolves the XDG default
 browser desktop entry and launches its declared private-window action. Known
@@ -153,8 +154,9 @@ unknown browsers fail with a notification instead of opening a normal window.
 | `hypr/.local/bin/theme` | convenience launcher for the theme CLI |
 | `hypr/.config/hypr/theme/generate.py` | render all component outputs atomically from `colors.toml` |
 
-Selection can update the wallpaper and live applications as well as files. See
-[Themes](./themes.md).
+Selection updates generated files and live applications while preserving the
+current wallpaper. Pass `--wallpaper` to explicitly apply the selected theme's
+wallpaper. See [Themes](./themes.md).
 
 ## Notification and web-app tools
 
@@ -203,6 +205,25 @@ Waybar configuration is used.
 Claude, Codex, or OpenCode. Selection precedence is an explicit `--agent`, then
 `AI_AGENT_DEFAULT`, then the configured value in `AI_AGENT_CONFIG` (defaulting to
 `~/.config/ai-agent/config`). Shell aliases in `zsh/.zshrc` call this launcher.
+
+## Windows VM
+
+`windows/.local/bin/windows-vm` is the sole controller for the optional Dockur
+Windows 11 VM. It supports `install`, `launch [--keep-alive]`, `status`, `stop`,
+`logs`, and `remove [--purge-data]`. Mutating commands also accept `--dry-run`
+immediately after the command name.
+
+The tracked Compose template is under `windows/.local/share/windows-vm/`.
+Installation writes machine-local settings and mode-0600 credentials beneath
+`~/.config/windows`, stores the VM in `~/.windows`, and shares only `~/Windows`.
+The password is decoded into a short-lived mode-0600 runtime environment file
+and passed to FreeRDP through standard input rather than its process arguments.
+
+Launch polling checks both the localhost RDP socket and a bounded FreeRDP
+authentication probe. A clean RDP exit stops the VM unless `--keep-alive` was
+used; a timeout or client failure deliberately leaves it running for inspection.
+`remove` preserves all data, while `remove --purge-data` requires typing the
+exact storage path and never removes `~/Windows`.
 
 ## Hyprlock helper collection
 

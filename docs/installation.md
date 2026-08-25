@@ -51,7 +51,7 @@ From the cloned repository root, deploy only the components you want. For the
 currently active desktop, the relevant package names are:
 
 ```bash
-stow hypr hyprlock quickshell rofi kitty cliphist browser xdg
+stow hypr hyprlock quickshell rofi kitty cliphist browser xdg windows
 ```
 
 Preview the exact links before deploying a selection:
@@ -90,6 +90,24 @@ Stow target. The active picker separately defaults to
 The root `README.md` has an example “deploy everything” loop, but it omits the
 tracked `cliphist`, `waybar`, and `xdg` packages. Prefer choosing packages
 explicitly.
+
+### Optional Windows VM
+
+Stow `windows` together with `hypr`, then complete Docker access manually before
+running the installer. The helper will not invoke sudo or alter system services:
+
+```bash
+sudo systemctl enable --now docker.service
+sudo usermod -aG docker liam
+# log out and back in, then verify:
+docker info
+windows-vm install
+```
+
+The installer confirms resources and credentials before downloading anything.
+Its defaults on this machine are 8 GiB RAM, four CPU cores, and a 128 GiB disk.
+Windows 11 media and the container image require additional space beyond the
+virtual disk and may take substantial time to download.
 
 ## Required post-deployment work
 

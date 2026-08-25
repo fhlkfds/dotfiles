@@ -1,0 +1,29 @@
+services:
+  windows:
+    image: "${WINDOWS_IMAGE:-dockurr/windows:latest}"
+    env_file:
+      - "${WINDOWS_VM_CONTAINER_ENV:?windows-vm must provide its runtime credential file}"
+    environment:
+      VERSION: "${WINDOWS_VERSION:-11}"
+      RAM_SIZE: "${WINDOWS_RAM_SIZE:-8G}"
+      CPU_CORES: "${WINDOWS_CPU_CORES:-4}"
+      DISK_SIZE: "${WINDOWS_DISK_SIZE:-128G}"
+      LANGUAGE: "${WINDOWS_LANGUAGE:-en-US}"
+      REGION: "${WINDOWS_REGION:-en-US}"
+      KEYBOARD: "${WINDOWS_KEYBOARD:-en-US}"
+      TZ: "${WINDOWS_TIMEZONE:-UTC}"
+      ARGUMENTS: "-rtc base=localtime,clock=host,driftfix=slew"
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "127.0.0.1:${WINDOWS_WEB_PORT:-8006}:8006/tcp"
+      - "127.0.0.1:${WINDOWS_RDP_PORT:-3389}:3389/tcp"
+      - "127.0.0.1:${WINDOWS_RDP_PORT:-3389}:3389/udp"
+    volumes:
+      - "${WINDOWS_STORAGE_DIR:?windows-vm must provide its storage directory}:/storage"
+      - "${WINDOWS_SHARE_DIR:?windows-vm must provide its shared directory}:/shared"
+    restart: "no"
+    stop_grace_period: 2m

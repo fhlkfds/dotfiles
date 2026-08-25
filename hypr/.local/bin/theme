@@ -6,9 +6,9 @@
 #   theme validate [--all] validate palettes and generated output
 #   theme current          print the active theme slug
 #   theme mode             print the active theme's mode (dark|light)
-#   theme set <slug>       apply a theme
-#   theme next             cycle to the next theme
-#   theme previous         cycle to the previous theme
+#   theme set <slug>       apply a theme, preserving the current wallpaper
+#   theme next             cycle to the next theme, preserving the wallpaper
+#   theme previous         cycle to the previous theme, preserving the wallpaper
 #
 # The generator lives at ~/.config/hypr/theme/generate.py (this repo is stowed).
 # We resolve it there first and fall back to the repo path relative to this
@@ -17,7 +17,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: theme <list|index|validate|current|mode|set SLUG|next|previous>\n' >&2
+  printf 'usage: theme <list|index|validate|current|mode|set SLUG [--wallpaper]|next [--wallpaper]|previous [--wallpaper]>\n' >&2
   exit 2
 }
 

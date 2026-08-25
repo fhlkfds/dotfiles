@@ -3,7 +3,7 @@
 
     generate.py --list
     generate.py --validate SLUG | --validate-all
-    generate.py --set SLUG [--no-reload] [--prefix DIR]
+    generate.py set SLUG [--no-reload] [--wallpaper] [--prefix DIR]
 
 The switch is atomic in the sense that matters: everything is rendered and
 validated in a staging directory first, and nothing is moved into place until
@@ -414,7 +414,7 @@ def cmd_set(args: argparse.Namespace) -> int:
         print(DIM("  reload skipped"))
         return 0
 
-    if not args.no_wallpaper:
+    if args.wallpaper:
         print(DIM("  wallpaper: " + apply_wallpaper(theme)))
 
     kitty_conf = prefix / "kitty/theme/current-theme.conf"
@@ -531,7 +531,6 @@ def cmd_cycle(args: argparse.Namespace) -> int:
     step = 1 if args.direction == "next" else -1
     args.slug = slugs[(i + step) % len(slugs)]
     args.no_reload = False
-    args.no_wallpaper = False
     args.prefix = None
     return cmd_set(args)
 
@@ -554,8 +553,14 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("set")
     p.add_argument("slug")
     p.add_argument("--no-reload", action="store_true")
-    p.add_argument("--no-wallpaper", action="store_true",
-                   help="apply colours only, leave the desktop wallpaper alone")
+    wallpaper_flags = p.add_mutually_exclusive_group()
+    wallpaper_flags.add_argument(
+        "--wallpaper", action="store_true",
+        help="also apply the theme's wallpaper (the default preserves it)")
+    wallpaper_flags.add_argument(
+        "--no-wallpaper", dest="wallpaper", action="store_false",
+        help=argparse.SUPPRESS)
+    p.set_defaults(wallpaper=False)
     p.add_argument("--prefix", help="render into DIR instead of ~/.config "
                                    "(implies no state write, no reload)")
     p.set_defaults(func=cmd_set)
@@ -569,6 +574,9 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("cycle")
     p.add_argument("direction", choices=("next", "previous"))
+    p.add_argument(
+        "--wallpaper", action="store_true",
+        help="also apply the next theme's wallpaper (the default preserves it)")
     p.set_defaults(func=cmd_cycle)
 
     args = ap.parse_args(argv)

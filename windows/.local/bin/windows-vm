@@ -1,0 +1,510 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_NAME="Windows VM"
+SELF=$(realpath -e -- "${BASH_SOURCE[0]}")
+CONFIG_DIR="${WINDOWS_VM_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/windows}"
+SETTINGS_FILE="$CONFIG_DIR/settings.env"
+CREDENTIALS_FILE="$CONFIG_DIR/credentials.env"
+DATA_DIR="${WINDOWS_VM_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/windows-vm}"
+COMPOSE_FILE="${WINDOWS_VM_COMPOSE_FILE:-$DATA_DIR/compose.yaml}"
+STORAGE_DIR="${WINDOWS_VM_STORAGE_DIR:-$HOME/.windows}"
+SHARE_DIR="${WINDOWS_VM_SHARE_DIR:-$HOME/Windows}"
+RUNTIME_DIR="${WINDOWS_VM_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-/tmp}/windows-vm-$UID}"
+PROJECT_NAME="${WINDOWS_VM_PROJECT_NAME:-windows-vm}"
+DRY_RUN="${WINDOWS_VM_DRY_RUN:-0}"
+NONINTERACTIVE="${WINDOWS_VM_NONINTERACTIVE:-0}"
+TEMP_ENV=""
+
+cleanup() {
+  [[ -z "$TEMP_ENV" ]] || rm -f -- "$TEMP_ENV"
+}
+trap cleanup EXIT HUP INT TERM
+
+usage() {
+  cat <<'EOF'
+Usage: windows-vm COMMAND [OPTIONS]
+
+Commands:
+  install                  configure and start Windows installation
+  launch [--keep-alive]    start if needed and connect over RDP
+  status                   report configuration, VM, RDP, and KVM state
+  stop                     gracefully stop the managed VM
+  logs                     follow the managed VM logs
+  remove [--purge-data]    remove the container; optionally delete VM data
+
+Options:
+  --dry-run                print mutating actions without performing them
+EOF
+}
+
+notify() {
+  local urgency="$1" title="$2" message="$3"
+  if command -v notify-send >/dev/null 2>&1; then
+    local -a args=(-a "$APP_NAME" -u "$urgency")
+    [[ "$urgency" != critical ]] || args+=(-h boolean:swaync-bypass-dnd:true)
+    notify-send "${args[@]}" "$title" "$message" 2>/dev/null || true
+  fi
+  printf '%s: %s\n' "$title" "$message" >&2
+}
+
+die() {
+  notify critical "$APP_NAME" "$1"
+  exit "${2:-1}"
+}
+
+has() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+run() {
+  if [[ "$DRY_RUN" == 1 ]]; then
+    printf 'dry-run:'
+    printf ' %q' "$@"
+    printf '\n'
+    return 0
+  fi
+  "$@"
+}
+
+read_setting() {
+  local key="$1" fallback="${2:-}" value=""
+  if [[ -r "$SETTINGS_FILE" ]]; then
+    value=$(sed -n "s/^${key}=//p" "$SETTINGS_FILE" | tail -n 1)
+  fi
+  printf '%s\n' "${value:-$fallback}"
+}
+
+read_credential() {
+  local key="$1" value=""
+  [[ -r "$CREDENTIALS_FILE" ]] || return 1
+  value=$(sed -n "s/^${key}=//p" "$CREDENTIALS_FILE" | tail -n 1)
+  [[ -n "$value" ]] || return 1
+  printf '%s\n' "$value"
+}
+
+windows_username() {
+  read_credential WINDOWS_USERNAME
+}
+
+windows_password() {
+  local encoded
+  encoded=$(read_credential WINDOWS_PASSWORD_B64) || return 1
+  printf '%s' "$encoded" | base64 --decode 2>/dev/null
+}
+
+valid_username() {
+  [[ "$1" =~ ^[[:alnum:]_.-]{1,20}$ ]]
+}
+
+valid_ram() {
+  [[ "$1" =~ ^[1-9][0-9]*[GM]$ ]]
+}
+
+valid_disk() {
+  [[ "$1" =~ ^[0-9]+G$ ]] && (( 10#${1%G} >= 64 ))
+}
+
+valid_cores() {
+  [[ "$1" =~ ^[1-9][0-9]*$ ]] && (( 10#$1 <= $(nproc) ))
+}
+
+valid_port() {
+  [[ "$1" =~ ^[0-9]+$ ]] && (( 10#$1 >= 1024 && 10#$1 <= 65535 ))
+}
+
+ensure_runtime_dir() {
+  [[ "$DRY_RUN" == 1 ]] && return 0
+  install -d -m 700 -- "$RUNTIME_DIR"
+  find "$RUNTIME_DIR" -maxdepth 1 -type f -user "$UID" \
+    -name 'container-env.*' -delete 2>/dev/null || true
+}
+
+dotenv_quote() {
+  local value="$1"
+  value=${value//\\/\\\\}
+  value=${value//\'/\\\'}
+  printf "'%s'" "$value"
+}
+
+make_container_env() {
+  local username password
+  username=$(windows_username) || die "Credentials are missing. Run: windows-vm install"
+  password=$(windows_password) || die "Credentials are invalid. Recreate $CREDENTIALS_FILE"
+  ensure_runtime_dir
+  TEMP_ENV=$(mktemp "$RUNTIME_DIR/container-env.XXXXXX")
+  chmod 600 "$TEMP_ENV"
+  {
+    printf 'USERNAME='; dotenv_quote "$username"; printf '\n'
+    printf 'PASSWORD='; dotenv_quote "$password"; printf '\n'
+  } > "$TEMP_ENV"
+}
+
+compose() {
+  [[ -r "$COMPOSE_FILE" ]] || die "Compose template is missing: $COMPOSE_FILE"
+  [[ -r "$SETTINGS_FILE" ]] || die "Windows is not configured. Run: windows-vm install"
+  make_container_env
+  local -a cmd=(docker compose --project-name "$PROJECT_NAME"
+    --env-file "$SETTINGS_FILE" --file "$COMPOSE_FILE")
+  WINDOWS_VM_CONTAINER_ENV="$TEMP_ENV" "${cmd[@]}" "$@"
+  local status=$?
+  rm -f -- "$TEMP_ENV"
+  TEMP_ENV=""
+  return "$status"
+}
+
+docker_ready() {
+  docker info >/dev/null 2>&1
+}
+
+require_docker() {
+  has docker || die "Docker is not installed. Install the Arch docker package first."
+  docker compose version >/dev/null 2>&1 || die "Docker Compose is unavailable. Install docker-compose."
+  docker_ready || die "Docker is not accessible. Start docker.service and ensure your user has Docker access."
+}
+
+rdp_client() {
+  if has sdl-freerdp3; then
+    printf '%s\n' sdl-freerdp3
+  elif has xfreerdp3; then
+    printf '%s\n' xfreerdp3
+  else
+    return 1
+  fi
+}
+
+port_open() {
+  local port="$1"
+  timeout 1 bash -c "exec 3<>/dev/tcp/127.0.0.1/$port" >/dev/null 2>&1
+}
+
+container_id() {
+  compose ps -q windows 2>/dev/null
+}
+
+container_status() {
+  local id
+  id=$(container_id) || true
+  [[ -n "$id" ]] || { printf '%s\n' absent; return; }
+  docker inspect --format '{{.State.Status}}' "$id" 2>/dev/null || printf '%s\n' unknown
+}
+
+focused_scale() {
+  local raw=""
+  if has hyprctl && has jq; then
+    raw=$(hyprctl -j monitors 2>/dev/null | jq -er '.[] | select(.focused == true) | .scale' 2>/dev/null || true)
+  fi
+  awk -v scale="${raw:-1}" 'BEGIN {
+    if (scale >= 1.7) print 180;
+    else if (scale >= 1.3) print 140;
+    else print 100;
+  }'
+}
+
+auth_ready() {
+  local client="$1" port="$2" username="$3" password="$4"
+  printf '%s\n' "$password" | timeout 12 "$client" \
+    "/v:127.0.0.1:$port" "/u:$username" /from-stdin:force \
+    /cert:tofu '/auth-pkg-list:!kerberos,!u2u' +auth-only \
+    >/dev/null 2>&1
+}
+
+open_installer() {
+  if has kitty; then
+    notify normal "$APP_NAME" "Opening the Windows installer"
+    if [[ "$DRY_RUN" == 1 ]]; then
+      run kitty --class windows-vm-installer -e "$SELF" install
+    else
+      setsid kitty --class windows-vm-installer -e "$SELF" install \
+        >/dev/null 2>&1 &
+    fi
+    return 0
+  fi
+  die "Windows is not configured. Run: windows-vm install"
+}
+
+prompt_value() {
+  local prompt="$1" default="$2" result=""
+  if [[ "$NONINTERACTIVE" == 1 ]]; then
+    printf '%s\n' "$default"
+    return
+  fi
+  read -r -p "$prompt [$default]: " result
+  printf '%s\n' "${result:-$default}"
+}
+
+host_locale() {
+  local locale_name="${LANG:-en_US.UTF-8}"
+  locale_name=${locale_name%%.*}
+  locale_name=${locale_name/_/-}
+  [[ "$locale_name" =~ ^[a-z]{2}-[A-Z]{2}$ ]] || locale_name=en-US
+  printf '%s\n' "$locale_name"
+}
+
+host_timezone() {
+  timedatectl show -p Timezone --value 2>/dev/null || printf '%s\n' UTC
+}
+
+check_install_prerequisites() {
+  local disk_gb="$1" available_kb required_kb
+  grep -Eq '^flags[[:space:]]*:.*(^|[[:space:]])(svm|vmx)([[:space:]]|$)' /proc/cpuinfo \
+    || die "CPU virtualization is unavailable. Enable AMD-V or Intel VT-x in firmware."
+  [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] || die "KVM is unavailable or inaccessible at /dev/kvm. Check firmware virtualization and kvm-group access."
+  [[ -c /dev/net/tun && -r /dev/net/tun && -w /dev/net/tun ]] || die "/dev/net/tun is unavailable or inaccessible."
+  require_docker
+  rdp_client >/dev/null || die "FreeRDP 3 is not installed. Install the Arch freerdp package."
+  for command_name in base64 flock timeout nproc sed awk df; do
+    has "$command_name" || die "Required command is missing: $command_name"
+  done
+  port_open 3389 && die "Local port 3389 is already in use. Stop the conflicting RDP service before installation."
+  port_open 8006 && die "Local port 8006 is already in use. Stop the conflicting web service before installation."
+  available_kb=$(df -Pk "$HOME" | awk 'NR == 2 {print $4}')
+  required_kb=$(( (disk_gb + 10) * 1024 * 1024 ))
+  (( available_kb >= required_kb )) || die "Insufficient disk space: ${disk_gb}G disk plus 10G installation overhead required."
+}
+
+write_configuration() {
+  local ram="$1" cores="$2" disk="$3" username="$4" password="$5"
+  local locale_name timezone settings_tmp credentials_tmp
+  locale_name=$(host_locale)
+  timezone=$(host_timezone)
+
+  if [[ "$DRY_RUN" == 1 ]]; then
+    printf 'dry-run: create %q, %q, and %q\n' "$CONFIG_DIR" "$STORAGE_DIR" "$SHARE_DIR"
+    printf 'dry-run: write settings to %q and credentials to %q (mode 0600)\n' "$SETTINGS_FILE" "$CREDENTIALS_FILE"
+    return 0
+  fi
+
+  install -d -m 700 -- "$CONFIG_DIR" "$STORAGE_DIR"
+  install -d -m 755 -- "$SHARE_DIR"
+  settings_tmp=$(mktemp "$CONFIG_DIR/settings.XXXXXX")
+  credentials_tmp=$(mktemp "$CONFIG_DIR/credentials.XXXXXX")
+  chmod 600 "$settings_tmp" "$credentials_tmp"
+  {
+    printf 'WINDOWS_IMAGE=dockurr/windows:latest\n'
+    printf 'WINDOWS_VERSION=11\n'
+    printf 'WINDOWS_RAM_SIZE=%s\n' "$ram"
+    printf 'WINDOWS_CPU_CORES=%s\n' "$cores"
+    printf 'WINDOWS_DISK_SIZE=%s\n' "$disk"
+    printf 'WINDOWS_LANGUAGE=%s\n' "$locale_name"
+    printf 'WINDOWS_REGION=%s\n' "$locale_name"
+    printf 'WINDOWS_KEYBOARD=%s\n' "$locale_name"
+    printf 'WINDOWS_TIMEZONE=%s\n' "$timezone"
+    printf 'WINDOWS_WEB_PORT=8006\n'
+    printf 'WINDOWS_RDP_PORT=3389\n'
+    printf 'WINDOWS_STORAGE_DIR=%s\n' "$STORAGE_DIR"
+    printf 'WINDOWS_SHARE_DIR=%s\n' "$SHARE_DIR"
+  } > "$settings_tmp"
+  {
+    printf 'WINDOWS_USERNAME=%s\n' "$username"
+    printf 'WINDOWS_PASSWORD_B64=%s\n' "$(printf '%s' "$password" | base64 -w 0)"
+  } > "$credentials_tmp"
+  mv -f -- "$settings_tmp" "$SETTINGS_FILE"
+  mv -f -- "$credentials_tmp" "$CREDENTIALS_FILE"
+}
+
+install_windows() {
+  [[ $# -eq 0 ]] || { usage >&2; exit 2; }
+  [[ ! -e "$SETTINGS_FILE" && ! -e "$CREDENTIALS_FILE" ]] || die "Windows is already configured. Use status or launch; installation will not overwrite it."
+  local ram cores disk username password confirmation disk_gb
+  ram=$(prompt_value "RAM allocation" "${WINDOWS_VM_INSTALL_RAM:-8G}")
+  cores=$(prompt_value "CPU cores" "${WINDOWS_VM_INSTALL_CPUS:-4}")
+  disk=$(prompt_value "Virtual disk size" "${WINDOWS_VM_INSTALL_DISK:-128G}")
+  username=$(prompt_value "Windows username" "${WINDOWS_VM_INSTALL_USERNAME:-$USER}")
+  valid_ram "$ram" || die "RAM must be a positive size such as 8G."
+  valid_cores "$cores" || die "CPU cores must be between 1 and $(nproc)."
+  valid_disk "$disk" || die "Disk size must be at least 64G."
+  valid_username "$username" || die "Username must be 1-20 letters, numbers, dots, underscores, or hyphens."
+  disk_gb=${disk%G}
+  check_install_prerequisites "$disk_gb"
+
+  if [[ "$NONINTERACTIVE" == 1 ]]; then
+    password="${WINDOWS_VM_INSTALL_PASSWORD:-}"
+  else
+    read -r -s -p "Windows password (required): " password
+    printf '\n'
+  fi
+  [[ -n "$password" && "$password" != *$'\n'* ]] || die "A non-empty single-line Windows password is required."
+
+  printf '\nWindows VM configuration\n'
+  printf '  RAM:       %s\n  CPU cores: %s\n  Disk:      %s\n  Username:  %s\n' "$ram" "$cores" "$disk" "$username"
+  printf '  Storage:   %s\n  Shared:    %s\n\n' "$STORAGE_DIR" "$SHARE_DIR"
+  if [[ "$NONINTERACTIVE" != 1 && "$DRY_RUN" != 1 ]]; then
+    read -r -p "Create this configuration and start the Windows download? [y/N]: " confirmation
+    [[ "$confirmation" =~ ^[Yy]$ ]] || { printf 'Installation cancelled.\n'; return 0; }
+  fi
+
+  write_configuration "$ram" "$cores" "$disk" "$username" "$password"
+  if [[ "$DRY_RUN" == 1 ]]; then
+    printf 'dry-run: docker compose up --detach windows\n'
+    return 0
+  fi
+  notify normal "Starting Windows" "Downloading and installing Windows 11; progress is available at http://127.0.0.1:8006"
+  if ! compose up --detach windows; then
+    die "Windows installation failed to start. Run: windows-vm logs"
+  fi
+  if has xdg-open; then
+    setsid xdg-open http://127.0.0.1:8006 >/dev/null 2>&1 &
+  fi
+  printf 'Windows installation is running. Monitor http://127.0.0.1:8006\n'
+}
+
+launch_windows() {
+  local keep_alive=0
+  case "${1:-}" in
+    "") ;;
+    --keep-alive|-k) keep_alive=1 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+  [[ $# -le 1 ]] || { usage >&2; exit 2; }
+  [[ -r "$SETTINGS_FILE" && -r "$CREDENTIALS_FILE" ]] || { open_installer; return; }
+  require_docker
+  local client port username password timeout_seconds deadline state scale rdp_status
+  client=$(rdp_client) || die "FreeRDP 3 is not installed."
+  port=$(read_setting WINDOWS_RDP_PORT 3389)
+  valid_port "$port" || die "Invalid RDP port in $SETTINGS_FILE"
+  username=$(windows_username) || die "Windows username is missing."
+  password=$(windows_password) || die "Windows password is invalid."
+  timeout_seconds=$(read_setting WINDOWS_START_TIMEOUT 900)
+  [[ "$timeout_seconds" =~ ^[1-9][0-9]*$ ]] || timeout_seconds=900
+  ensure_runtime_dir
+  exec 9>"$RUNTIME_DIR/launch.lock"
+  flock -n 9 || { notify normal "$APP_NAME" "A Windows connection is already opening or active."; return 0; }
+
+  state=$(container_status)
+  if [[ "$state" != running ]]; then
+    notify normal "Starting Windows" "Starting the managed Windows 11 VM"
+    compose up --detach windows || die "Windows failed to start. Run: windows-vm logs"
+  fi
+
+  printf 'Waiting for authenticated RDP readiness on 127.0.0.1:%s...\n' "$port"
+  deadline=$((SECONDS + timeout_seconds))
+  while (( SECONDS < deadline )); do
+    state=$(container_status)
+    [[ "$state" == running ]] || die "Windows container stopped while waiting (state: $state). Run: windows-vm logs"
+    if port_open "$port" && auth_ready "$client" "$port" "$username" "$password"; then
+      break
+    fi
+    sleep 2
+  done
+  if (( SECONDS >= deadline )); then
+    notify critical "Windows is not ready" "Timed out waiting for RDP. The VM was left running; use windows-vm logs or http://127.0.0.1:8006"
+    return 1
+  fi
+
+  scale=$(focused_scale)
+  notify normal "Windows is ready" "Connecting with dynamic resolution at ${scale}% scale"
+  set +e
+  printf '%s\n' "$password" | "$client" \
+    "/v:127.0.0.1:$port" "/u:$username" /from-stdin:force \
+    /cert:tofu '/auth-pkg-list:!kerberos,!u2u' +dynamic-resolution +f \
+    /clipboard /sound /microphone +auto-reconnect /network:lan \
+    "/scale:$scale" '/title:Windows VM'
+  rdp_status=${PIPESTATUS[1]}
+  set -e
+
+  if (( rdp_status != 0 )); then
+    notify critical "RDP connection failed" "FreeRDP exited with status $rdp_status. Windows was left running for troubleshooting."
+    return "$rdp_status"
+  fi
+  if (( keep_alive )); then
+    notify normal "$APP_NAME" "RDP closed; Windows remains running."
+  else
+    printf 'RDP closed cleanly; stopping Windows...\n'
+    compose stop windows
+    notify normal "Windows VM stopped" "The RDP session closed cleanly."
+  fi
+}
+
+status_windows() {
+  local configured=no docker_state=unavailable kvm_state=unavailable container=not-configured rdp=not-ready port=3389
+  [[ -r "$SETTINGS_FILE" && -r "$CREDENTIALS_FILE" ]] && configured=yes
+  [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] && kvm_state=available
+  if [[ "$configured" == yes ]]; then
+    container=unknown
+    port=$(read_setting WINDOWS_RDP_PORT 3389)
+  fi
+  if has docker && docker compose version >/dev/null 2>&1 && docker_ready; then
+    docker_state=available
+    if [[ "$configured" == yes ]]; then
+      container=$(container_status)
+      port_open "$port" && rdp=ready
+    fi
+  fi
+  printf 'Installed:     %s\n' "$configured"
+  printf 'Docker:        %s\n' "$docker_state"
+  printf 'Container:     %s\n' "$container"
+  printf 'RDP:           %s (127.0.0.1:%s)\n' "$rdp" "$port"
+  printf 'KVM:           %s\n' "$kvm_state"
+  printf 'Shared folder: %s\n' "$SHARE_DIR"
+  printf 'VM storage:    %s\n' "$STORAGE_DIR"
+  printf 'Web UI:        http://127.0.0.1:%s\n' "$(read_setting WINDOWS_WEB_PORT 8006)"
+}
+
+stop_windows() {
+  require_docker
+  [[ -r "$SETTINGS_FILE" ]] || die "Windows is not configured."
+  if [[ "$DRY_RUN" == 1 ]]; then
+    printf 'dry-run: docker compose stop windows\n'
+    return
+  fi
+  compose stop windows
+  notify normal "Windows VM stopped" "The managed VM stopped cleanly."
+}
+
+logs_windows() {
+  require_docker
+  compose logs --follow windows
+}
+
+remove_windows() {
+  local purge=0 confirmation=""
+  case "${1:-}" in
+    "") ;;
+    --purge-data) purge=1 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+  [[ $# -le 1 ]] || { usage >&2; exit 2; }
+  if [[ -r "$SETTINGS_FILE" ]]; then
+    require_docker
+    if [[ "$DRY_RUN" == 1 ]]; then
+      printf 'dry-run: docker compose down --remove-orphans\n'
+    else
+      compose down --remove-orphans
+    fi
+  fi
+  if (( ! purge )); then
+    printf 'Managed container and network removed. Preserved:\n  %s\n  %s\n  %s\n' "$CONFIG_DIR" "$STORAGE_DIR" "$SHARE_DIR"
+    return
+  fi
+  printf 'Permanent VM deletion requested. This will delete:\n  %s\n  %s\n' "$STORAGE_DIR" "$CONFIG_DIR"
+  printf 'The shared folder will be preserved:\n  %s\n' "$SHARE_DIR"
+  if [[ "$DRY_RUN" == 1 ]]; then
+    printf 'dry-run: permanently delete %q and %q\n' "$STORAGE_DIR" "$CONFIG_DIR"
+    return
+  fi
+  read -r -p "Type $STORAGE_DIR to confirm: " confirmation
+  [[ "$confirmation" == "$STORAGE_DIR" ]] || { printf 'Data deletion cancelled.\n'; return 1; }
+  [[ "$STORAGE_DIR" == "$HOME/.windows" && "$CONFIG_DIR" == "${XDG_CONFIG_HOME:-$HOME/.config}/windows" ]] \
+    || die "Refusing purge because storage/config paths are not the managed defaults."
+  rm -rf -- "$STORAGE_DIR" "$CONFIG_DIR"
+  notify normal "Windows VM removed" "VM storage and local configuration were deleted; $SHARE_DIR was preserved."
+}
+
+command_name="${1:-help}"
+shift || true
+if [[ "${1:-}" == --dry-run ]]; then
+  DRY_RUN=1
+  shift
+fi
+
+case "$command_name" in
+  install) install_windows "$@" ;;
+  launch|start) launch_windows "$@" ;;
+  status) [[ $# -eq 0 ]] || { usage >&2; exit 2; }; status_windows ;;
+  stop) [[ $# -eq 0 ]] || { usage >&2; exit 2; }; stop_windows ;;
+  logs) [[ $# -eq 0 ]] || { usage >&2; exit 2; }; logs_windows ;;
+  remove) remove_windows "$@" ;;
+  help|-h|--help) usage ;;
+  *) printf 'windows-vm: unknown command: %s\n' "$command_name" >&2; usage >&2; exit 2 ;;
+esac

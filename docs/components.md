@@ -109,12 +109,31 @@ application launcher, with a wider ten-row search view.
 `wofi/` is a retained alternative configured for fuzzy `drun` search in a
 Kitty-styled window. It is not bound or autostarted.
 
+The optional `windows` package contributes a `Windows` desktop entry to the same
+Rofi `drun` index. It calls `windows-vm launch`, the same backend used by
+`SUPER+ALT+W`; no VM logic is duplicated in the launcher entry.
+
+## Windows VM
+
+The Windows integration uses Dockur Windows with KVM acceleration and a tracked
+Compose template. TCP/UDP RDP on 3389 and the installation viewer on 8006 are
+published only on `127.0.0.1`. `~/Windows` is mounted at `/shared`, becoming the
+Windows `Shared` folder and `Z:` drive; the rest of the home directory is not
+mounted.
+
+FreeRDP opens fullscreen on the focused Hyprland display with dynamic
+resolution, clipboard, sound, microphone, automatic reconnection, and a scale
+derived from that monitor. A runtime lock prevents duplicate launcher sessions.
+Important lifecycle and error states use the existing Quickshell-backed
+`notify-send` path.
+
 ## Wallpaper
 
 `SUPER+SHIFT+W` calls `~/.local/bin/hypr-wallpaper-picker` with no arguments,
 which toggles the Quickshell cover-flow UI. The same tracked script at
 `hypr/.local/bin/hypr-wallpaper-picker` implements the `index`, `search`, `apply`,
-`activate`, `restore`, and `cleanup` operations used by that UI. Successful
+`activate`, `current`, `restore`, and `cleanup` operations used by the desktop.
+The read-only `current` operation supplies the active image to Hyprlock. Successful
 standalone and theme wallpaper applications atomically save the selected path
 to `$XDG_STATE_HOME/hyprland-desktop/wallpaper/current`; autostart restores it.
 Missing or stale state falls back to starting plain Hyprpaper.
@@ -141,7 +160,10 @@ not used by the current binding.
 Hyprlock's entry point is `hypr/.config/hypr/hyprlock.conf`. It uses the
 `hyprlock` PAM service, disables fingerprint authentication, imports generated
 colors, and sources `layouts/hyprlock.conf`. That active layout contains a
-wallpaper background, clock/date, greeting, and password field.
+large clock/date and a compact user/password card. Its colors, borders, radius,
+opacity, scrim, shadow, and blur come from the active desktop theme. The
+background reads the same persisted current-wallpaper state used by the picker
+and theme tool; missing or stale state falls back to the active theme color.
 
 Many alternate layouts and music/weather helpers are tracked. They are examples,
 not active composition. Several assume `BAT0`, network access, extra fonts, or a

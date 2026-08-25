@@ -144,6 +144,26 @@ hyprctl() { return 0; }
 set_wallpaper "$downloaded" || fail "successful mocked application failed"
 jq -e --arg path "$(realpath -e -- "$downloaded")" '.path == $path' \
     "$state_file" >/dev/null || fail "successful application was not persisted"
+assert_eq "$(realpath -e -- "$downloaded")" "$(current_wallpaper)"
+assert_eq "$(realpath -e -- "$downloaded")" \
+    "$(HYPR_WALLPAPER_STATE_FILE="$state_file" "$picker" current)"
+
+printf '{broken json\n' > "$state_file"
+if current_wallpaper; then
+    fail "malformed wallpaper state reported a current image"
+fi
+
+printf '{"path":"%s"}\n' "$test_root/missing.jpg" > "$state_file"
+if current_wallpaper; then
+    fail "stale wallpaper state reported a current image"
+fi
+
+rm -f -- "$state_file"
+if current_wallpaper; then
+    fail "missing wallpaper state reported a current image"
+fi
+
+persist_wallpaper "$downloaded" || fail "wallpaper state fixture could not be restored"
 
 applied_log="$test_root/applied"
 apply_wallpaper() { printf '%s\n' "$1" >> "$applied_log"; }
@@ -156,8 +176,8 @@ ensure_hyprpaper_running() { hyprpaper_started=1; }
 restore_wallpaper || fail "missing saved wallpaper did not fall back cleanly"
 assert_eq 1 "$hyprpaper_started"
 
-# Theme selection is the other active wallpaper setter. It must write the same
-# state document so the most recent explicit choice wins at the next login.
+# Explicit theme wallpaper selection is another wallpaper setter. It must write
+# the same state document so the most recent explicit choice wins at next login.
 python3 - "$repo_root/hypr/.config/hypr/theme/generate.py" "$downloaded" \
     "$test_root/theme-state/current" <<'PY'
 import importlib.util
@@ -182,6 +202,24 @@ class Theme:
 result = module.apply_wallpaper(Theme())
 assert result == wallpaper.name, result
 assert json.loads(state.read_text()) == {"path": str(wallpaper.resolve())}
+
+# Theme changes preserve the wallpaper unless the caller explicitly opts in.
+captured = []
+def capture(args):
+    captured.append(args)
+    return 0
+
+module.cmd_set = capture
+assert module.main(["set", "ethereal"]) == 0
+assert captured.pop().wallpaper is False
+assert module.main(["set", "ethereal", "--wallpaper"]) == 0
+assert captured.pop().wallpaper is True
+assert module.main(["set", "ethereal", "--no-wallpaper"]) == 0
+assert captured.pop().wallpaper is False
+assert module.main(["cycle", "next"]) == 0
+assert captured.pop().wallpaper is False
+assert module.main(["cycle", "next", "--wallpaper"]) == 0
+assert captured.pop().wallpaper is True
 PY
 
 [[ -d "$runtime_dir" ]] || fail "search runtime directory was not created"

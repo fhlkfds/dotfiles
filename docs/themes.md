@@ -70,14 +70,16 @@ palette directory and applies only the selected center item/Enter choice.
 
 On selection, the theme system can:
 
-- apply the palette's wallpaper through Hyprpaper;
+- preserve the current wallpaper by default;
+- apply the palette's wallpaper through Hyprpaper when passed `--wallpaper`;
 - reload Hyprland so generated decoration values take effect;
 - notify the Quickshell theme watcher;
 - update running Kitty windows through remote control;
 - signal Waybar and SwayNC when they are running; and
 - leave generated output ready for applications that load it later.
 
-This means `theme set` is not a purely read-only renderer. Use its validation
+This means `theme set` is not a purely read-only renderer, although it does not
+change the wallpaper unless explicitly passed `--wallpaper`. Use its validation
 operations when testing palette edits without wanting to change the live desktop.
 
 ## Wallpaper resolution

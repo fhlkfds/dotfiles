@@ -52,6 +52,7 @@ Hyprlock service, and ordinary core utilities (`bash`, `sh`, `realpath`, `flock`
 | `hermes` | `SUPER+SHIFT+H`, autostart/workspace rule |
 | `hyprvoice` | `SUPER+R` |
 | `virsh`, `looking-glass-client` | Gaming VM binding |
+| `windows-vm` | `SUPER+ALT+W`; optional Dockur Windows 11 VM |
 | `localsend` (LocalSend) | `SUPER+CTRL+S`, local-network sharing |
 | `btop` | `SUPER+CTRL+T`, terminal activity monitor |
 | Helium | XDG default HTTP/HTML handler |
@@ -85,6 +86,25 @@ Run `capture.sh doctor` for the suite's own availability report.
 | `ddcutil` | external-monitor brightness |
 | `hyprctl` | output discovery, profile application, scale changes |
 | `systemd`/`loginctl` | suspend and pre-sleep lock behavior |
+
+### Windows VM
+
+The optional `windows` Stow package requires Docker Engine, Docker Compose,
+FreeRDP 3, KVM, `jq`, `flock`, and `timeout`. It prefers `sdl-freerdp3` and falls
+back to `xfreerdp3`. The host must expose writable `/dev/kvm` and `/dev/net/tun`
+to the user running Docker.
+
+On this host the packages are installed, AMD-V and both devices are available,
+but `docker.service` is disabled and the user is not in the `docker` group. The
+helper diagnoses that state but never runs sudo. One-time setup is manual:
+
+```bash
+sudo systemctl enable --now docker.service
+sudo usermod -aG docker liam
+```
+
+Log out and back in after changing group membership, then confirm `docker info`
+works without sudo. Docker-group membership is effectively root-equivalent.
 
 ### Browser tools
 
@@ -130,7 +150,7 @@ running components.
 | Asset | Referenced by |
 | --- | --- |
 | JetBrainsMono Nerd Font | Kitty, bar/panels, Rofi glyphs, lock screen |
-| AlfaSlabOne | active Hyprlock layout |
+| Noto Sans | Quickshell UI fallback and active Hyprlock clock/date |
 | Papirus icons | Rofi |
 | Powerlevel10k-compatible glyph font | Zsh prompt |
 
