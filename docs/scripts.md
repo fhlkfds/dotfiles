@@ -220,8 +220,11 @@ The password is decoded into a short-lived mode-0600 runtime environment file
 and passed to FreeRDP through standard input rather than its process arguments.
 
 Launch polling checks both the localhost RDP socket and a bounded FreeRDP
-authentication probe. A clean RDP exit stops the VM unless `--keep-alive` was
-used; a timeout or client failure deliberately leaves it running for inspection.
+authentication probe. Both the probe and interactive client use `/cert:ignore`
+because the endpoint is restricted to `127.0.0.1`; this prevents regenerated VM
+certificates from opening a focus-blocking confirmation dialog. A clean RDP exit
+stops the VM unless `--keep-alive` was used; a timeout or client failure
+deliberately leaves it running for inspection.
 Starting a stopped container sends a `Windows VM started` desktop notification
 after Compose succeeds. Both the explicit `stop` command and the automatic stop
 after a clean RDP exit send `Windows VM stopped` only after the stop succeeds.

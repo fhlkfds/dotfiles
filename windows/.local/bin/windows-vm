@@ -205,7 +205,7 @@ auth_ready() {
   local client="$1" port="$2" username="$3" password="$4"
   printf '%s\n' "$password" | timeout 12 "$client" \
     "/v:127.0.0.1:$port" "/u:$username" /from-stdin:force \
-    /cert:tofu '/auth-pkg-list:!kerberos,!u2u' +auth-only \
+    /cert:ignore '/auth-pkg-list:!kerberos,!u2u' +auth-only \
     >/dev/null 2>&1
 }
 
@@ -399,7 +399,7 @@ launch_windows() {
   set +e
   printf '%s\n' "$password" | "$client" \
     "/v:127.0.0.1:$port" "/u:$username" /from-stdin:force \
-    /cert:tofu '/auth-pkg-list:!kerberos,!u2u' +dynamic-resolution +f \
+    /cert:ignore '/auth-pkg-list:!kerberos,!u2u' +dynamic-resolution +f \
     /clipboard /sound /microphone +auto-reconnect /network:lan \
     "/scale:$scale" '/title:Windows VM'
   rdp_status=${PIPESTATUS[1]}

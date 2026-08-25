@@ -146,6 +146,11 @@ During the first installation, open `http://127.0.0.1:8006` to see progress.
 for a fixed interval. If readiness times out or FreeRDP exits with an error, the
 VM remains running so its logs and web console can be inspected.
 
+The helper uses non-interactive certificate handling for its loopback-only RDP
+endpoint. If an older session left a “Certificate for 127.0.0.1:3389 has
+changed” dialog open, dismiss that existing dialog once with Escape; subsequent
+launches do not create it.
+
 `windows-vm remove` is non-destructive. Permanent deletion requires
 `windows-vm remove --purge-data` and exact-path confirmation; `~/Windows` is
 always preserved.

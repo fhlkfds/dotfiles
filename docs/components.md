@@ -119,7 +119,9 @@ The Windows integration uses Dockur Windows with KVM acceleration and a tracked
 Compose template. TCP/UDP RDP on 3389 and the installation viewer on 8006 are
 published only on `127.0.0.1`. `~/Windows` is mounted at `/shared`, becoming the
 Windows `Shared` folder and `Z:` drive; the rest of the home directory is not
-mounted.
+mounted. Both FreeRDP calls use `/cert:ignore`: certificate validation is
+deliberately non-interactive for this loopback-only endpoint, preventing a
+changed-certificate modal from dimming and blocking the current workspace.
 
 FreeRDP opens fullscreen on the focused Hyprland display with dynamic
 resolution, clipboard, sound, microphone, automatic reconnection, and a scale

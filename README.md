@@ -130,7 +130,9 @@ is the sole shared host directory. Persistent VM data lives in `~/.windows`,
 while credentials and resource settings remain host-local under
 `~/.config/windows` rather than in this repository. Successful container starts
 and stops send desktop notifications; readiness, installation, and error states
-continue to use the same notification path.
+continue to use the same notification path. Since RDP is loopback-only, FreeRDP
+uses non-interactive certificate handling so a regenerated VM certificate cannot
+leave a hidden modal dimming and blocking another window.
 
 ---
 

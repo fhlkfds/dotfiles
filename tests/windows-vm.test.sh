@@ -184,6 +184,8 @@ assert_contains "$test_root/remove.out" "$WINDOWS_VM_STORAGE_DIR"
 assert_contains "$helper" '/from-stdin:force'
 assert_contains "$helper" '+dynamic-resolution +f'
 assert_contains "$helper" '/clipboard /sound /microphone'
+[[ $(grep -Fc '/cert:ignore' "$helper") == 2 ]] || fail 'RDP certificate handling is not consistently non-interactive'
+grep -Fq '/cert:tofu' "$helper" && fail 'interactive TOFU certificate handling is still enabled'
 assert_contains "$helper" 'if (( rdp_status != 0 ))'
 assert_contains "$helper" 'compose stop windows'
 assert_contains "$helper" 'flock -n 9'
