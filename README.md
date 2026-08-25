@@ -124,10 +124,13 @@ windows-vm logs
 windows-vm remove
 ```
 
-`SUPER+ALT+W` starts or connects to it. RDP and the installation web UI bind to
-localhost only; `~/Windows` is the sole shared host directory. Persistent VM
-data lives in `~/.windows`, while credentials and resource settings remain
-host-local under `~/.config/windows` rather than in this repository.
+`SUPER+ALT+W` starts or connects to it, and `SUPER+CTRL+ALT+W` stops it
+gracefully. RDP and the installation web UI bind to localhost only; `~/Windows`
+is the sole shared host directory. Persistent VM data lives in `~/.windows`,
+while credentials and resource settings remain host-local under
+`~/.config/windows` rather than in this repository. Successful container starts
+and stops send desktop notifications; readiness, installation, and error states
+continue to use the same notification path.
 
 ---
 

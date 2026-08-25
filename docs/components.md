@@ -124,8 +124,12 @@ mounted.
 FreeRDP opens fullscreen on the focused Hyprland display with dynamic
 resolution, clipboard, sound, microphone, automatic reconnection, and a scale
 derived from that monitor. A runtime lock prevents duplicate launcher sessions.
-Important lifecycle and error states use the existing Quickshell-backed
-`notify-send` path.
+The existing Quickshell-backed `notify-send` path reports installation and
+readiness progress, errors, and successful container lifecycle transitions.
+`Windows VM started` is emitted after Compose starts a stopped container;
+`Windows VM stopped` follows either `windows-vm stop` or the automatic stop after
+a clean RDP exit. `--keep-alive`, readiness timeouts, and FreeRDP failures leave
+the VM running and therefore do not emit the stop notification.
 
 ## Wallpaper
 

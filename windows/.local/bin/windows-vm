@@ -343,6 +343,7 @@ install_windows() {
   if ! compose up --detach windows; then
     die "Windows installation failed to start. Run: windows-vm logs"
   fi
+  notify normal "Windows VM started" "Windows installation is running; monitor progress at http://127.0.0.1:8006"
   if has xdg-open; then
     setsid xdg-open http://127.0.0.1:8006 >/dev/null 2>&1 &
   fi
@@ -375,6 +376,7 @@ launch_windows() {
   if [[ "$state" != running ]]; then
     notify normal "Starting Windows" "Starting the managed Windows 11 VM"
     compose up --detach windows || die "Windows failed to start. Run: windows-vm logs"
+    notify normal "Windows VM started" "The managed Windows 11 VM started successfully."
   fi
 
   printf 'Waiting for authenticated RDP readiness on 127.0.0.1:%s...\n' "$port"

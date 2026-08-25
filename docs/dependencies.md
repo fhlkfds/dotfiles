@@ -52,7 +52,7 @@ Hyprlock service, and ordinary core utilities (`bash`, `sh`, `realpath`, `flock`
 | `hermes` | `SUPER+SHIFT+H`, autostart/workspace rule |
 | `hyprvoice` | `SUPER+R` |
 | `virsh`, `looking-glass-client` | Gaming VM binding |
-| `windows-vm` | `SUPER+ALT+W`; optional Dockur Windows 11 VM |
+| `windows-vm` | `SUPER+ALT+W` launch and `SUPER+CTRL+ALT+W` stop; optional Dockur Windows 11 VM |
 | `localsend` (LocalSend) | `SUPER+CTRL+S`, local-network sharing |
 | `btop` | `SUPER+CTRL+T`, terminal activity monitor |
 | Helium | XDG default HTTP/HTML handler |

@@ -95,17 +95,25 @@ SUPER+ALT+W or Windows.desktop
         ↓
 windows-vm launch
         ↓
-Docker Compose → Dockur Windows → KVM
+Docker Compose → Dockur Windows → KVM → "Windows VM started" notification
         ↓
 localhost RDP readiness/authentication probe
         ↓
 FreeRDP fullscreen on the focused Hyprland monitor
+
+SUPER+CTRL+ALT+W
+        ↓
+windows-vm stop
+        ↓
+Docker Compose graceful stop → "Windows VM stopped" notification
 ```
 
 The tracked controller and Compose template are deployed by the `windows` Stow
 package. Resource settings and credentials live under `~/.config/windows`, VM
 storage under `~/.windows`, and the only guest-visible host data under
-`~/Windows`.
+`~/Windows`. Completion notifications are sent only after the corresponding
+Compose start or stop succeeds. A clean RDP exit also stops the VM and sends the
+same stop notification unless launch used `--keep-alive`.
 
 ## Persistent and generated state
 

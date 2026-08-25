@@ -222,6 +222,9 @@ and passed to FreeRDP through standard input rather than its process arguments.
 Launch polling checks both the localhost RDP socket and a bounded FreeRDP
 authentication probe. A clean RDP exit stops the VM unless `--keep-alive` was
 used; a timeout or client failure deliberately leaves it running for inspection.
+Starting a stopped container sends a `Windows VM started` desktop notification
+after Compose succeeds. Both the explicit `stop` command and the automatic stop
+after a clean RDP exit send `Windows VM stopped` only after the stop succeeds.
 `remove` preserves all data, while `remove --purge-data` requires typing the
 exact storage path and never removes `~/Windows`.
 

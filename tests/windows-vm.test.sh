@@ -32,8 +32,17 @@ fi
 case "${1:-} ${2:-}" in
   'compose version') printf 'Docker Compose version fixture\n' ;;
   'info ') exit 0 ;;
-  'inspect --format') printf '%s\n' "${WINDOWS_VM_TEST_CONTAINER_STATUS:-running}" ;;
+  'inspect --format')
+    if [[ -r "${WINDOWS_VM_TEST_STATE_FILE:-}" ]]; then
+      cat "$WINDOWS_VM_TEST_STATE_FILE"
+    else
+      printf '%s\n' "${WINDOWS_VM_TEST_CONTAINER_STATUS:-running}"
+    fi
+    ;;
   'compose --project-name')
+    if [[ " $* " == *' up --detach windows '* && -n "${WINDOWS_VM_TEST_STATE_FILE:-}" ]]; then
+      printf 'running\n' > "$WINDOWS_VM_TEST_STATE_FILE"
+    fi
     case " $* " in
       *' ps -q windows '*) printf 'fixture-container\n' ;;
       *' config --quiet '*) exit 0 ;;
@@ -136,12 +145,22 @@ for pair in '1 100' '1.4 140' '1.8 180'; do
   [[ "$scale" == "$2" ]] || fail "scale $1 mapped to $scale instead of $2"
 done
 
-# Clean RDP exit stops the VM and includes every requested channel.
+# Starting a stopped VM and a clean RDP exit both emit lifecycle notifications.
 : > "$calls"
+export WINDOWS_VM_TEST_STATE_FILE="$test_root/container-state"
+printf 'stopped\n' > "$WINDOWS_VM_TEST_STATE_FILE"
 WINDOWS_VM_TEST_SCALE=1.4 "$helper" launch > "$test_root/launch.out" 2>&1
 assert_contains "$calls" '+dynamic-resolution +f /clipboard /sound /microphone'
 assert_contains "$calls" '/scale:140'
 assert_contains "$calls" ' stop windows'
+assert_contains "$calls" 'Windows VM started'
+assert_contains "$calls" 'Windows VM stopped'
+
+# The explicit stop command also notifies only after Docker succeeds.
+: > "$calls"
+"$helper" stop > "$test_root/stop.out" 2>&1
+assert_contains "$calls" ' stop windows'
+assert_contains "$calls" 'Windows VM stopped'
 
 # Keep-alive and client failure both preserve the running VM.
 : > "$calls"
@@ -177,6 +196,8 @@ set -e
 
 assert_contains "$repo_root/hypr/.config/hypr/conf/keybinding.conf" \
   'bindd = $mainMod ALT, W, Windows VM, exec, $HOME/.local/bin/windows-vm launch'
+assert_contains "$repo_root/hypr/.config/hypr/conf/keybinding.conf" \
+  'bindd = $mainMod CTRL ALT, W, stop Windows VM, exec, $HOME/.local/bin/windows-vm stop'
 
 # Purge requires exact confirmation, deletes only managed defaults, and keeps Shared.
 default_config="$HOME/.config/windows"

@@ -29,6 +29,7 @@ opened with `SUPER+K`.
 | `SUPER+SHIFT+A` | web-app manager | Quickshell web-app panel |
 | `SUPER+W` | browser | `brave` |
 | `SUPER+ALT+W` | Windows VM | start/connect through `windows-vm launch` |
+| `SUPER+CTRL+ALT+W` | stop Windows VM | graceful stop through `windows-vm stop` |
 | `SUPER+SHIFT+ALT+W` | private browser window | XDG default browser's declared private action |
 | `SUPER+S` | Spotify | `spotify` |
 | `SUPER+O` | Obsidian | `obsidian` |
