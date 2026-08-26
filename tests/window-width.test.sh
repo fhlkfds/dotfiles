@@ -36,7 +36,7 @@ ACTIVE_WIDTH=1234 ACTIVE_HEIGHT=700 "$helper" save
   fail 'save did not persist the active width'
 
 ACTIVE_WIDTH=900 ACTIVE_HEIGHT=777 "$helper" restore
-grep -Fq -- 'dispatch resizeactive exact 1234 777' "$HYPRCTL_CALLS" ||
+grep -Fq -- 'dispatch hl.dsp.window.resize({ x = 1234, y = 777 })' "$HYPRCTL_CALLS" ||
   fail 'restore did not preserve the current height'
 
 printf 'not-a-width\n' > "$test_root/runtime/hypr-window-width"

@@ -49,7 +49,12 @@ is_terminal() {
 send() {
   # Target the window by address from the same activewindow query, so a focus
   # change between query and dispatch cannot deliver keys to the wrong app.
-  hyprctl dispatch sendshortcut "$1,address:$addr" >/dev/null
+  local shortcut="$1"
+  local mods="${shortcut%%,*}"
+  local key="${shortcut#*,}"
+  hyprctl dispatch \
+    "hl.dsp.send_shortcut({ mods = \"$mods\", key = \"$key\", window = \"address:$addr\" })" \
+    >/dev/null
 }
 
 # `info` reports the classification without dispatching anything -- handy when

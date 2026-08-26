@@ -157,6 +157,12 @@ def hypr_rgba(color: str, alpha: float = 1.0) -> str:
     return f"rgba({hex_no_hash(color)}{round(_clamp01(alpha) * 255):02x})"
 
 
+def degrees(value: str | int | float) -> float | int:
+    """Numeric angle for APIs that do not accept Hyprlang's `45deg` token."""
+    parsed = float(str(value).removesuffix("deg"))
+    return int(parsed) if parsed.is_integer() else parsed
+
+
 def rgba(color: str, alpha: float = 1.0) -> str:
     """Rofi's rgba(r, g, b, NN%) form."""
     r, g, b = _rgb(color)
@@ -487,7 +493,7 @@ def namespace(theme: Theme) -> dict[str, object]:
     # Helpers
     ns.update(
         rgba=rgba, css_rgba=css_rgba, hexa=hexa, hypr_rgba=hypr_rgba,
-        mix=mix, hex_no_hash=hex_no_hash, x256=x256,
+        mix=mix, hex_no_hash=hex_no_hash, x256=x256, degrees=degrees,
         contrast_ratio=contrast_ratio,
         json_str=lambda v: json.dumps(v),
         round=round, max=max, min=min, int=int, float=float, abs=abs,
@@ -646,12 +652,26 @@ def validate_zsh(path: Path) -> None:
         )
 
 
+def validate_lua(path: Path) -> None:
+    if not shutil.which("luac"):
+        _balanced_braces(path.read_text(), path.name)
+        return
+    proc = subprocess.run(
+        ["luac", "-p", str(path)], capture_output=True, text=True, timeout=15
+    )
+    if proc.returncode != 0:
+        raise ThemeError(
+            f"{path.name}: generated Lua has a syntax error: {proc.stderr.strip()}"
+        )
+
+
 VALIDATORS = {
     ".json": validate_json,
     ".css": validate_css,
     ".conf": validate_conf,
     ".rasi": validate_rasi,
     ".zsh": validate_zsh,
+    ".lua": validate_lua,
 }
 
 

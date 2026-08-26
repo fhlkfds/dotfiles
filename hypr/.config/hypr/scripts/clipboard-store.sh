@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Clipboard store filter, invoked by the wl-paste watchers in autostart.conf:
+# Clipboard store filter, invoked by the wl-paste watchers in autostart.lua:
 #
 #   wl-paste --type text  --watch .../clipboard-store.sh
 #   wl-paste --type image --watch .../clipboard-store.sh

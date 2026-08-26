@@ -103,8 +103,8 @@ launcher preserves the current working directory and passes agent arguments
 through unchanged.
 
 `SUPER + I` opens the configured default in the terminal defined by Hyprland's
-`$Terminal` variable. Change or remove that single binding in
-`hypr/.config/hypr/conf/keybinding.conf` to alter or disable it. It is not active
+`terminal` value from `conf/variables.lua`. Change or remove that binding in
+`hypr/.config/hypr/conf/keybindings.lua` to alter or disable it. It is not active
 until the relevant packages are stowed and Hyprland is reloaded by the user.
 
 ---
@@ -456,7 +456,7 @@ Notes worth knowing:
   own, e.g. `brave-youtube.com__-Default`. That is recorded as `wm_class` in the
   metadata and is what a per-app Hyprland rule has to match. Usefully it is never
   plain `brave-browser`, so the `workspace 2 silent` rule in
-  `windows-rules.conf` does not capture web apps.
+  `window_rules.lua` does not capture web apps.
 - **Icons** are normalised to PNG, because gdk-pixbuf here has no SVG or WebP
   loader and Rofi could not otherwise render them. Discovery prefers a declared
   `apple-touch-icon` or sized raster over an SVG favicon; if nothing is found, a

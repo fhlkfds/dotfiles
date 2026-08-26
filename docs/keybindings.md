@@ -1,10 +1,10 @@
 # Keybindings
 
 All bindings in this file come from
-`hypr/.config/hypr/conf/keybinding.conf` unless explicitly identified as browser
-extension commands. `$mainMod` resolves to `SUPER`.
+`hypr/.config/hypr/conf/keybindings.lua` unless explicitly identified as browser
+extension commands. The local `mod` value resolves to `SUPER`.
 
-Hyprland's `bindd` descriptions also feed the live Quickshell keybinding palette,
+Each binding's Lua `description` flag also feeds the live Quickshell keybinding palette,
 opened with `SUPER+K`.
 
 ## Session and general tools
@@ -35,10 +35,10 @@ opened with `SUPER+K`.
 | `SUPER+O` | Obsidian | `obsidian` |
 | `SUPER+R` | voice dictation | `hyprvoice toggle` |
 | `SUPER+SHIFT+H` | Hermes | `hermes` |
-| `SUPER+E` | Files | `nautilus` through `$FileManager` |
+| `SUPER+E` | Files | `nautilus` through `file_manager` |
 | `SUPER+SHIFT+E` | Files | same as `SUPER+E` |
 | `SUPER+SHIFT+ALT+F` | Files at terminal directory | `files-here.sh` |
-| `SUPER+SHIFT+D` | Disks | `gnome-disks` through `$Disks` |
+| `SUPER+SHIFT+D` | Disks | `gnome-disks` through `disks` |
 | `SUPER+CTRL+I` | network status panel | Quickshell IPC |
 | `SUPER+CTRL+W` | Wi-Fi/network manager | existing `kitty -e nmtui` action |
 | `SUPER+CTRL+A` | audio panel | Quickshell IPC |

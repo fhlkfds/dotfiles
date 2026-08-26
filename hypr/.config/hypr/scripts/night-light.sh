@@ -5,7 +5,7 @@
 #
 #   Super+Ctrl+N -> WARM_TEMP (1000K) -> COOL_TEMP (6500K) -> WARM_TEMP -> ...
 #
-# hyprsunset is started from conf/autostart.conf with an identity profile, so it
+# hyprsunset is started from conf/autostart.lua with an identity profile, so it
 # is normally already running and does nothing to the display until asked. This
 # script starts it anyway if it is missing, which makes the toggle work on a
 # fresh session or after a crash without needing a Hyprland reload.

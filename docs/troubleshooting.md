@@ -6,16 +6,16 @@ ordinary Hyprland/Wayland diagnostics.
 
 ## Hyprland configuration does not change
 
-1. Confirm `~/.config/hypr/hyprland.conf` resolves to
-   `hypr/.config/hypr/hyprland.conf` in this repository.
+1. Confirm `~/.config/hypr/hyprland.lua` resolves to
+   `hypr/.config/hypr/hyprland.lua` in this repository.
 2. Check that all seven sourced files shown in
    [Architecture](./architecture.md#active-hyprland-source-graph) exist.
-3. Generate a theme if `conf/decorations.conf` is absent.
+3. Generate a theme if `conf/decorations.lua` is absent.
 4. Inspect Hyprland's config error output before reloading.
 5. Remember that the monitor watcher and theme generator overwrite derived files.
 
-If a command containing `$scriptsDir` fails on a different account, replace the
-hardcoded `/home/liam` definition in `conf/var.conf`.
+If a command built from `scripts_dir` fails on a different account, replace the
+hardcoded `/home/liam` definition in `conf/variables.lua`.
 
 ## Quickshell bar or panels do not appear
 

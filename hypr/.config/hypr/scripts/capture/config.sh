@@ -10,7 +10,7 @@
 #     SCREENRECORD_FPS=30 capture.sh record start
 #
 # The capture KEY is not here: it is Hyprland syntax, not shell, and lives in
-# conf/var.conf as $captureKey.
+# conf/variables.lua as $captureKey.
 # =============================================================================
 
 # --- screenshots -------------------------------------------------------------

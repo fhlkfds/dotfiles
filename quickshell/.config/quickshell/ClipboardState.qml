@@ -4,7 +4,7 @@ import Quickshell.Io
 import QtQuick
 
 // Clipboard history, backed by the cliphist database that the wl-paste watchers
-// in autostart.conf already populate. No second clipboard daemon is started.
+// in autostart.lua already populate. No second clipboard daemon is started.
 //
 // cliphist has neither timestamps nor pinning, so both live in a small sidecar
 // index keyed by cliphist entry id, kept pruned against the live list.

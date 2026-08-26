@@ -311,7 +311,7 @@ def focus_app(entry: dict[str, Any]) -> bool:
     _, winner = max(ranked, key=lambda item: item[0])
     address = str(winner["address"])
     result = subprocess.run(
-        ["hyprctl", "dispatch", "focuswindow", f"address:{address}"],
+        ["hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{address}" }})'],
         capture_output=True, text=True, timeout=5, check=False,
     )
     return result.returncode == 0

@@ -43,7 +43,11 @@ lock_screen() {
 
 logout_session() {
   if command -v hyprctl >/dev/null 2>&1 && { [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] || pgrep -x Hyprland >/dev/null 2>&1; }; then
-    hyprctl dispatch exit
+    if command -v hyprshutdown >/dev/null 2>&1; then
+      hyprshutdown
+    else
+      hyprctl dispatch 'hl.dsp.exit()'
+    fi
   elif command -v swaymsg >/dev/null 2>&1 && pgrep -x sway >/dev/null 2>&1; then
     swaymsg exit
   else

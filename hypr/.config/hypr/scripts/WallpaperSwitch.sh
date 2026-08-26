@@ -3,7 +3,7 @@
 # Wallpaper picker for Hyprland:
 # - images -> hyprpaper
 # - videos -> mpvpaper
-# Autostart file: ~/.config/hypr/conf/autostart.conf
+# Autostart file: ~/.config/hypr/conf/autostart.lua
 
 set -euo pipefail
 
@@ -11,7 +11,7 @@ terminal=kitty
 wallDIR="$HOME/Pictures/wallpapers"
 SCRIPTSDIR="$HOME/.config/hypr/scripts"
 wallpaper_current="$HOME/.config/hypr/wallpaper_effects/.wallpaper_current"
-autostart_config="$HOME/.config/hypr/conf/autostart.conf"
+autostart_config="${HYPR_AUTOSTART_CONFIG:-$HOME/.config/hypr/conf/autostart.lua}"
 hyprpaper_conf="$HOME/.config/hypr/hyprpaper.conf"
 
 # Directory for swaync
@@ -79,58 +79,33 @@ trim_line() {
   printf '%s' "$s"
 }
 
-ensure_autostart_file() {
-  mkdir -p "$(dirname "$autostart_config")"
-  touch "$autostart_config"
-}
-
-comment_matching_lines() {
-  local regex="$1"
-  sed -i -E "/$regex/ { /^[[:space:]]*#/! s/^[[:space:]]*/# /; }" "$autostart_config"
-}
-
-uncomment_or_append_line() {
-  local regex="$1"
-  local line="$2"
-
-  if grep -qE "$regex" "$autostart_config"; then
-    sed -i -E "/$regex/ s/^[[:space:]]*#?[[:space:]]*//" "$autostart_config"
-  else
-    printf '\n%s\n' "$line" >> "$autostart_config"
-  fi
-}
-
-set_or_append_variable() {
-  local var_name="$1"
-  local value="$2"
-
-  if grep -qE "^[[:space:]]*\\$${var_name}=" "$autostart_config"; then
-    sed -i -E "s|^[[:space:]]*\\$${var_name}=.*|\\$${var_name}=\"$value\"|" "$autostart_config"
-  else
-    printf '\n$%s="%s"\n' "$var_name" "$value" >> "$autostart_config"
-  fi
-}
-
 modify_autostart_config() {
   local selected_file="$1"
-  local selected_file_home="${selected_file/#$HOME/\$HOME}"
+  local command begin_marker end_marker tmp
+  begin_marker="-- >>> legacy-wallpaper-picker >>>"
+  end_marker="-- <<< legacy-wallpaper-picker <<<"
 
-  ensure_autostart_file
+  mkdir -p "$(dirname "$autostart_config")"
+  touch "$autostart_config"
 
   if is_video_file "$selected_file"; then
-    comment_matching_lines 'exec-once[[:space:]]*=[[:space:]]*hyprpaper([[:space:]]|$)'
-    uncomment_or_append_line \
-      'exec-once[[:space:]]*=[[:space:]]*mpvpaper([[:space:]]|$)' \
-      'exec-once = mpvpaper "*" -o "load-scripts=no no-audio --loop" "$livewallpaper"'
-    set_or_append_variable "livewallpaper" "$selected_file_home"
+    command=$(printf 'mpvpaper "*" -o "load-scripts=no no-audio --loop" "%s"' "$selected_file" | jq -Rs .)
     echo "Configured autostart for live wallpaper (video)."
   else
-    uncomment_or_append_line \
-      'exec-once[[:space:]]*=[[:space:]]*hyprpaper([[:space:]]|$)' \
-      'exec-once = hyprpaper'
-    comment_matching_lines 'exec-once[[:space:]]*=[[:space:]]*mpvpaper([[:space:]]|$)'
+    command='"hyprpaper"'
     echo "Configured autostart for static wallpaper (image)."
   fi
+
+  tmp=$(mktemp "${autostart_config}.XXXXXX")
+  awk -v begin="$begin_marker" -v end="$end_marker" '
+    $0 == begin { skip = 1; next }
+    $0 == end { skip = 0; next }
+    !skip { print }
+  ' "$autostart_config" >"$tmp"
+  printf '\n%s\nhl.on("hyprland.start", function()\n    hl.exec_cmd(%s)\nend)\n%s\n' \
+    "$begin_marker" "$command" "$end_marker" >>"$tmp"
+  chmod --reference="$autostart_config" "$tmp" 2>/dev/null || true
+  mv -f "$tmp" "$autostart_config"
 }
 
 escape_for_hyprlang() {

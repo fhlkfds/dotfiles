@@ -63,7 +63,7 @@ grep -Fq -- $'webcam.sock\t640x360-20-60' "$WEBCAM_IPC_CALLS" ||
 WEBCAM_IPC_FAIL=1 "$record" webcam-size smaller
 [[ "$(<"$capture_runtime/webcam.size")" == small ]] ||
   fail 'Hyprland fallback did not update the size preset'
-grep -Fq -- "dispatch resizewindowpixel exact 320x180,pid:$$" \
+grep -Fq -- "dispatch hl.dsp.window.resize({ x = 320, y = 180, window = \"pid:$$\" })" \
   "$WEBCAM_HYPRCTL_CALLS" || fail 'failed IPC did not use the PID-scoped Hyprland fallback'
 
 rm -f "$capture_runtime/record.pid"

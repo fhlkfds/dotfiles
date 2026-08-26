@@ -392,13 +392,16 @@ Singleton {
     var scaleStr = s.toFixed(6).replace(/0+$/, "")
     if (scaleStr.charAt(scaleStr.length - 1) === ".")
       scaleStr += "0"
-    const spec = name + "," + mode + "," + pos + "," + scaleStr
+    const luaMonitor = 'hl.monitor({ output = "' + name
+                     + '", mode = "' + mode
+                     + '", position = "' + pos
+                     + '", scale = ' + scaleStr + ' })'
 
     root.scaleBusy = true
     root.lastError = ""
     scaleProc.command = ["sh", "-c",
       'set -e; ' +
-      'hyprctl keyword monitor "' + spec + '"; ' +
+      "hyprctl eval '" + luaMonitor + "'; " +
       '"$HOME/.config/hypr/scripts/set-monitor-scale.sh" ' + name + ' ' + scaleStr]
     scaleProc.running = true
   }

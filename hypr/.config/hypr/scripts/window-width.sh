@@ -50,7 +50,8 @@ case "$action" in
     IFS= read -r saved_width < "$state_file" || die "saved width is empty"
     [[ "$saved_width" =~ ^[1-9][0-9]*$ ]] || die "saved width is invalid"
     read -r _width height <<< "$(active_dimensions)"
-    "$hyprctl_command" dispatch resizeactive "exact $saved_width $height" >/dev/null ||
+    "$hyprctl_command" dispatch \
+      "hl.dsp.window.resize({ x = $saved_width, y = $height })" >/dev/null ||
       die "Hyprland rejected the saved width"
     ;;
   -h|--help|help)

@@ -180,7 +180,7 @@ Hypridle supplies automatic lock/DPMS/suspend timing; see
 
 ## Terminal and shell
 
-Kitty is `$Terminal`. `kitty/.config/kitty/kitty.conf` selects JetBrainsMono Nerd
+Kitty is the Hyprland `terminal` setting. `kitty/.config/kitty/kitty.conf` selects JetBrainsMono Nerd
 Font, 14-pixel window padding, background blur, powerline-style tabs, and includes
 the generated `theme/current-theme.conf`. Remote control is allowed on a
 per-process abstract Unix socket.

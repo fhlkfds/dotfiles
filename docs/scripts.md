@@ -106,9 +106,10 @@ and webcam discovery respectively.
 ### `auto-monitor-profile.sh`
 
 Inputs are live JSON from `hyprctl -j monitors`. It recognizes desktop, KVM, and
-laptop output signatures, copies profile files to active `monitors.conf` and
-`workspaces.conf`, reloads Hyprland, moves workspaces 1–15, and notifies. `--watch`
-polls every 15 seconds and `--force` reapplies an unchanged profile. See
+laptop output signatures, copies profile files to active `monitors.lua` and
+`workspaces.lua`, reloads Hyprland, moves workspaces 1–15, and notifies. `--watch`
+polls every 15 seconds, `--force` reapplies an unchanged profile, and
+`--dry-run` reports the selected Lua sources without writing or dispatching. See
 [Monitors](./monitors.md).
 
 This script modifies tracked/Stowed configuration and live compositor state. Test

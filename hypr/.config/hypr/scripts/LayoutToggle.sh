@@ -21,6 +21,6 @@ else
   next="master"
 fi
 
-hyprctl keyword general:layout "$next" >/dev/null
+hyprctl eval "hl.config({ general = { layout = \"$next\" } })" >/dev/null
 
 notify "Hyprland Layout" "Switched to $next"

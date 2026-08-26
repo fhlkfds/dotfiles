@@ -179,7 +179,11 @@ webcam_resize_via_hyprland() {
   local pid="$1" size="$2"
   local hyprctl_command=${WEBCAM_HYPRCTL:-hyprctl}
   command -v "$hyprctl_command" >/dev/null 2>&1 || return 1
-  "$hyprctl_command" dispatch resizewindowpixel "exact $size,pid:$pid" >/dev/null
+  local width=${size%x*}
+  local height=${size#*x}
+  "$hyprctl_command" dispatch \
+    "hl.dsp.window.resize({ x = $width, y = $height, window = \"pid:$pid\" })" \
+    >/dev/null
 }
 
 webcam_resize() {

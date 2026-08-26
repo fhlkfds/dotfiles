@@ -6,13 +6,13 @@ The repository uses [GNU Stow](https://www.gnu.org/software/stow/) packages. A
 path such as:
 
 ```text
-hypr/.config/hypr/hyprland.conf
+hypr/.config/hypr/hyprland.lua
 ```
 
 is intended to become:
 
 ```text
-~/.config/hypr/hyprland.conf
+~/.config/hypr/hyprland.lua
 ```
 
 when the `hypr` package is stowed from the repository root. The top-level
@@ -20,6 +20,20 @@ when the `hypr` package is stowed from the repository root. The top-level
 
 There is no `install.sh`, bootstrap program, Makefile, or complete package list.
 Package installation and system-level configuration therefore remain manual.
+
+### Greetd session entrypoint
+
+`system/greetd/config.toml` is the repository-owned system template. It launches
+the default Hyprland session through `/usr/bin/start-hyprland`, which supplies
+Hyprland's watchdog. This file is not a home-directory Stow package. Review the
+diff, then deploy it explicitly:
+
+```bash
+sudo install -Dm0644 system/greetd/config.toml /etc/greetd/config.toml
+```
+
+Do not restart greetd from inside the graphical session. Let the change take
+effect at the next reboot, or restart it deliberately from a TTY.
 
 On Arch Linux, install the deployment tool, clone into the path expected by the
 root README, and enter the repository:
@@ -164,8 +178,8 @@ it before publishing a derived configuration.
 ## Updating the deployment
 
 Edit the repository paths, not the live symlink targets. For example, change
-`hypr/.config/hypr/conf/keybinding.conf`, not
-`~/.config/hypr/conf/keybinding.conf`. Re-stow only when package topology changes;
+`hypr/.config/hypr/conf/keybindings.lua`, not
+`~/.config/hypr/conf/keybindings.lua`. Re-stow only when package topology changes;
 ordinary edits are immediately visible through existing symlinks.
 
 Restart/reload behavior is component-specific. See

@@ -58,7 +58,7 @@ def targets(prefix: Path) -> list[tuple[str, Path]]:
     pass can render everything somewhere harmless.
     """
     return [
-        ("hyprland-decorations.conf", prefix / "hypr/conf/decorations.conf"),
+        ("hyprland-decorations.lua",  prefix / "hypr/conf/decorations.lua"),
         ("quickshell-theme.json",     prefix / "hypr/themes/.active/theme.json"),
         ("waybar-colors.css",         prefix / "waybar/colors.css"),
         ("kitty-theme.conf",          prefix / "kitty/theme/current-theme.conf"),
@@ -115,7 +115,7 @@ def reload_apps(theme: tl.Theme, kitty_conf: Path) -> tuple[list[str], list[str]
     done: list[str] = []
     deferred: list[str] = []
 
-    # Hyprland re-reads decorations.conf, which it already sources.
+    # Hyprland re-reads decorations.lua, which it already requires.
     if shutil.which("hyprctl") and _run(["hyprctl", "reload"]):
         done.append("hyprland")
 

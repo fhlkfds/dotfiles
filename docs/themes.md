@@ -36,7 +36,7 @@ A theme selection renders coordinated output for:
 
 | Component | Generated destination |
 | --- | --- |
-| Hyprland | `hypr/.config/hypr/conf/decorations.conf` |
+| Hyprland | `hypr/.config/hypr/conf/decorations.lua` |
 | Quickshell | `hypr/.config/hypr/themes/.active/theme.json` |
 | Kitty | `kitty/.config/kitty/theme/current-theme.conf` |
 | Zsh | live `~/.config/zsh/current-theme.zsh` (not a tracked Stow path) |

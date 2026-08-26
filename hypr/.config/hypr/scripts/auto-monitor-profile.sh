@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_DIR="$HOME/.config/hypr"
-PROFILE_DIR="$CONFIG_DIR/monitor_profiles"
-MONITORS_FILE="$CONFIG_DIR/monitors.conf"
-WORKSPACES_FILE="$CONFIG_DIR/workspaces.conf"
+CONFIG_DIR="${HYPR_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/hypr}"
+PROFILE_DIR="${HYPR_PROFILE_DIR:-$CONFIG_DIR/monitor_profiles}"
+MONITORS_FILE="$CONFIG_DIR/monitors.lua"
+WORKSPACES_FILE="$CONFIG_DIR/workspaces.lua"
 STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/hypr-monitor-profile-${HYPRLAND_INSTANCE_SIGNATURE:-default}"
+HYPRCTL="${HYPRCTL:-hyprctl}"
 FORCE=0
+DRY_RUN=0
+WATCH=0
 
-if [[ "${1:-}" == "--force" ]]; then
-  FORCE=1
-fi
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=1 ;;
+    --dry-run) DRY_RUN=1 ;;
+    --watch) WATCH=1 ;;
+    *) printf 'usage: %s [--force] [--dry-run] [--watch]\n' "$(basename "$0")" >&2; exit 2 ;;
+  esac
+done
 
 has_monitor() {
   grep -Fxq "$1" <<<"$2"
@@ -18,7 +26,7 @@ has_monitor() {
 
 pick_profile() {
   local monitors
-  monitors="$(hyprctl -j monitors | jq -r '.[].name')"
+  monitors="$("$HYPRCTL" -j monitors | jq -r '.[].name')"
 
   if has_monitor DP-5 "$monitors" && has_monitor DP-7 "$monitors" && has_monitor DP-9 "$monitors"; then
     printf '%s\n' kvm
@@ -54,9 +62,9 @@ move_existing_workspaces() {
   while read -r id monitor; do
     target="$(workspace_monitor "$profile" "$id")"
     if [[ "$monitor" != "$target" ]]; then
-      hyprctl dispatch moveworkspacetomonitor "$id" "$target"
+      "$HYPRCTL" dispatch "hl.dsp.workspace.move({ workspace = $id, monitor = \"$target\" })"
     fi
-  done < <(hyprctl -j workspaces | jq -r '.[] | select(.id >= 1 and .id <= 15) | "\(.id) \(.monitor)"')
+  done < <("$HYPRCTL" -j workspaces | jq -r '.[] | select(.id >= 1 and .id <= 15) | "\(.id) \(.monitor)"')
 }
 
 apply_profile() {
@@ -67,20 +75,26 @@ apply_profile() {
     return
   fi
 
-  cp "$PROFILE_DIR/$profile.monitors.conf" "$MONITORS_FILE"
-  cp "$PROFILE_DIR/$profile.workspaces.conf" "$WORKSPACES_FILE"
+  if [[ "$DRY_RUN" == 1 ]]; then
+    printf 'profile=%s\nmonitors=%s\nworkspaces=%s\n' \
+      "$profile" "$PROFILE_DIR/$profile.monitors.lua" "$PROFILE_DIR/$profile.workspaces.lua"
+    return
+  fi
+
+  cp "$PROFILE_DIR/$profile.monitors.lua" "$MONITORS_FILE"
+  cp "$PROFILE_DIR/$profile.workspaces.lua" "$WORKSPACES_FILE"
   printf '%s\n' "$profile" >"$STATE_FILE"
-  hyprctl reload
+  "$HYPRCTL" reload
   move_existing_workspaces "$profile"
   if [[ "$profile" == desktop ]]; then
-    hyprctl dispatch focusmonitor HDMI-A-3
+    "$HYPRCTL" dispatch 'hl.dsp.focus({ monitor = "HDMI-A-3" })'
   fi
-  hyprctl notify -1 3000 "rgb(88c0d0)" "Loaded monitor profile: $profile"
+  "$HYPRCTL" notify -1 3000 "rgb(88c0d0)" "Loaded monitor profile: $profile"
 }
 
 apply_profile
 
-if [[ "${1:-}" == "--watch" ]]; then
+if [[ "$WATCH" == 1 && "$DRY_RUN" == 0 ]]; then
   while sleep 15; do
     apply_profile
   done

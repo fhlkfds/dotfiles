@@ -32,7 +32,7 @@ Hyprland
 ```
 
 The active process list comes from
-`hypr/.config/hypr/conf/autostart.conf`. Waybar, SwayNC, Wofi, and Noctalia are
+`hypr/.config/hypr/conf/autostart.lua`. Waybar, SwayNC, Wofi, and Noctalia are
 present in the repository but are not started by the current Hyprland config.
 
 ## Repository layout

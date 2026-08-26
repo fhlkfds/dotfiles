@@ -4,7 +4,7 @@ import Quickshell.Io
 import QtQuick
 
 // Keybindings palette, backed by the live `hyprctl binds` output rather than by
-// parsing keybinding.conf. The running compositor is the source of truth, so the
+// parsing keybindings.lua. The running compositor is the source of truth, so the
 // list can never drift from what the keys actually do.
 //
 // Rows are kept as structured records; the pretty "SUPER SHIFT + F" string is
@@ -326,7 +326,12 @@ Singleton {
       // Two shortcuts running exactly the same thing are one row with both
       // shortcuts. Matching descriptions alone never merge -- only identical
       // dispatcher and argument.
-      const actionKey = dispatcher + "|" + arg
+      // Lua bind arguments are ephemeral registry IDs, so identical described
+      // actions no longer share an `arg`. Description is the stable identity
+      // for the duplicate bindings deliberately declared in keybindings.lua.
+      const actionKey = dispatcher === "__lua"
+        ? dispatcher + "|" + description
+        : dispatcher + "|" + arg
       const existing = byAction[actionKey]
       if (existing !== undefined && !isMouse && !list[existing].mouse) {
         // When both use the same modifiers only the differing key is appended,
@@ -397,11 +402,18 @@ Singleton {
       pending.row = null
       if (!r)
         return
-      // `hyprctl dispatch exec` keeps Hyprland's own variable expansion and
-      // shell handling rather than re-implementing either here.
-      actionProc.command = r.arg === ""
-        ? ["hyprctl", "dispatch", r.dispatcher]
-        : ["hyprctl", "dispatch", r.dispatcher, r.arg]
+      // Lua binds are exposed as __lua plus a registry reference. Hyprland
+      // does not yet expose a public invoke-by-reference API, so validate the
+      // numeric reference and contain the current registry lookup here.
+      if (r.dispatcher === "__lua" && /^\d+$/.test(r.arg)) {
+        const code = "local action = debug.getregistry()[" + r.arg + "]; "
+                   + "assert(type(action) == 'function', 'invalid bind action'); action()"
+        actionProc.command = ["hyprctl", "eval", code]
+      } else {
+        actionProc.command = r.arg === ""
+          ? ["hyprctl", "dispatch", r.dispatcher]
+          : ["hyprctl", "dispatch", r.dispatcher, r.arg]
+      }
       actionProc.running = true
     }
   }

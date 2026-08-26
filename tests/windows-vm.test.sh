@@ -196,10 +196,10 @@ unknown_status=$?
 set -e
 [[ "$unknown_status" == 2 ]] || fail 'unknown launch option was accepted'
 
-assert_contains "$repo_root/hypr/.config/hypr/conf/keybinding.conf" \
-  'bindd = $mainMod ALT, W, Windows VM, exec, $HOME/.local/bin/windows-vm launch'
-assert_contains "$repo_root/hypr/.config/hypr/conf/keybinding.conf" \
-  'bindd = $mainMod CTRL ALT, W, stop Windows VM, exec, $HOME/.local/bin/windows-vm stop'
+assert_contains "$repo_root/hypr/.config/hypr/conf/keybindings.lua" \
+  'exec(mod .. " + ALT + W", "Windows VM", "$HOME/.local/bin/windows-vm launch")'
+assert_contains "$repo_root/hypr/.config/hypr/conf/keybindings.lua" \
+  'exec(mod .. " + CTRL + ALT + W", "stop Windows VM", "$HOME/.local/bin/windows-vm stop")'
 
 # Purge requires exact confirmation, deletes only managed defaults, and keeps Shared.
 default_config="$HOME/.config/windows"

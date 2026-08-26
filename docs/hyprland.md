@@ -2,41 +2,41 @@
 
 ## Entry point and variables
 
-The entry point is `hypr/.config/hypr/hyprland.conf`; its source graph is shown in
+The entry point is `hypr/.config/hypr/hyprland.lua`; its source graph is shown in
 [Architecture](./architecture.md#active-hyprland-source-graph).
 
-`hypr/.config/hypr/conf/var.conf` defines:
+The retained `hyprland.conf` and its sourced modules are a transition fallback
+for the session that was running during migration. They are not the preferred
+entry point for a fresh login.
+
+`hypr/.config/hypr/conf/variables.lua` defines:
 
 | Variable | Value | Use |
 | --- | --- | --- |
-| `$scriptsDir` | `/home/liam/.config/hypr/scripts` | script bindings and startup |
-| `$Terminal` | `kitty` | terminal bindings |
-| `$Browser` | `brave` | declared browser preference |
-| `$FileManager` | `nautilus` | file-manager bindings |
-| `$Disks` | `gnome-disks` | disk utility binding |
+| `scripts_dir` | `/home/liam/.config/hypr/scripts` | script bindings and startup |
+| `terminal` | `kitty` | terminal bindings |
+| `browser` | `brave` | declared browser preference |
+| `file_manager` | `nautilus` | file-manager bindings |
+| `disks` | `gnome-disks` | disk utility binding |
 
 The current browser binding invokes `brave` literally rather than using
-`$Browser`. Changing the variable alone therefore does not change `SUPER+W`.
-
-`hyprland.conf` also defines `$ipc = qs -c noctalia-shell ipc call` twice with the
-same value. No active binding uses that variable, and Noctalia startup is
-commented; the duplicate is harmless but stale/confusing.
+`browser`. Changing the variable alone therefore does not change `SUPER+W`.
 
 ## Monitors
 
 The main file supplies a fallback:
 
-```text
-monitor = , preferred, auto, 1
+```lua
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
 ```
 
-and then sources the more specific `monitors.conf`. A startup watcher selects one
+and then sources the more specific `monitors.lua`. A startup watcher selects one
 of three hardware profiles and updates both monitor and workspace files. See
 [Monitors and workspaces](./monitors.md).
 
 ## Input and gestures
 
-The active settings in `hyprland.conf` are:
+The active settings in `hyprland.lua` are:
 
 - US keyboard layout.
 - Pointer focus follows the mouse (`follow_mouse = 1`).
@@ -56,7 +56,7 @@ No cursor theme is selected in the tracked Hyprland files.
 ## Appearance
 
 Hyprland appearance is sourced from generated
-`hypr/.config/hypr/conf/decorations.conf`. Its durable inputs are the theme
+`hypr/.config/hypr/conf/decorations.lua`. Its durable inputs are the theme
 palettes and `style` section in
 `hypr/.config/hypr/themes/<theme>/colors.toml`.
 
@@ -72,13 +72,13 @@ Hyprland defaults.
 
 ## Startup behavior
 
-`hypr/.config/hypr/conf/autostart.conf` contains the active `exec-once` commands.
-Hyprland starts them without an enforced ordering dependency between independent
-lines, so this is a functional grouping rather than a guaranteed serial timeline.
+`hypr/.config/hypr/conf/autostart.lua` registers the active commands on
+`hyprland.start`. `hl.exec_cmd()` starts them asynchronously, so this is a
+functional grouping rather than a guaranteed serial timeline.
 
 | Program / script | Purpose |
 | --- | --- |
-| `hyprpaper` | static wallpaper service |
+| `hypr-wallpaper-picker restore` | restore wallpaper state and start Hyprpaper |
 | two `wl-paste --watch` processes | capture text and image clipboard changes |
 | `quickshell` | active bar, panels, notifications, clipboard UI, OSD |
 | `hypridle` | lock, display power, and suspend policy |
@@ -93,12 +93,11 @@ lines, so this is a functional grouping rather than a guaranteed serial timeline
 | `udiskie --automount --notify --no-tray` | removable-media automounting |
 | `hyprsunset` | color-temperature service |
 
-SwayNC and Noctalia startup lines are comments. They are not part of the active
-session.
+SwayNC and Noctalia are not started by this module.
 
 ## Window rules
 
-Rules are defined in `hypr/.config/hypr/conf/windows-rules.conf`.
+Rules are defined in `hypr/.config/hypr/conf/window_rules.lua`.
 
 ### General floating behavior
 
@@ -116,9 +115,6 @@ Rules are defined in `hypr/.config/hypr/conf/windows-rules.conf`.
 | virt-manager | workspace 6 |
 | `org.kde.neochat` | workspace 7 |
 | Spotify | workspace 9 |
-
-Firefox, file-picker, and Kitty examples are present only as comments and do not
-apply.
 
 ## Workspace behavior
 

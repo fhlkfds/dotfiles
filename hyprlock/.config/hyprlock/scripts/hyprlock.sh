@@ -8,11 +8,11 @@ if [[ "$(playerctl -p spotify status 2>/dev/null)" == "Playing" ]]; then
     sleep 0.6
 
     # Focus Glava window
-    hyprctl dispatch focuswindow class:glava
+    hyprctl dispatch 'hl.dsp.focus({ window = "class:glava" })'
     sleep 0.1
 
     # Fullscreen focused window
-    hyprctl dispatch fullscreen 
+    hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "fullscreen" })'
 
     # Lock screen
     hyprlock --config ~/.config/hyprlock/music.conf

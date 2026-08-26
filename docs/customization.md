@@ -7,12 +7,12 @@ targets below `$HOME`.
 
 | Goal | Edit |
 | --- | --- |
-| change terminal/file manager/disk utility | `hypr/.config/hypr/conf/var.conf` |
-| change browser binding | literal `brave` command in `hypr/.config/hypr/conf/keybinding.conf` |
-| change main modifier or shortcuts | `hypr/.config/hypr/conf/keybinding.conf` |
-| add startup programs | `hypr/.config/hypr/conf/autostart.conf` |
-| change app workspace assignments | `hypr/.config/hypr/conf/windows-rules.conf` |
-| change input behavior | `hypr/.config/hypr/hyprland.conf` |
+| change terminal/file manager/disk utility | `hypr/.config/hypr/conf/variables.lua` |
+| change browser binding | literal `brave` command in `hypr/.config/hypr/conf/keybindings.lua` |
+| change main modifier or shortcuts | `hypr/.config/hypr/conf/keybindings.lua` |
+| add startup programs | `hypr/.config/hypr/conf/autostart.lua` |
+| change app workspace assignments | `hypr/.config/hypr/conf/window_rules.lua` |
+| change input behavior | `hypr/.config/hypr/hyprland.lua` |
 | change monitors/workspace outputs | files under `hypr/.config/hypr/monitor_profiles/` |
 | change lock/DPMS/suspend timers | `hypr/.config/hypr/hypridle.conf` |
 | change active lock layout | `hypr/.config/hypr/hyprlock.conf` and `hyprlock/.config/hyprlock/layouts/` |
@@ -25,7 +25,7 @@ targets below `$HOME`.
 
 ## Applications
 
-`$Terminal`, `$FileManager`, and `$Disks` are variables. `$Browser` is declared
+`terminal`, `file_manager`, and `disks` are variables. `browser` is declared
 but the active `SUPER+W` binding and autostart use `brave` explicitly, so update
 all intended browser references. Browser extensions also require browser-specific
 flag/native-host installation.
@@ -35,18 +35,18 @@ line's requested workspace and any matching window rule if both exist.
 
 ## Keybindings
 
-Add a described binding (`bindd`, `binded`, and related forms) so Quickshell's
-live keybinding palette can display a useful action label. Check for duplicate
+Add a binding through the local `bind()`/`exec()` helpers so Quickshell's live
+keybinding palette receives a useful `description`. Check for duplicate
 key/modifier pairs; the volume section demonstrates that duplicate registrations
 can shadow later alternatives.
 
-Custom script commands should resolve through `$scriptsDir` when possible. That
+Custom script commands should resolve through `scripts_dir` when possible. That
 variable is currently an absolute personal path, so make it account-portable
 before reusing it.
 
 ## Monitors and workspaces
 
-Do not make lasting edits only to `monitors.conf` or `workspaces.conf`; the startup
+Do not make lasting edits only to `monitors.lua` or `workspaces.lua`; the startup
 watcher replaces them. Customize the paired profile files and detection logic as
 described in [Monitors](./monitors.md#customizing-safely).
 
@@ -86,7 +86,7 @@ the theme asset resolver if a palette should choose a particular image.
 Edit `hypr/.config/hypr/themes/<name>/colors.toml` for palette-specific changes.
 Edit `generate.py` or its templates only for changes that should affect every
 palette. Then validate and regenerate. Never commit a change only to ignored
-`decorations.conf`, `colors.css`, or current-theme files.
+`decorations.lua`, `colors.css`, or current-theme files.
 
 Rofi's structural layout is in `comet-glass.rasi`; Wofi and Waybar styles are
 generated from themes. Cursor theme and GTK/Qt themes are not managed here, so add
