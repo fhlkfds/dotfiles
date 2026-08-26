@@ -14,7 +14,7 @@ One top-layer bar is created per screen. Its active layout is:
 | --- | --- |
 | Left | Arch/dashboard button, fixed workspace cells 1–10 |
 | Center | MPRIS media display |
-| Right | display, network, Bluetooth, audio, recording status, DND status, clipboard, clock |
+| Right | display, network, Bluetooth, audio, recording status, desktop-mode status, clipboard, clock |
 
 Workspace buttons switch to their numbered workspace. Other interactions include:
 
@@ -25,7 +25,8 @@ Workspace buttons switch to their numbered workspace. Other interactions include
 - Bluetooth: enable/disable, scan, pair, connect, and disconnect devices.
 - Audio: panel on left/middle click, mute on right click, 3% wheel adjustment.
 - Recording indicator: appears while recording and stops it when clicked.
-- DND indicator: appears only while DND is enabled and disables it on click.
+- Desktop-mode indicators: active night light, DND, stay-awake,
+  automatic-screensaver-disabled, and error states; click to open the modes panel.
 - Clipboard: clipboard-history panel.
 - Clock: calendar on left click, time-format cycle on right click, timezone cycle
   on middle click.
@@ -177,6 +178,15 @@ profile image, so inspect a layout before enabling it.
 
 Hypridle supplies automatic lock/DPMS/suspend timing; see
 [Hyprland](./hyprland.md#lock-idle-and-power-behavior).
+
+## ASCII screensaver
+
+The `screensaver/` package is a presentation-only component. A dedicated
+screensaver scheduler runs a second, narrowly scoped Hypridle process with one
+listener; it starts the terminal coordinator after the configured screensaver
+delay and stops it on resumed input. The primary Hypridle process continues to
+own locking, DPMS, and suspend without sharing configuration or state with the
+screensaver. See [ASCII screensaver](./screensaver.md).
 
 ## Terminal and shell
 

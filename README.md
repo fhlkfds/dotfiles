@@ -30,13 +30,15 @@ Each top-level directory is a Stow package. Run `stow <package>` to symlink its 
 **Deploy everything at once:**
 
 ```bash
-stow ai browser fastfetch hypr hyprlock kitty noctalia quickshell rofi swaync windows Wallpapers wofi zsh
+stow ai browser fastfetch hypr hyprlock kitty modes noctalia quickshell rofi screensaver swaync windows Wallpapers wofi zsh
 ```
 
 **Or deploy packages individually:**
 
 ```bash
 stow ai          # ~/.local/bin/ai-agent, ~/.config/ai-agent
+stow screensaver # ~/.local/bin/ascii-screensaver, config, runtime modules
+stow modes       # ~/.local/bin/desktop-mode, temporary mode policy/config
 stow browser     # Chromium extensions, flags, and native messaging hosts
 stow hypr        # ~/.config/hypr
 stow hyprlock    # ~/.config/hyprlock
@@ -50,6 +52,44 @@ stow quickshell  # ~/.config/quickshell
 stow windows     # Windows VM helper, Compose template, and application entry
 stow zsh         # ~/.zshrc, ~/.p10k.zsh, ~/.oh-my-zsh
 ```
+
+## ASCII Screensaver
+
+The independent `screensaver` package runs an original animated terminal scene
+on each active Hyprland monitor. It does not lock, inhibit idle, change display
+power, suspend, authenticate, or publish a bar indicator.
+
+```bash
+ascii-screensaver start                 # manual fullscreen launch
+ascii-screensaver start --dry-run       # no windows; show monitor assignments
+ascii-screensaver auto enable           # permit automatic idle activation
+ascii-screensaver auto disable          # prevent it and stop a running scene
+ascii-screensaver doctor                # config, timing, and dependency report
+```
+
+Automatic activation defaults to 300 seconds. The existing independent lock
+timer remains 660 seconds in `hypr/.config/hypr/hypridle.conf`; deploying this
+package does not rewrite that policy. See [the complete screensaver guide](docs/screensaver.md)
+for configuration, logo conversion, terminal support, troubleshooting, and
+recovery.
+
+## Desktop Modes
+
+The independent `modes` package unifies night light, Quickshell DND,
+stay-awake, and automatic-screensaver state without owning lock, suspend, DPMS,
+or authentication policy.
+
+```bash
+desktop-mode status
+desktop-mode enable stay-awake --for 30m
+desktop-mode toggle do-not-disturb
+desktop-mode action screensaver
+desktop-mode doctor --json
+```
+
+Open the Quickshell panel with `SUPER+ALT+M`. See the
+[desktop modes guide](docs/desktop-modes.md) for boundaries, timers, recovery,
+and all commands.
 
 **Wallpapers** (optional — symlinks `~/Wallpapers`):
 

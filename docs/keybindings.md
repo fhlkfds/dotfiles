@@ -102,6 +102,10 @@ The implementation and optional features are described in
 | `SUPER+CTRL+SHIFT+Space` | open the same theme picker |
 | `SUPER+SHIFT+W` | open wallpaper picker/search |
 | `SUPER+CTRL+N` | toggle night light between 1000 K and 6500 K |
+| `SUPER+ALT+M` | open desktop modes panel |
+| `SUPER+SHIFT+I` | toggle selective stay-awake |
+| `SUPER+CTRL+Escape` | start the ASCII screensaver immediately |
+| `SUPER+CTRL+,` | toggle Quickshell Do Not Disturb |
 
 ## Workspaces
 

@@ -25,6 +25,8 @@ can run without it, but that feature cannot.
 | `cliphist` | required for history | startup watchers and panel |
 | `libnotify` / `notify-send` | required by several scripts | desktop feedback |
 | Python 3.11+ | required by generated/theme/backends | theme, wallpaper, web apps, notification helper |
+| `ascii-screensaver` package | optional configured autostart | terminal screensaver scheduler/runtime |
+| `desktop-mode` package | configured mode controls | night light, DND, selective stay-awake, mode panel |
 | `curl` | active network helpers | wallpaper, lyrics, weather, art |
 | `playerctl` | media integration | bindings and Spotify/lock helpers |
 | `udiskie` | configured startup tool | removable media |
@@ -86,6 +88,14 @@ Run `capture.sh doctor` for the suite's own availability report.
 | `ddcutil` | external-monitor brightness |
 | `hyprctl` | output discovery, profile application, scale changes |
 | `systemd`/`loginctl` | suspend and pre-sleep lock behavior |
+
+### ASCII screensaver
+
+The screensaver requires Python 3.11+, Hypridle, Hyprland IPC, and at least one
+supported terminal (Kitty, Foot, Ghostty, or Alacritty) for multi-monitor
+fullscreen use. ImageMagick's `magick` command is optional and used only by the
+PNG/SVG conversion subcommand. The renderer and scheduler use no network
+services and install no packages automatically.
 
 ### Windows VM
 

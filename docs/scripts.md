@@ -164,6 +164,8 @@ wallpaper. See [Themes](./themes.md).
 | Tool | Purpose and state |
 | --- | --- |
 | `hypr/.local/bin/notificationctl` | IPC client for dismiss, DND, action, history, and status operations against Quickshell |
+| `modes/.local/bin/desktop-mode` | unified temporary-mode status, transitions, timed activation, diagnostics, and screensaver action |
+| `screensaver/.local/bin/ascii-screensaver` | renderer, monitor coordinator, idle scheduler, diagnostics, and image conversion |
 | `hypr/.local/bin/webapp` | create/remove browser-style web application launchers |
 | `hypr/.local/bin/webapp-launch` | launch a stored web app with the configured browser profile/options |
 

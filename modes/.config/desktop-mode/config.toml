@@ -1,0 +1,10 @@
+warm_temperature = 1000
+normal_temperature = 6500
+maximum_duration_seconds = 86400
+duration_presets = ["15m", "30m", "1h"]
+reconcile_seconds = 2.0
+
+# These are argv arrays, not shell strings. Override them only when the
+# corresponding Stow package is installed somewhere non-standard.
+notification_command = ["notificationctl"]
+screensaver_command = ["ascii-screensaver"]

@@ -1,0 +1,36 @@
+# Automatic activation is checked by the dedicated scheduler. Manual `start`
+# always remains available.
+automatic_enabled = true
+idle_seconds = 300
+
+# Documentation/diagnostic boundary only. Locking remains owned by the existing
+# Hypridle configuration; this command never starts or changes Hyprlock.
+lock_handoff_seconds = 660
+
+# auto tries Kitty, Foot, Ghostty, then Alacritty. Use plain only for a
+# single-monitor foreground fallback.
+terminal = "auto"
+frame_delay = 0.12
+effect_frames = 80
+# seed = 12345
+
+ascii_width = 96
+ascii_height = 32
+glyphs = ".:+*#%@"
+colors = ["#89b4fa", "#a6e3a1", "#cba6f7"]
+ansi = true
+logo_path = "~/.config/ascii-screensaver/logo.txt"
+
+# Empty means every active monitor. Example: ["eDP-1", "DP-1"]
+monitor_selection = []
+
+[terminal_args]
+kitty = ["--override", "background_opacity=1.0"]
+foot = []
+ghostty = []
+alacritty = []
+
+# Optional examples:
+# [monitor."eDP-1"]
+# enabled = false
+# terminal = "foot"

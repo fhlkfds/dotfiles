@@ -95,6 +95,13 @@ Scope {
     }
   }
 
+  IpcHandler {
+    target: "modes"
+    function toggle(): void {
+      ModesState.togglePanel(bar.focusedScreen())
+    }
+  }
+
   // The keybindings palette is a fullscreen overlay rather than a bar-anchored
   // popup, so it gets its own per-screen instance instead of living inside a
   // bar widget. Only the one on the focused monitor ever becomes visible.
@@ -138,6 +145,16 @@ Scope {
     model: Quickshell.screens
 
     WebAppPanel {
+      required property var modelData
+      screen: modelData
+      ownerScreen: modelData.name
+    }
+  }
+
+  Variants {
+    model: Quickshell.screens
+
+    ModesPanel {
       required property var modelData
       screen: modelData
       ownerScreen: modelData.name
@@ -216,8 +233,9 @@ Scope {
         // Only rendered while a screen recording is running.
         RecordIcon { barScale: panel.barScale }
 
-        // Only rendered while Do Not Disturb is on; hidden the rest of the time.
-        NotifyIcon { barScale: panel.barScale }
+        // Active temporary modes share one controller and open one focused-
+        // monitor panel; notification history remains owned by NotifyState.
+        ModeIndicators { screenName: panel.modelData.name; barScale: panel.barScale }
 
         ClipboardIcon {
           screenName: panel.modelData.name

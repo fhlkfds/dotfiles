@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_path=$(readlink -f -- "${BASH_SOURCE[0]}")
+script_dir=$(cd -- "$(dirname -- "$script_path")" && pwd)
+library_dir=${ASCII_SCREENSAVER_LIB:-"$script_dir/../share/ascii-screensaver"}
+
+if [[ ! -r "$library_dir/ascii_screensaver/__main__.py" ]]; then
+  printf 'ascii-screensaver: runtime not found at %s\n' "$library_dir" >&2
+  exit 1
+fi
+
+export PYTHONPATH="$library_dir${PYTHONPATH:+:$PYTHONPATH}"
+export ASCII_SCREENSAVER_EXECUTABLE=${ASCII_SCREENSAVER_EXECUTABLE:-$script_path}
+exec python3 -m ascii_screensaver "$@"

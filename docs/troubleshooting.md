@@ -30,6 +30,8 @@ Panel-specific failures often indicate a missing external command:
 - clipboard: `cliphist`, `wl-paste`, and `wl-copy`;
 - keybinding palette: a responsive `hyprctl` socket;
 - weather/lyrics/wallpaper: network access to the relevant public API.
+- desktop modes: run `desktop-mode doctor --json`; the panel intentionally
+  reports unavailable backends rather than claiming a toggle succeeded.
 
 Starting Waybar will not repair Quickshell panels. Conversely, editing Waybar's
 JSON/CSS does not change the active bar.
@@ -40,6 +42,19 @@ Use `notificationctl status --json` to determine whether the Quickshell service 
 reachable and whether DND is enabled. Check that no second notification daemon is
 competing for `org.freedesktop.Notifications`; SwayNC should remain stopped in the
 current architecture.
+
+## Screensaver does not cover the requested monitor
+
+Run `ascii-screensaver start --dry-run` and confirm that every active output has
+one assignment. Monitor names must exactly match `hyprctl -j monitors`. The
+coordinator focuses the exact app-address, moves it with `movewindow mon:NAME`,
+then applies true fullscreen. Use `ascii-screensaver stop` to clear an interrupted
+session; it does not touch lock or power policy.
+
+If the scene immediately closes without input, verify the installed files match
+this repository: pointer tracking is deliberately armed after window placement
+to ignore compositor-generated startup motion while keyboard exit is active
+immediately.
 
 Notification state is under
 `$XDG_STATE_HOME/hyprland-desktop/notifications` or

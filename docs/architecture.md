@@ -34,11 +34,14 @@ Hyprland `hyprland.start` event
 │   ├── dashboard/network/audio/media/display panels
 │   ├── freedesktop notification service
 │   ├── cliphist browser
-│   └── video-download OSD
+│   ├── video-download OSD
+│   └── desktop-mode panel and observed-state indicators
 ├── wl-paste watchers → clipboard-store.sh → cliphist
 ├── hyprpaper ← wallpaper picker / theme tool
-├── hypridle → hyprlock, DPMS, system suspend
-├── hyprsunset ← night-light-toggle.sh
+├── hypridle → conditional idle lock, DPMS, system suspend
+├── ascii-screensaver schedule → dedicated Hypridle → fullscreen renderers
+├── desktop-mode daemon → timed modes and backend reconciliation
+├── hyprsunset ← desktop-mode night-light adapter
 ├── spotify-notify.sh ← playerctl
 ├── auto-monitor-profile.sh → monitors.lua/workspaces.lua → hyprctl
 └── desktop applications assigned to workspaces by rules
@@ -143,6 +146,10 @@ Runtime state also lives outside Git, mainly below `$XDG_RUNTIME_DIR`,
 watcher state, notification history, wallpaper search previews, clipboard data,
 and capture recording state.
 
+Desktop-mode state is specifically session-only under
+`$XDG_RUNTIME_DIR/hyprland-desktop/modes`; the screensaver's automatic override
+is the intentional persistent exception under `$XDG_STATE_HOME/ascii-screensaver`.
+
 The optional Windows VM additionally keeps its launch lock and ephemeral
 credential environment under `$XDG_RUNTIME_DIR/windows-vm-$UID`. Credentials are
 removed after each Compose invocation; persistent credentials remain mode 0600
@@ -154,6 +161,8 @@ under `~/.config/windows`.
 | --- | --- | --- |
 | Quickshell | Active | `hl.exec_cmd("quickshell")` |
 | Hyprpaper, Hypridle, Hyprsunset | Active | `conf/autostart.lua` |
+| ASCII screensaver scheduler | Active when package is deployed | `conf/autostart.lua` |
+| Desktop-mode daemon | Active when package is deployed | `conf/autostart.lua` |
 | Rofi | Active on demand | `SUPER+A` and helper scripts |
 | Kitty | Active/default terminal | `conf/variables.lua` |
 | Waybar | Retained alternative | no active startup command |
@@ -177,6 +186,8 @@ honor feature-specific variables:
 | `AI_AGENT_DEFAULT`, `AI_AGENT_CONFIG` | default AI CLI and config path |
 | `XDG_RUNTIME_DIR` | transient locks, sockets, and monitor/capture state |
 | `XDG_STATE_HOME` | notification state, with `~/.local/state` fallback |
+| `DESKTOP_MODE_CONFIG`, `DESKTOP_MODE_RUNTIME_DIR` | mode configuration and fixture/runtime overrides |
+| `ASCII_SCREENSAVER_CONFIG`, `ASCII_SCREENSAVER_MONITORS_JSON` | screensaver configuration and fixture monitor data |
 | `SCREENSHOT_DIR`, `SCREENRECORD_DIR` | capture output directories |
 
 The capture suite exposes further tuning variables documented in

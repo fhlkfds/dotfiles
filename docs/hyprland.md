@@ -82,6 +82,8 @@ functional grouping rather than a guaranteed serial timeline.
 | two `wl-paste --watch` processes | capture text and image clipboard changes |
 | `quickshell` | active bar, panels, notifications, clipboard UI, OSD |
 | `hypridle` | lock, display power, and suspend policy |
+| `ascii-screensaver schedule` | presentation-only idle listener; no lock or power actions |
+| `desktop-mode daemon` | session mode expiry and backend reconciliation |
 | `spotify-notify.sh` | player change notifications |
 | `auto-monitor-profile.sh --watch` | select/apply the connected-output profile |
 | `brave` | browser, assigned to workspace 2 |
@@ -130,13 +132,25 @@ See [Keybindings](./keybindings.md#workspaces) and
 
 | Idle time | Action |
 | --- | --- |
-| 660 seconds | start Hyprlock if it is not already running |
+| 660 seconds | lock the session unless selective stay-awake is active |
 | 1,200 seconds | turn displays off with DPMS; restore them on activity |
 | 1,800 seconds | suspend the system through `systemctl` |
 
 Before system sleep it locks the login session; after resume it turns displays
 back on. `inhibit_sleep = 3` is also set. `SUPER+L` provides immediate manual
 locking.
+
+The separate `ascii-screensaver schedule` autostart command creates a runtime
+Hypridle configuration containing only the screensaver timeout and input-resume
+stop action. Its default 300-second delay and user-controlled enabled state are
+documented in [ASCII screensaver](./screensaver.md). It does not source or alter
+the primary policy above.
+
+Both lock and screensaver listeners use five-second conditional retries while
+stay-awake is active. The condition is not attached to DPMS, suspend, or
+before-sleep locking. Missing or malformed mode configuration permits locking
+rather than weakening the security boundary. See
+[Desktop modes](./desktop-modes.md).
 
 The active lock wrapper is `hypr/.config/hypr/hyprlock.conf`. It sources generated
 colors and `layouts/hyprlock.conf` from the `hyprlock` package, which provides a
@@ -150,5 +164,6 @@ not preload a fixed wallpaper. The theme tool or wallpaper picker supplies the
 image.
 
 Hyprsunset starts with an identity configuration. `SUPER+CTRL+N` runs
-`night-light-toggle.sh`, switching between 1000 K and 6500 K and notifying the
-user.
+`desktop-mode toggle night-light`, switching between 1000 K and 6500 K through
+the same observed-state backend used by Quickshell. The retained
+`night-light.sh` path is a compatibility wrapper.

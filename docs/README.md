@@ -21,10 +21,13 @@ Hyprland
 │   ├── dashboard and control panels
 │   ├── notifications
 │   ├── clipboard history
-│   └── browser-download progress OSD
+│   ├── browser-download progress OSD
+│   └── desktop-mode controls and observed-state indicators
 ├── Rofi application launcher
 ├── Hyprpaper wallpaper service
 ├── Hypridle → Hyprlock / DPMS / suspend
+├── ASCII screensaver scheduler → fullscreen terminal renderers
+├── desktop-mode daemon → timed night-light/DND/stay-awake reconciliation
 ├── Hyprsunset night light
 ├── Kitty terminal
 ├── profile-driven monitor configuration
@@ -43,6 +46,8 @@ below `$HOME`.
 | Package | Main purpose |
 | --- | --- |
 | `hypr/` | Hyprland config, monitor profiles, scripts, capture suite, themes |
+| `screensaver/` | ASCII renderer, terminal coordinator, idle scheduler, editable assets |
+| `modes/` | temporary desktop-mode CLI, state, adapters, and expiry daemon |
 | `quickshell/` | Active bar, panels, notification daemon, clipboard, OSD |
 | `hyprlock/` | Lock-screen layouts, generated colors, lock helpers |
 | `browser/` | Chromium extensions and native hosts for URL copy/video download |
@@ -61,6 +66,8 @@ below `$HOME`.
 - [Installation and deployment](./installation.md)
 - [Architecture and configuration graph](./architecture.md)
 - [Hyprland configuration](./hyprland.md)
+- [ASCII screensaver](./screensaver.md)
+- [Desktop modes and stay-awake](./desktop-modes.md)
 - [Keybindings](./keybindings.md)
 - [Monitors and workspaces](./monitors.md)
 - [Desktop components](./components.md)

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_path=$(readlink -f -- "${BASH_SOURCE[0]}")
+script_dir=$(cd -- "$(dirname -- "$script_path")" && pwd)
+library_dir=${DESKTOP_MODE_LIB:-"$script_dir/../share/desktop-mode"}
+
+if [[ ! -r "$library_dir/desktop_mode.py" ]]; then
+  printf 'desktop-mode: runtime not found at %s\n' "$library_dir" >&2
+  exit 1
+fi
+
+export PYTHONPATH="$library_dir${PYTHONPATH:+:$PYTHONPATH}"
+export DESKTOP_MODE_EXECUTABLE=${DESKTOP_MODE_EXECUTABLE:-$script_path}
+exec python3 -m desktop_mode "$@"

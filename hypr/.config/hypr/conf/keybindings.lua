@@ -37,13 +37,16 @@ exec(mod .. " + CTRL + A", "toggle audio panel", "quickshell ipc call audio togg
 exec(mod .. " + CTRL + B", "toggle Bluetooth panel", "quickshell ipc call bluetooth toggle")
 exec(mod .. " + CTRL + W", "manage Wi-Fi and network", "quickshell ipc call network manage")
 exec(mod .. " + CTRL + SHIFT + SPACE", "theme picker", "quickshell ipc call theme toggle")
-exec(mod .. " + CTRL + N", "night light", cfg.scripts_dir .. "/night-light.sh toggle")
+exec(mod .. " + CTRL + N", "night light", "$HOME/.local/bin/desktop-mode toggle night-light")
 
 exec(mod .. " + comma", "dismiss newest notification", "$HOME/.local/bin/notificationctl dismiss-one")
 exec(mod .. " + SHIFT + comma", "dismiss all notifications", "$HOME/.local/bin/notificationctl dismiss-all")
-exec(mod .. " + CTRL + comma", "toggle do not disturb", "$HOME/.local/bin/notificationctl dnd-toggle")
+exec(mod .. " + CTRL + comma", "toggle do not disturb", "$HOME/.local/bin/desktop-mode toggle do-not-disturb")
 exec(mod .. " + ALT + comma", "invoke newest notification", "$HOME/.local/bin/notificationctl invoke-latest")
 exec(mod .. " + SHIFT + ALT + comma", "notification history", "$HOME/.local/bin/notificationctl history")
+exec(mod .. " + ALT + M", "desktop modes", "$HOME/.local/bin/desktop-mode menu")
+exec(mod .. " + SHIFT + I", "stay awake", "$HOME/.local/bin/desktop-mode toggle stay-awake")
+exec(mod .. " + CTRL + Escape", "start ASCII screensaver", "$HOME/.local/bin/desktop-mode action screensaver")
 exec(mod .. " + SHIFT + G", "start Gaming VM", [[bash -lc 'virsh -c qemu:///system start Gaming-VM && sleep 15 && looking-glass-client -F -f /dev/shm/looking-glass']])
 
 -- Capture suite.
