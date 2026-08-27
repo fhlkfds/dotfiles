@@ -122,8 +122,9 @@ The implementation and optional features are described in
 
 ### Move the active window
 
-The number rows use physical key codes `code:10` through `code:19`, corresponding
-to the physical `1` through `0` keys regardless of the displayed symbol.
+The number-row bindings use physical keycodes `code:10` through `code:19`, as
+reported by the active keyboard for `1` through `0`. Window moves use Hyprland's
+live Lua evaluator so they target the active window reliably on Hyprland 0.56.2.
 
 | Keys | Action |
 | --- | --- |

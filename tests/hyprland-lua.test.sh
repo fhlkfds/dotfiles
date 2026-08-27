@@ -12,11 +12,102 @@ fail() {
 }
 
 command -v luac >/dev/null 2>&1 || fail 'luac is required'
+command -v lua >/dev/null 2>&1 || fail 'lua is required'
 command -v Hyprland >/dev/null 2>&1 || fail 'Hyprland is required'
 
 while IFS= read -r -d '' file; do
   luac -p "$file"
 done < <(find "$hypr_root" -type f -name '*.lua' -not -path '*/themes/.active/*' -print0)
+
+lua - "$hypr_root" <<'LUA'
+local hypr_root = assert(arg[1])
+local captures = {}
+
+local function stub()
+    return setmetatable({}, {
+        __index = function(self, key)
+            local value = stub()
+            rawset(self, key, value)
+            return value
+        end,
+        __call = function()
+            return { kind = "stub" }
+        end,
+    })
+end
+
+hl = stub()
+hl.bind = function(keys, dispatcher, flags)
+    table.insert(captures, {
+        keys = keys,
+        dispatcher = dispatcher,
+        description = flags and flags.description or nil,
+    })
+end
+hl.dsp.window.move = function(args)
+    return { kind = "window.move", args = args }
+end
+hl.dsp.focus = function(args)
+    return { kind = "focus", args = args }
+end
+hl.dsp.exec_cmd = function(command)
+    return { kind = "exec_cmd", command = command }
+end
+local dispatched
+hl.dispatch = function(dispatcher)
+    dispatched = dispatcher
+end
+
+package.path = hypr_root .. "/?.lua;" .. package.path
+dofile(hypr_root .. "/conf/keybindings.lua")
+
+local number_keys = {
+    "code:10", "code:11", "code:12", "code:13", "code:14",
+    "code:15", "code:16", "code:17", "code:18", "code:19",
+}
+local function expect(keys, description, kind, workspace, follow)
+    for _, capture in ipairs(captures) do
+        local dispatcher = capture.dispatcher
+        if type(dispatcher) == "function" then
+            dispatched = nil
+            dispatcher()
+            dispatcher = dispatched
+        end
+        if capture.keys == keys and capture.description == description and
+                dispatcher.kind == kind and dispatcher.args.workspace == workspace and
+                dispatcher.args.follow == follow then
+            return
+        end
+    end
+    error("missing binding: " .. keys .. " -> " .. description)
+end
+
+local function expect_move(keys, description, workspace, follow)
+    local expected = string.format(
+        [[hyprctl eval 'hl.dispatch(hl.dsp.window.move({ workspace = %d, follow = %s }))']],
+        workspace, follow and "true" or "false")
+    for _, capture in ipairs(captures) do
+        if capture.keys == keys and capture.description == description and
+                capture.dispatcher.kind == "exec_cmd" and capture.dispatcher.command == expected then
+            return
+        end
+    end
+    error("missing move binding: " .. keys .. " -> " .. description)
+end
+
+for workspace = 1, 10 do
+    expect_move("SUPER + SHIFT + " .. number_keys[workspace], "move to workspace " .. workspace,
+        workspace, true)
+    expect_move("SUPER + CTRL + " .. number_keys[workspace], "move silently to workspace " .. workspace,
+        workspace, false)
+    expect("SUPER + " .. number_keys[workspace], "workspace " .. workspace,
+        "focus", workspace, nil)
+end
+for workspace = 1, 4 do
+    expect_move("SUPER + SHIFT + ALT + " .. number_keys[workspace], "move silently to workspace " .. workspace,
+        workspace, false)
+end
+LUA
 
 mkdir -p "$test_root/config" "$test_root/home" "$test_root/runtime"
 cp -a "$hypr_root/." "$test_root/config/hypr/"

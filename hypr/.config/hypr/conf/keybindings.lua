@@ -62,21 +62,34 @@ exec(mod .. " + ALT + C", "toggle webcam overlay", cfg.scripts_dir .. "/capture/
 exec(mod .. " + ALT + bracketleft", "webcam overlay smaller", cfg.scripts_dir .. "/capture/capture.sh record webcam-size smaller")
 exec(mod .. " + ALT + bracketright", "webcam overlay larger", cfg.scripts_dir .. "/capture/capture.sh record webcam-size larger")
 
--- Move the active window by physical number-row keycode.
+-- Use the physical number-row keycodes reported by the active keyboard. Hyprland 0.56.2's
+-- bound Lua window dispatcher does not act on the focused window reliably, so
+-- execute the same dispatcher through the live evaluator at keypress time.
+local number_row_keys = {
+    "code:10", "code:11", "code:12", "code:13", "code:14",
+    "code:15", "code:16", "code:17", "code:18", "code:19",
+}
+
+local function move_active_window_dispatcher(workspace, follow)
+    local command = string.format(
+        [[hyprctl eval 'hl.dispatch(hl.dsp.window.move({ workspace = %d, follow = %s }))']],
+        workspace, follow and "true" or "false")
+    return hl.dsp.exec_cmd(command)
+end
+
 for workspace = 1, 10 do
-    local keycode = workspace == 10 and 19 or workspace + 9
-    bind(mod .. " + SHIFT + code:" .. keycode, "move to workspace " .. workspace,
-        hl.dsp.window.move({ workspace = workspace, follow = true }))
-    bind(mod .. " + CTRL + code:" .. keycode, "move silently to workspace " .. workspace,
-        hl.dsp.window.move({ workspace = workspace, follow = false }))
+    bind(mod .. " + SHIFT + " .. number_row_keys[workspace], "move to workspace " .. workspace,
+        move_active_window_dispatcher(workspace, true))
+    bind(mod .. " + CTRL + " .. number_row_keys[workspace], "move silently to workspace " .. workspace,
+        move_active_window_dispatcher(workspace, false))
 end
 bind(mod .. " + SHIFT + bracketleft", "move to previous workspace", hl.dsp.window.move({ workspace = "-1", follow = true }))
 bind(mod .. " + SHIFT + bracketright", "move to next workspace", hl.dsp.window.move({ workspace = "+1", follow = true }))
 bind(mod .. " + CTRL + bracketleft", "move silently to previous workspace", hl.dsp.window.move({ workspace = "-1", follow = false }))
 bind(mod .. " + CTRL + bracketright", "move silently to next workspace", hl.dsp.window.move({ workspace = "+1", follow = false }))
 for workspace = 1, 4 do
-    bind(mod .. " + SHIFT + ALT + code:" .. (workspace + 9), "move silently to workspace " .. workspace,
-        hl.dsp.window.move({ workspace = workspace, follow = false }))
+    bind(mod .. " + SHIFT + ALT + " .. number_row_keys[workspace], "move silently to workspace " .. workspace,
+        move_active_window_dispatcher(workspace, false))
 end
 
 bind(mod .. " + SHIFT + F", "fullscreen (true)", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
@@ -107,8 +120,8 @@ bind(mod .. " + CTRL + Tab", "former workspace", hl.dsp.focus({ workspace = "pre
 bind(mod .. " + mouse_up", "previous workspace", hl.dsp.focus({ workspace = "e-1" }))
 bind(mod .. " + mouse_down", "next workspace", hl.dsp.focus({ workspace = "e+1" }))
 for workspace = 1, 10 do
-    local key = workspace == 10 and "code:19" or tostring(workspace)
-    bind(mod .. " + " .. key, "workspace " .. workspace, hl.dsp.focus({ workspace = workspace }))
+    bind(mod .. " + " .. number_row_keys[workspace], "workspace " .. workspace,
+        hl.dsp.focus({ workspace = workspace }))
 end
 for workspace = 11, 15 do
     bind(mod .. " + ALT + " .. (workspace - 10), "workspace " .. workspace, hl.dsp.focus({ workspace = workspace }))
