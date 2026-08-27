@@ -1,0 +1,318 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM=${0##*/}
+ACTION=
+DEVICE=
+MODE=auto
+ENROLL_FINGERPRINT=false
+DRY_RUN=false
+CONFIRM_SUDO_TESTED=false
+
+AUTH_USER=${YUBIKEY_AUTH_USER:-${SUDO_USER:-${USER:-liam}}}
+AUTH_ORIGIN=${YUBIKEY_AUTH_ORIGIN:-pam://Kelper}
+ETC_ROOT=${YUBIKEY_AUTH_ETC_ROOT:-/etc}
+MAPPING_FILE="$ETC_ROOT/u2f_mappings"
+SUDO_PAM="$ETC_ROOT/pam.d/sudo"
+HYPRLOCK_PAM="$ETC_ROOT/pam.d/hyprlock"
+
+script_path=$(readlink -f -- "${BASH_SOURCE[0]}")
+script_dir=$(cd -- "$(dirname -- "$script_path")" && pwd)
+repo_root=$(cd -- "$script_dir/../../.." && pwd)
+TEMPLATE_DIR=${YUBIKEY_AUTH_TEMPLATE_DIR:-$repo_root/system/pam.d}
+
+FIDO2_TOKEN=${YUBIKEY_AUTH_FIDO2_TOKEN:-fido2-token}
+PAMU2FCFG=${YUBIKEY_AUTH_PAMU2FCFG:-pamu2fcfg}
+SUDO=${YUBIKEY_AUTH_SUDO:-sudo}
+
+usage() {
+  cat <<EOF
+Usage:
+  $PROGRAM setup [OPTIONS]   register the first key and deploy PAM safely
+  $PROGRAM add [OPTIONS]     append another key to the existing user mapping
+  $PROGRAM status            show dependencies, token, mapping, and PAM state
+
+Options:
+  --device PATH              use this FIDO device instead of auto-detection
+  --mode auto|bio|pin        registration verification mode (default: auto)
+  --enroll-fingerprint       enroll a fingerprint before Bio registration
+  --confirm-sudo-tested      deploy Hyprlock without the interactive checkpoint
+  --dry-run                  report actions without changing token or system state
+  -h, --help                 show this help
+
+Examples:
+  $PROGRAM setup --enroll-fingerprint
+  $PROGRAM add --enroll-fingerprint
+  $PROGRAM add --device /dev/hidraw1 --mode pin
+EOF
+}
+
+fail() {
+  printf '%s: %s\n' "$PROGRAM" "$*" >&2
+  exit 1
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
+}
+
+run_root() {
+  if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+    "$@"
+  else
+    "$SUDO" "$@"
+  fi
+}
+
+device_listing=
+detect_device() {
+  device_listing=$($FIDO2_TOKEN -L 2>&1) || fail "could not list FIDO devices"
+
+  if [[ -n $DEVICE ]]; then
+    grep -Fq -- "$DEVICE:" <<<"$device_listing" \
+      || fail "requested device is not a visible FIDO token: $DEVICE"
+    return
+  fi
+
+  local -a devices=()
+  mapfile -t devices < <(awk -F: '/Yubico|vendor=0x1050/ { print $1 }' <<<"$device_listing")
+  case ${#devices[@]} in
+    0) fail "no YubiKey FIDO device found" ;;
+    1) DEVICE=${devices[0]} ;;
+    *)
+      printf '%s\n' "$device_listing" >&2
+      fail "multiple YubiKeys found; select the new one with --device PATH"
+      ;;
+  esac
+}
+
+resolve_mode() {
+  case $MODE in
+    auto)
+      if grep -F -- "$DEVICE:" <<<"$device_listing" | grep -Fq 'product=0x0402'; then
+        MODE=bio
+      else
+        MODE=pin
+      fi
+      ;;
+    bio|pin) ;;
+    *) fail "invalid mode '$MODE' (expected auto, bio, or pin)" ;;
+  esac
+}
+
+mapping_is_valid() {
+  local file=$1
+  [[ -s $file ]] || return 1
+  ! LC_ALL=C grep -q '[[:cntrl:]]' "$file" || return 1
+  awk -F: -v user="$AUTH_USER" '
+    NR == 1 && $1 == user && NF >= 2 {
+      ok = 1
+      for (i = 2; i <= NF; i++) if (index($i, ",") == 0) ok = 0
+    }
+    END { exit !(NR == 1 && ok) }
+  ' "$file"
+}
+
+credential_is_valid() {
+  local file=$1
+  [[ -s $file ]] || return 1
+  ! LC_ALL=C grep -q '[[:cntrl:]]' "$file" || return 1
+  awk 'NR == 1 && index($0, ":") == 0 && index($0, ",") > 0 { ok = 1 }
+       END { exit !(NR == 1 && ok) }' "$file"
+}
+
+backup_file() {
+  local target=$1 stamp=$2
+  [[ -e $target ]] || return 0
+  local base="${target}.pre-yubikey.${stamp}"
+  local backup=$base suffix=2
+  while [[ -e $backup ]]; do
+    backup="${base}.${suffix}"
+    suffix=$((suffix + 1))
+  done
+  run_root cp -a -- "$target" "$backup"
+  printf 'backup: %s\n' "$backup"
+}
+
+install_file() {
+  local source=$1 target=$2 mode=$3
+  run_root install -o root -g root -m "$mode" "$source" "$target"
+}
+
+show_status() {
+  local failed=0
+  for command_name in "$FIDO2_TOKEN" "$PAMU2FCFG" "$SUDO"; do
+    if command -v "$command_name" >/dev/null 2>&1; then
+      printf 'ok: command %s\n' "$command_name"
+    else
+      printf 'missing: command %s\n' "$command_name"
+      failed=1
+    fi
+  done
+
+  if device_listing=$($FIDO2_TOKEN -L 2>/dev/null) && [[ -n $device_listing ]]; then
+    printf 'tokens:\n%s\n' "$device_listing"
+  else
+    printf 'tokens: none visible\n'
+    failed=1
+  fi
+
+  if [[ -r $MAPPING_FILE ]]; then
+    if mapping_is_valid "$MAPPING_FILE"; then
+      printf 'mapping: valid for %s (%s)\n' "$AUTH_USER" "$MAPPING_FILE"
+    else
+      printf 'mapping: invalid (%s)\n' "$MAPPING_FILE"
+      failed=1
+    fi
+  elif [[ -e $MAPPING_FILE ]]; then
+    printf 'mapping: present and protected (%s)\n' "$MAPPING_FILE"
+  else
+    printf 'mapping: absent (%s)\n' "$MAPPING_FILE"
+    failed=1
+  fi
+
+  for pair in "$TEMPLATE_DIR/sudo:$SUDO_PAM" "$TEMPLATE_DIR/hyprlock:$HYPRLOCK_PAM"; do
+    local template=${pair%%:*} active=${pair#*:}
+    if [[ -r $template && -r $active ]] && cmp -s -- "$template" "$active"; then
+      printf 'pam: deployed %s\n' "$active"
+    else
+      printf 'pam: not deployed or differs %s\n' "$active"
+      failed=1
+    fi
+  done
+
+  return "$failed"
+}
+
+while (($#)); do
+  case $1 in
+    setup|add|status)
+      [[ -z $ACTION ]] || fail "only one action may be specified"
+      ACTION=$1
+      shift
+      ;;
+    --device)
+      (($# >= 2)) || fail "--device requires a path"
+      DEVICE=$2
+      shift 2
+      ;;
+    --device=*) DEVICE=${1#*=}; shift ;;
+    --mode)
+      (($# >= 2)) || fail "--mode requires auto, bio, or pin"
+      MODE=$2
+      shift 2
+      ;;
+    --mode=*) MODE=${1#*=}; shift ;;
+    --enroll-fingerprint) ENROLL_FINGERPRINT=true; shift ;;
+    --confirm-sudo-tested) CONFIRM_SUDO_TESTED=true; shift ;;
+    --dry-run) DRY_RUN=true; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) fail "unknown argument: $1" ;;
+  esac
+done
+
+[[ -n $ACTION ]] || { usage >&2; exit 2; }
+
+if [[ $ACTION == status ]]; then
+  show_status
+  exit
+fi
+
+require_cmd "$FIDO2_TOKEN"
+require_cmd "$PAMU2FCFG"
+require_cmd "$SUDO"
+[[ -r $TEMPLATE_DIR/sudo ]] || fail "sudo PAM template not found: $TEMPLATE_DIR/sudo"
+[[ -r $TEMPLATE_DIR/hyprlock ]] || fail "Hyprlock PAM template not found: $TEMPLATE_DIR/hyprlock"
+
+detect_device
+resolve_mode
+[[ $ENROLL_FINGERPRINT == false || $MODE == bio ]] \
+  || fail "--enroll-fingerprint requires a YubiKey Bio or --mode bio"
+
+printf 'action: %s\nuser: %s\ndevice: %s\nmode: %s\n' \
+  "$ACTION" "$AUTH_USER" "$DEVICE" "$MODE"
+
+if [[ $DRY_RUN == true ]]; then
+  [[ $ENROLL_FINGERPRINT == true ]] && printf 'would enroll: fingerprint\n'
+  printf 'would update: %s\n' "$MAPPING_FILE"
+  if [[ $ACTION == setup ]]; then
+    printf 'would deploy: %s\nwould deploy: %s\n' "$SUDO_PAM" "$HYPRLOCK_PAM"
+  fi
+  exit 0
+fi
+
+work_dir=$(mktemp -d -p "${TMPDIR:-/tmp}" yubikey-auth.XXXXXX)
+chmod 700 "$work_dir"
+trap 'rm -rf -- "$work_dir"' EXIT
+
+if [[ $ENROLL_FINGERPRINT == true ]]; then
+  printf 'Enroll a fingerprint on %s; enter its FIDO PIN only at the local prompt.\n' "$DEVICE"
+  "$FIDO2_TOKEN" -S -e "$DEVICE"
+fi
+
+registration_args=(-o "$AUTH_ORIGIN" -i "$AUTH_ORIGIN")
+if [[ $MODE == bio ]]; then
+  registration_args+=(-V)
+else
+  registration_args+=(-N)
+fi
+
+new_credential="$work_dir/new-credential"
+combined_mapping="$work_dir/u2f_mappings"
+
+if [[ $ACTION == setup ]]; then
+  if [[ -e $MAPPING_FILE ]]; then
+    run_root cat -- "$MAPPING_FILE" > "$work_dir/current-mapping"
+    mapping_is_valid "$work_dir/current-mapping" \
+      && fail "a valid mapping already exists; use '$PROGRAM add'"
+  fi
+
+  printf 'Register the key now; enter its FIDO PIN only at the local prompt.\n'
+  "$PAMU2FCFG" -u "$AUTH_USER" "${registration_args[@]}" > "$combined_mapping"
+  mapping_is_valid "$combined_mapping" || fail "generated mapping failed validation"
+else
+  [[ -e $MAPPING_FILE ]] || fail "no mapping exists; use '$PROGRAM setup' first"
+  run_root cat -- "$MAPPING_FILE" > "$work_dir/current-mapping"
+  mapping_is_valid "$work_dir/current-mapping" \
+    || fail "existing mapping is invalid; repair it with '$PROGRAM setup'"
+
+  printf 'Register the additional key now; enter its FIDO PIN only at the local prompt.\n'
+  "$PAMU2FCFG" -n "${registration_args[@]}" > "$new_credential"
+  credential_is_valid "$new_credential" || fail "generated credential failed validation"
+  {
+    tr -d '\n' < "$work_dir/current-mapping"
+    printf ':'
+    tr -d '\n' < "$new_credential"
+    printf '\n'
+  } > "$combined_mapping"
+  mapping_is_valid "$combined_mapping" || fail "combined mapping failed validation"
+fi
+
+stamp=$(date +%Y%m%d-%H%M%S)
+backup_file "$MAPPING_FILE" "$stamp"
+install_file "$combined_mapping" "$MAPPING_FILE" 0600
+printf 'installed: %s\n' "$MAPPING_FILE"
+
+if [[ $ACTION == add ]]; then
+  printf 'Additional key registered. Test it with: sudo -k; sudo -v\n'
+  exit 0
+fi
+
+backup_file "$SUDO_PAM" "$stamp"
+install_file "$TEMPLATE_DIR/sudo" "$SUDO_PAM" 0644
+printf 'installed: %s\n' "$SUDO_PAM"
+printf '\nTest both sudo paths in another terminal before continuing:\n'
+printf '  1. sudo -k; sudo -v       # use the key\n'
+printf '  2. unplug it; sudo -k; sudo -v  # use the password\n\n'
+
+if [[ $CONFIRM_SUDO_TESTED == false ]]; then
+  [[ -t 0 ]] || fail "interactive confirmation unavailable; rerun with --confirm-sudo-tested after testing sudo"
+  read -r -p "Type INSTALL HYPRLOCK after both tests pass: " confirmation
+  [[ $confirmation == "INSTALL HYPRLOCK" ]] \
+    || fail "Hyprlock PAM was not changed"
+fi
+
+backup_file "$HYPRLOCK_PAM" "$stamp"
+install_file "$TEMPLATE_DIR/hyprlock" "$HYPRLOCK_PAM" 0644
+printf 'installed: %s\n' "$HYPRLOCK_PAM"
+printf 'Setup complete. At Hyprlock, press Enter before using the key.\n'

@@ -85,7 +85,8 @@ These commands target the active Quickshell notification service through
 | `SUPER+ALT+S` | focused-monitor screenshot | `screenshot monitor` |
 | `SUPER+ALT+CTRL+S` | screenshot monitor after 5 seconds | `--delay=5` |
 | `SUPER+CTRL+SHIFT+S` | screenshot monitor after 10 seconds | `--delay=10` |
-| `SUPER+ALT+[` / `SUPER+ALT+]` | make the active webcam overlay smaller / larger | three 16:9 presets; no-op without a webcam recording |
+| `SUPER+ALT+C` | toggle webcam overlay | standalone preview; press again to close |
+| `SUPER+ALT+[` / `SUPER+ALT+]` | show the webcam overlay smaller / larger | opens a missing overlay, then steps through three 16:9 presets |
 | `SUPER+SHIFT+R` | toggle screen recording | `record toggle` |
 | `SUPER+SHIFT+P` | color picker | `color` |
 | `SUPER+SHIFT+T` | OCR / extract text | `ocr` |

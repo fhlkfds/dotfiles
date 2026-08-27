@@ -28,6 +28,13 @@ hl.window_rule({
 })
 
 hl.window_rule({
+    name = "capture-webcam-overlay",
+    match = { title = "^capture-webcam$" },
+    float = true,
+    pin = true,
+})
+
+hl.window_rule({
     name = "fullscreen-border",
     match = { fullscreen = true },
     border_color = "rgb(89B4FA) rgb(CBA6F7)",

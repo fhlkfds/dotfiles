@@ -69,3 +69,6 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # Standalone coding-agent launchers from the `ai` Stow package.
 [[ -r ~/.config/ai-agent/shell.zsh ]] && source ~/.config/ai-agent/shell.zsh
+
+# Guarded YubiKey/PAM helpers from the `security` Stow package.
+[[ -r ~/.config/yubikey-auth/shell.zsh ]] && source ~/.config/yubikey-auth/shell.zsh

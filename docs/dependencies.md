@@ -89,6 +89,14 @@ Run `capture.sh doctor` for the suite's own availability report.
 | `hyprctl` | output discovery, profile application, scale changes |
 | `systemd`/`loginctl` | suspend and pre-sleep lock behavior |
 
+### Security-key authentication
+
+The optional YubiKey Bio PAM path requires `pam-u2f` (including `pamu2fcfg`) and
+`libfido2`. Fingerprints can be enrolled with `fido2-token`, so the current
+templates do not require `yubikey-manager`. They use a host-local
+`/etc/u2f_mappings` file, and password authentication remains available. Stow
+the `security` package to install the guarded `yubikey-auth` helper.
+
 ### ASCII screensaver
 
 The screensaver requires Python 3.11+, Hypridle, Hyprland IPC, and at least one

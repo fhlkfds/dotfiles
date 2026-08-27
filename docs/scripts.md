@@ -12,7 +12,7 @@ These scripts are below `hypr/.config/hypr/scripts/`.
 | `RofiEmoji.sh` | `SUPER+ALT+E` | fuzzy-searches emoji data with the active application-menu theme and copies the chosen glyph | Rofi, `wl-copy` |
 | `universal-clipboard.sh` | `SUPER+C/X/V` | detects terminal classes and sends the correct copy/cut/paste shortcut | `hyprctl` |
 | `files-here.sh` | `SUPER+SHIFT+ALT+F` | discovers a focused terminal's current directory and opens Nautilus there | terminal APIs, `hyprctl`, Nautilus |
-| `night-light.sh` | `SUPER+CTRL+N` | toggles Hyprsunset between 1000 K and 6500 K; persists transient state and notifies | `hyprctl`, `hyprsunset`, notifications |
+| `night-light.sh` | `SUPER+CTRL+N` | toggles Hyprsunset between 1000 K and 6500 K; delegates to `desktop-mode` when installed and otherwise controls Hyprsunset directly | `hyprctl`, `hyprsunset`; optional `desktop-mode` |
 | `spotify-notify.sh` | autostart | watches Spotify metadata and sends track-change notifications | `playerctl`, `curl`, notification command |
 | `clipboard-store.sh` | `wl-paste --watch` | stores text/images in cliphist | `cliphist` |
 | `clipboard-wipe.sh` | manual | clears clipboard/history data | `wl-copy`, `cliphist` |
@@ -71,7 +71,8 @@ selection; `common.sh` and `config.sh` are sourced libraries.
 | `capture.sh screenshot window` | captures active window geometry | screenshot directory and clipboard |
 | `capture.sh screenshot monitor [--delay=N]` | captures focused output, optionally delayed | screenshot directory and clipboard |
 | `capture.sh record toggle` | starts/stops GPU screen recording with optional audio/webcam and post-processing | recording directory; runtime PID/state files |
-| `capture.sh record webcam-size smaller\|larger` | steps a live webcam overlay through small, medium, and large presets | mpv JSON IPC with PID-scoped Hyprland fallback |
+| `capture.sh record webcam-toggle` | shows or hides a standalone webcam preview | mpv overlay and runtime PID/state files |
+| `capture.sh record webcam-size smaller\|larger` | opens a missing overlay, then steps it through small, medium, and large presets | mpv JSON IPC with PID-scoped Hyprland fallback |
 | `capture.sh ocr` | selects/freeze-captures, preprocesses, runs Tesseract, copies text | Wayland clipboard |
 | `capture.sh color` | picks a screen color | Wayland clipboard and notification |
 | `capture.sh menu` | interactive operation chooser | depends on selection |
@@ -127,6 +128,23 @@ the resulting setting. It does not persist to laptop/KVM profiles.
 `hypr/.config/hypr/udev/hyprland-monitor-hotplug.sh` is designed for a root-owned
 system path. It discovers a graphical user session and drops privileges before
 calling the user profile script. The paired udev rule is not installed by Stow.
+
+## YubiKey authentication
+
+`security/.local/bin/yubikey-auth` manages the host-local PAM-U2F mapping and
+repository-owned sudo/Hyprlock templates without placing credentials in Git.
+
+| Command | Behavior |
+| --- | --- |
+| `yubikey-auth status` | reports tools, visible tokens, mapping presence, and deployed-template state |
+| `yubikey-auth setup --enroll-fingerprint` | enrolls a YubiKey Bio fingerprint, creates the first mapping, backs up `/etc` targets, and stages sudo before Hyprlock |
+| `yubikey-auth add --enroll-fingerprint` | appends another Bio credential to the existing user's single mapping line |
+| `yubikey-auth add --mode pin` | registers a non-biometric FIDO2 key with PIN verification |
+| `yubikey-auth setup\|add --dry-run` | detects and reports actions without changing the key, mapping, or PAM |
+
+Automatic detection fails closed when several YubiKeys are connected; select
+one explicitly with `--device`. Generated credentials are held in a mode-0700
+temporary directory, validated before installation, and removed on exit.
 
 ## Wallpaper tools
 

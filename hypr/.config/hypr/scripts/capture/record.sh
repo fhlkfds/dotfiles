@@ -8,8 +8,9 @@
 #   record.sh stop               graceful SIGINT stop
 #   record.sh status             prints "recording" or "idle" (for the bar)
 #   record.sh menu               audio/target chooser, then start
+#   record.sh webcam-toggle      show/hide a standalone webcam overlay
 #   record.sh webcam-size smaller|larger
-#                                step a live webcam overlay between presets
+#                                step any live webcam overlay between presets
 #
 # Options for start/toggle:
 #   --audio=none|desktop|mic|both   (default: desktop)
@@ -30,6 +31,7 @@ OUTFILE_REF="$CAPTURE_RUNTIME/record.out"
 WEBCAM_PIDFILE="$CAPTURE_RUNTIME/webcam.pid"
 WEBCAM_SIZEFILE="$CAPTURE_RUNTIME/webcam.size"
 WEBCAM_SOCKET="$CAPTURE_RUNTIME/webcam.sock"
+WEBCAM_LOG="$CAPTURE_RUNTIME/webcam.log"
 THUMB="$CAPTURE_RUNTIME/record-thumb.png"
 
 RECORDER=gpu-screen-recorder
@@ -190,12 +192,9 @@ webcam_resize() {
   local direction="$1" current next geometry size pid
   case "$direction" in smaller|larger) ;; *) return 2 ;; esac
 
-  # Do nothing when recording is idle. If screen recording is active but its
-  # webcam overlay is absent, explain why the resize key has no visible effect.
-  record_pid >/dev/null || return 0
   if ! pid=$(webcam_live_pid); then
-    notify "Recording" "No webcam overlay is active"
-    return 0
+    webcam_toggle
+    pid=$(webcam_live_pid) || return 0
   fi
 
   current=$(cat "$WEBCAM_SIZEFILE" 2>/dev/null || printf '%s' "$WEBCAM_DEFAULT_SIZE")
@@ -233,7 +232,7 @@ webcam_start() {
 
   # Borderless, no OSD, no audio, always on top, parked bottom-right so it does
   # not sit over what is being demonstrated.
-  rm -f "$WEBCAM_SOCKET" "$WEBCAM_SIZEFILE"
+  rm -f "$WEBCAM_SOCKET" "$WEBCAM_SIZEFILE" "$WEBCAM_LOG"
   mpv av://v4l2:"$dev" \
     --profile=low-latency --untimed \
     --no-audio --no-osc --no-osd-bar --no-border --ontop \
@@ -241,7 +240,7 @@ webcam_start() {
     --title="capture-webcam" \
     --input-ipc-server="$WEBCAM_SOCKET" \
     --demuxer-lavf-o=input_format=mjpeg,video_size="$WEBCAM_RESOLUTION" \
-    >/dev/null 2>&1 &
+    >"$WEBCAM_LOG" 2>&1 &
   echo $! > "$WEBCAM_PIDFILE"
   printf '%s\n' "$WEBCAM_DEFAULT_SIZE" > "$WEBCAM_SIZEFILE"
 }
@@ -252,6 +251,44 @@ webcam_stop() {
   pid=$(cat "$WEBCAM_PIDFILE" 2>/dev/null || true)
   [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
   rm -f "$WEBCAM_PIDFILE" "$WEBCAM_SIZEFILE" "$WEBCAM_SOCKET"
+}
+
+webcam_wait_until_ready() {
+  local attempt=0 attempts=${WEBCAM_STARTUP_ATTEMPTS:-20}
+  while [ "$attempt" -lt "$attempts" ]; do
+    webcam_live_pid >/dev/null || return 1
+    if [ -n "${WEBCAM_IPC_HELPER:-}" ] || [ -S "$WEBCAM_SOCKET" ]; then
+      return 0
+    fi
+    sleep "${WEBCAM_STARTUP_DELAY:-0.1}"
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
+webcam_toggle() {
+  if webcam_live_pid >/dev/null; then
+    webcam_stop
+    notify "Webcam" "Overlay hidden"
+    return 0
+  fi
+
+  webcam_device >/dev/null || {
+    notify_error "No webcam found"
+    return 0
+  }
+  has mpv || {
+    notify_error "mpv is not installed"
+    return 0
+  }
+
+  webcam_start
+  if webcam_wait_until_ready; then
+    notify "Webcam" "Overlay shown"
+  else
+    webcam_stop
+    notify_error "Could not open the webcam overlay — see $WEBCAM_LOG"
+  fi
 }
 
 # --- start -------------------------------------------------------------------
@@ -516,6 +553,7 @@ case "$ACTION" in
   start)   record_start "$@" ;;
   stop)    record_stop ;;
   menu)    record_menu ;;
+  webcam-toggle) webcam_toggle ;;
   webcam-size)
     [ $# -eq 1 ] || { printf 'record.sh: webcam-size requires smaller or larger\n' >&2; exit 2; }
     webcam_resize "$1"

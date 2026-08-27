@@ -35,6 +35,96 @@ sudo install -Dm0644 system/greetd/config.toml /etc/greetd/config.toml
 Do not restart greetd from inside the graphical session. Let the change take
 effect at the next reboot, or restart it deliberately from a TTY.
 
+### YubiKey authentication
+
+`system/pam.d/sudo` and `system/pam.d/hyprlock` are repository-owned templates
+for the attached YubiKey Bio. They try its enrolled fingerprint first, its FIDO
+PIN second, and the existing account password last. Both key rules use
+`sufficient`, so initial greetd login and password recovery remain unchanged.
+
+Stow the guarded helper and use one command for normal setup:
+
+```bash
+stow security
+yubikey-auth status
+yubikey-auth setup --enroll-fingerprint
+```
+
+For another YubiKey Bio, leave only the new key inserted and run:
+
+```bash
+yubikey-auth add --enroll-fingerprint
+```
+
+Use `--device /dev/hidrawN` when multiple keys are attached, `--mode pin` for a
+non-biometric FIDO2 key, and `--dry-run` to inspect the selected device and
+targets without registering or installing anything. `setup` installs and tests
+sudo first, then waits for the exact confirmation `INSTALL HYPRLOCK`; `add`
+updates only the existing one-line mapping.
+
+The commands below document the equivalent manual recovery procedure.
+
+The registered public credential is machine-specific and must not be committed
+to this repository. Keep it in `/etc/u2f_mappings`, where it is available before
+the user session or home directory is unlocked. The templates use the stable
+relying-party identifier `pam://Kelper`; registration must use the same origin
+and app ID.
+
+Keep a root shell open for recovery by running `sudo -s` in a separate terminal.
+In the original terminal, locate the key and enroll a fingerprint if one is not
+already listed. These commands prompt locally for the FIDO PIN; never paste that
+PIN into chat or a shell command:
+
+```bash
+key_device=$(fido2-token -L | awk -F: '/Yubico YubiKey FIDO/ { print $1; exit }')
+test -n "$key_device"
+fido2-token -L -e "$key_device"
+
+# Run this only when no suitable fingerprint is listed.
+fido2-token -S -e "$key_device"
+```
+
+Generate and validate a user-verifying PAM credential before changing PAM.
+Enter the FIDO PIN and use the enrolled finger when prompted:
+
+```bash
+u2f_tmp=$(mktemp -p /tmp liam-u2f-mapping.XXXXXX)
+chmod 600 "$u2f_tmp"
+pamu2fcfg -u liam -o pam://Kelper -i pam://Kelper -V > "$u2f_tmp"
+awk -F: 'NR == 1 && $1 == "liam" && NF == 2 && $2 ~ /,/ { ok = 1 } END { exit !(NR == 1 && ok) }' "$u2f_tmp"
+sudo cp -a /etc/u2f_mappings /etc/u2f_mappings.pre-yubikey
+sudo install -o root -g root -m0600 "$u2f_tmp" /etc/u2f_mappings
+rm -f "$u2f_tmp"
+```
+
+Deploy and test `sudo` first. Do not install the Hyprlock template until both
+the key and password paths have succeeded in separate terminals:
+
+```bash
+sudo cp -a /etc/pam.d/sudo /etc/pam.d/sudo.pre-yubikey
+sudo install -o root -g root -m0644 system/pam.d/sudo /etc/pam.d/sudo
+
+sudo -k
+sudo -v # touch the inserted key
+
+# Remove the key, then confirm the normal password still works.
+sudo -k
+sudo -v
+```
+
+Once both checks pass, deploy Hyprlock:
+
+```bash
+sudo cp -a /etc/pam.d/hyprlock /etc/pam.d/hyprlock.pre-yubikey
+sudo install -o root -g root -m0644 system/pam.d/hyprlock /etc/pam.d/hyprlock
+```
+
+At the lock screen, press Enter on the empty input and use an enrolled finger on
+the key. Test its PIN fallback, then test the account password with the key
+removed. PAM files are read on each attempt; no greetd restart or reboot is
+required. If any path fails, use the retained root shell to restore the
+corresponding `.pre-yubikey` file.
+
 On Arch Linux, install the deployment tool, clone into the path expected by the
 root README, and enter the repository:
 
@@ -65,7 +155,7 @@ From the cloned repository root, deploy only the components you want. For the
 currently active desktop, the relevant package names are:
 
 ```bash
-stow hypr hyprlock quickshell rofi kitty cliphist browser xdg windows
+stow hypr hyprlock quickshell rofi kitty cliphist browser xdg windows security
 ```
 
 Preview the exact links before deploying a selection:

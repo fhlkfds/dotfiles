@@ -30,7 +30,7 @@ Each top-level directory is a Stow package. Run `stow <package>` to symlink its 
 **Deploy everything at once:**
 
 ```bash
-stow ai browser fastfetch hypr hyprlock kitty modes noctalia quickshell rofi screensaver swaync windows Wallpapers wofi zsh
+stow ai browser fastfetch hypr hyprlock kitty modes noctalia quickshell rofi screensaver security swaync windows Wallpapers wofi zsh
 ```
 
 **Or deploy packages individually:**
@@ -39,6 +39,7 @@ stow ai browser fastfetch hypr hyprlock kitty modes noctalia quickshell rofi scr
 stow ai          # ~/.local/bin/ai-agent, ~/.config/ai-agent
 stow screensaver # ~/.local/bin/ascii-screensaver, config, runtime modules
 stow modes       # ~/.local/bin/desktop-mode, temporary mode policy/config
+stow security    # ~/.local/bin/yubikey-auth, safe YubiKey PAM setup/addition
 stow browser     # Chromium extensions, flags, and native messaging hosts
 stow hypr        # ~/.config/hypr
 stow hyprlock    # ~/.config/hyprlock
@@ -90,6 +91,27 @@ desktop-mode doctor --json
 Open the Quickshell panel with `SUPER+ALT+M`. See the
 [desktop modes guide](docs/desktop-modes.md) for boundaries, timers, recovery,
 and all commands.
+
+## YubiKey authentication
+
+The optional `security` package provides a guarded setup command for the
+YubiKey Bio, sudo, and Hyprlock. It never stores the registered credential in
+Git and keeps password authentication as the final fallback.
+
+```bash
+yubikey-auth status
+yubikey-auth setup --enroll-fingerprint  # first key and PAM deployment
+yubikey-auth add --enroll-fingerprint    # additional YubiKey Bio
+yubikey-auth add --dry-run               # inspect without changing anything
+```
+
+After opening a new Zsh session, the conflict-safe shortcuts are `yubi`,
+`yubi-status`, `yubi-setup`, and `yubi-add`. The last two include Bio
+fingerprint enrollment automatically.
+
+The command validates mappings, creates timestamped `/etc` backups, installs
+sudo first, and waits for explicit confirmation after key/password testing
+before installing Hyprlock PAM. See [installation and recovery](docs/installation.md#yubikey-authentication).
 
 **Wallpapers** (optional — symlinks `~/Wallpapers`):
 

@@ -37,7 +37,7 @@ exec(mod .. " + CTRL + A", "toggle audio panel", "quickshell ipc call audio togg
 exec(mod .. " + CTRL + B", "toggle Bluetooth panel", "quickshell ipc call bluetooth toggle")
 exec(mod .. " + CTRL + W", "manage Wi-Fi and network", "quickshell ipc call network manage")
 exec(mod .. " + CTRL + SHIFT + SPACE", "theme picker", "quickshell ipc call theme toggle")
-exec(mod .. " + CTRL + N", "night light", "$HOME/.local/bin/desktop-mode toggle night-light")
+exec(mod .. " + CTRL + N", "night light", cfg.scripts_dir .. "/night-light.sh toggle")
 
 exec(mod .. " + comma", "dismiss newest notification", "$HOME/.local/bin/notificationctl dismiss-one")
 exec(mod .. " + SHIFT + comma", "dismiss all notifications", "$HOME/.local/bin/notificationctl dismiss-all")
@@ -58,6 +58,7 @@ exec(mod .. " + SHIFT + R", "screen recording", cfg.scripts_dir .. "/capture/cap
 exec(mod .. " + SHIFT + P", "colour picker", cfg.scripts_dir .. "/capture/capture.sh color")
 exec(mod .. " + SHIFT + T", "extract text", cfg.scripts_dir .. "/capture/capture.sh ocr")
 exec(mod .. " + CTRL + C", "capture menu", cfg.scripts_dir .. "/capture/capture.sh menu")
+exec(mod .. " + ALT + C", "toggle webcam overlay", cfg.scripts_dir .. "/capture/capture.sh record webcam-toggle")
 exec(mod .. " + ALT + bracketleft", "webcam overlay smaller", cfg.scripts_dir .. "/capture/capture.sh record webcam-size smaller")
 exec(mod .. " + ALT + bracketright", "webcam overlay larger", cfg.scripts_dir .. "/capture/capture.sh record webcam-size larger")
 

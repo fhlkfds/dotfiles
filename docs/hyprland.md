@@ -164,6 +164,7 @@ not preload a fixed wallpaper. The theme tool or wallpaper picker supplies the
 image.
 
 Hyprsunset starts with an identity configuration. `SUPER+CTRL+N` runs
-`desktop-mode toggle night-light`, switching between 1000 K and 6500 K through
-the same observed-state backend used by Quickshell. The retained
-`night-light.sh` path is a compatibility wrapper.
+`night-light.sh`, switching between 1000 K and 6500 K. The wrapper uses the
+shared `desktop-mode` state controller when the `modes` package is installed;
+otherwise it starts and controls Hyprsunset directly, so the Hypr binding does
+not depend on another Stow package.
