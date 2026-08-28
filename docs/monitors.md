@@ -7,13 +7,37 @@ Monitor configuration is dynamic. Hyprland sources:
 - `hypr/.config/hypr/monitors.lua`
 - `hypr/.config/hypr/workspaces.lua`
 
-At startup, `hypr/.config/hypr/scripts/auto-monitor-profile.sh --watch` examines
-the connected outputs every 15 seconds, chooses a profile, copies that profile's
-monitor/workspace files over the active files, reloads Hyprland, and redistributes
-existing workspaces.
+Both are generated. `hypr/.config/hypr/scripts/auto-monitor-profile.sh` picks a
+profile, copies that profile's monitor/workspace files over the active files,
+reloads Hyprland, and redistributes existing workspaces.
 
 Because these paths are Stowed, profile switching also changes files inside the
 Git working tree.
+
+## Monitors are identified by EDID, not connector name
+
+The KVM reaches the external monitors over DP-alt. **Every switch re-enumerates
+the DisplayPort connectors**: the same three panels have been `DP-5`/`DP-7`/`DP-9`
+and are now `DP-6`/`DP-10`/`DP-12`, and the abandoned indices accumulate as
+`disconnected` entries under `/sys/class/drm`.
+
+Detection keyed on connector names therefore failed after every switch. It fell
+through to the `laptop` profile, which pins workspaces 1–15 to `eDP-1`; with the
+lid display disabled those workspaces have nowhere to go and collapse onto a
+single screen. Repairing the geometry by hand in `nwg-displays` did not fix it,
+because the stale pinning lives in `workspaces.lua`.
+
+The `kvm` profile matches on the EDID description instead, via Hyprland's
+`desc:` selector, which is stable across renumbering:
+
+```lua
+hl.monitor({
+    output = "desc:Dell Inc. DELL P2722H CTCS1M3",
+    ...
+})
+```
+
+Get the exact strings with `hyprctl monitors -j | jq -r '.[].description'`.
 
 ## Profile selection
 
@@ -21,42 +45,86 @@ Profiles live below `hypr/.config/hypr/monitor_profiles/`.
 
 | Profile | Detection | Output arrangement |
 | --- | --- | --- |
-| `kvm` | DP-5, DP-7, and DP-9 present | eDP-1 disabled; DP-5 horizontal, DP-7 and DP-9 rotated |
+| `kvm` | all three KVM EDID descriptions present | eDP-1 disabled; P2214H portrait at left, P2722H centre, P2725H right |
 | `desktop` | DP-4 and HDMI-A-3 present | DP-4 rotated at left; 2560×1080 HDMI-A-3 to its right; DP-1 disabled |
 | `laptop` | fallback | eDP-1 at 2256×1504 |
 
-The exact positions, rates, transforms, and scales are stored in each
-`*.monitors.lua`. Output names are kernel/driver-specific and must be adapted for
-other hardware.
+`desktop` still matches on connector names: it describes different hardware whose
+EDID strings are not recorded here. It is unaffected by the KVM renumbering.
 
-The watcher prefers `kvm`, then `desktop`, then `laptop`. Its state lives under
-`$XDG_RUNTIME_DIR`; `--force` bypasses the unchanged-profile check.
+A **partial** KVM set never selects `kvm`. During a hotplug the monitors do not
+all reappear at once, and acting on a partial set is precisely what collapsed the
+workspaces.
 
 ## Workspace mapping
 
 | Profile | Workspaces |
 | --- | --- |
+| `kvm` | 1–5 on P2722H (centre); 6–10 on P2214H (left, portrait); 11–15 on P2725H (right) |
 | `desktop` | 1–5 on HDMI-A-3; 6–15 on DP-4 |
-| `kvm` | 1–5 on DP-5; 6–10 on DP-7; 11–15 on DP-9 |
 | `laptop` | 1–15 on eDP-1 |
 
 When applying a profile, the script dispatches `hl.dsp.workspace.move()` for
-workspaces 1 through 15. The desktop profile then focuses HDMI-A-3 through
-`hl.dsp.focus()`.
+workspaces 1 through 15, resolving each `desc:` to its current connector first
+and skipping any monitor that is not actually present. The desktop profile then
+focuses HDMI-A-3 through `hl.dsp.focus()`.
 
-The currently tracked active `workspaces.lua` maps all workspaces to eDP-1,
-while the currently tracked `monitors.lua` describes the desktop outputs. This
-inconsistency should normally be corrected by the startup watcher. If the watcher
-cannot run, workspace pinning can target a disabled or absent output.
+## Automatic reapplication
+
+`hypr/.config/hypr/scripts/hypr-monitor-watch.py` is started from
+`conf/autostart.lua`. It subscribes to Hyprland's `socket2` IPC and calls the
+applier when a monitor is added or removed. There is no polling loop.
+
+Sequence on a KVM switch:
+
+1. `monitoradded`/`monitorremoved` arrive in a burst; the watcher debounces them
+   into one trigger (0.6 s of quiet).
+2. The applier waits for the monitor set to stop changing, and if any KVM monitor
+   is present it waits for **all** of them, up to 10 s.
+3. `flock` ensures a single applier runs at a time; later copies exit.
+4. The layout is compared against the profile — the full tuple of mode, position,
+   scale, transform, enabled/disabled, plus whether the generated files still
+   match the profile. If everything matches, it exits without touching anything.
+5. Otherwise the profile is applied, then verified, with one retry.
+
+Logs go to the journal:
+
+```sh
+journalctl -t hypr-monitor -f
+```
+
+## Changing the layout
+
+1. Arrange the displays however you like — `nwg-displays`, or by hand.
+2. Capture it:
+
+   ```sh
+   ~/.config/hypr/scripts/capture-monitor-profile.sh kvm --dry-run   # preview
+   ~/.config/hypr/scripts/capture-monitor-profile.sh kvm             # write
+   ```
+
+   This rewrites `kvm.monitors.lua` from the running session, keyed by EDID
+   description, after showing a diff and asking for confirmation. The previous
+   file is kept as `.bak`.
+3. Apply it: `~/.config/hypr/scripts/auto-monitor-profile.sh --force`
+
+Workspace pinning is **not** captured by default. Workspaces that are not
+currently open have no live monitor to read, so snapshotting them invents
+assignments. Pass `--with-workspaces` only when you have deliberately rearranged
+workspaces, and review the inferred entries it reports.
+
+If you change the physical monitors, update `KVM_DESCS` in
+`auto-monitor-profile.sh` to match — that array is what defines the KVM setup.
+
+Do not make durable edits only to active `monitors.lua` or `workspaces.lua`; they
+are replaced from the profile.
 
 ## Other monitor files
 
-- `hypr/.config/hypr/monitors.lua` and `workspaces.lua` are required by the
-  entry point and replaced from the selected profile at runtime.
-- The retained, user-modified `monitors.conf` is inactive compatibility output
-  from nwg-displays; Hyprland no longer sources it.
-- `hypr/.config/hypr/udev/` contains an optional DRM-hotplug dispatcher. It is not
-  installed into system directories by Stow.
+- The retained `monitors.conf` is **inactive**. Hyprland loads the Lua config
+  (`[cfg] Using lua config found at .../hyprland.lua`), so `nwg-displays` output
+  written there has no effect. It is compatibility residue only.
+- `hypr/.config/hypr/monitors.conf.bak` is empty.
 
 ## Display panel and scale changes
 
@@ -66,20 +134,27 @@ brightness through `ddcutil` and offers scale presets. Scale persistence calls
 
 That script validates the output and scale, then updates both the active
 `monitors.lua` and `monitor_profiles/desktop.monitors.lua` atomically. It does
-not update the laptop or KVM profile. A scale chosen while another profile is
-conceptually active can therefore be overwritten at the next profile switch.
+not update the laptop or KVM profile, and it works on connector names. A scale
+chosen while the KVM profile is active is therefore overwritten at the next
+apply; capture it into the profile instead.
 
-## Customizing safely
+## Disabling or uninstalling
 
-1. Run `hyprctl monitors all` in the target session to obtain real output names
-   and supported modes.
-2. Edit the matching files under
-   `hypr/.config/hypr/monitor_profiles/`, including the corresponding workspace
-   map.
-3. If the hardware signature differs, update the profile-detection conditions in
-   `auto-monitor-profile.sh`.
-4. Validate with `tests/hyprland-lua.test.sh` or use `--dry-run`; normal mode
-   rewrites active config and dispatches Hyprland commands.
+```sh
+# stop the watcher for this session
+pkill -f hypr-monitor-watch.py
 
-Do not make durable edits only to active `monitors.lua` or `workspaces.lua`; the
-watcher will replace them.
+# stop it starting again: remove this line from conf/autostart.lua
+#   start("$HOME/.config/hypr/scripts/hypr-monitor-watch.py")
+```
+
+Nothing is installed outside `$HOME`: no systemd units, no udev rules, no root
+files. Removing the autostart line and killing the process fully disables the
+feature; `monitors.lua` and `workspaces.lua` keep whatever was last applied.
+
+## Testing
+
+`tests/hyprland-lua.test.sh` covers profile selection with mocked `hyprctl`,
+including the connector-renumbering regression (`DP-5/7/9`, `DP-6/10/12` and
+arbitrary names must all resolve to `kvm`), geometry drift detection, and the
+rule that a partial monitor set must not select `kvm`.

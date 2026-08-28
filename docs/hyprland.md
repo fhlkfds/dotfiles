@@ -85,7 +85,7 @@ functional grouping rather than a guaranteed serial timeline.
 | `ascii-screensaver schedule` | presentation-only idle listener; no lock or power actions |
 | `desktop-mode daemon` | session mode expiry and backend reconciliation |
 | `spotify-notify.sh` | player change notifications |
-| `auto-monitor-profile.sh --watch` | select/apply the connected-output profile |
+| `hypr-monitor-watch.py` | listen for monitor hotplug on socket2, reapply the profile |
 | `brave` | browser, assigned to workspace 2 |
 | `spotify` | music application, assigned to workspace 9 |
 | `virt-manager` | VM manager, assigned to workspace 6 |

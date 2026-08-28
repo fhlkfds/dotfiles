@@ -43,7 +43,7 @@ Hyprland `hyprland.start` event
 ├── desktop-mode daemon → timed modes and backend reconciliation
 ├── hyprsunset ← desktop-mode night-light adapter
 ├── spotify-notify.sh ← playerctl
-├── auto-monitor-profile.sh → monitors.lua/workspaces.lua → hyprctl
+├── hypr-monitor-watch.py → auto-monitor-profile.sh → monitors.lua/workspaces.lua → hyprctl
 └── desktop applications assigned to workspaces by rules
 ```
 

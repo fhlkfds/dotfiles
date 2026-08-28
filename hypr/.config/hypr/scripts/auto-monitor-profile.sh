@@ -1,101 +1,392 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# auto-monitor-profile.sh -- pick a monitor profile and apply it, idempotently.
+#
+# Monitors are identified by EDID description ("desc:<make> <model> <serial>"),
+# not by connector name: the KVM re-enumerates DisplayPort connectors on every
+# switch, so DP-5/DP-7/DP-9 became DP-6/DP-10/DP-12 and will change again.
+#
+# This script is the *applier*. It is invoked once per settled hotplug by
+# hypr-monitor-watch.py, and once at session start from conf/autostart.lua.
+# It has no polling loop of its own.
+#
+#   --force     apply even if the live layout already matches
+#   --dry-run   report desired vs actual and exit without touching anything
+#   --verbose   also mirror the log to stderr
+#
+# Logs to the journal:  journalctl -t hypr-monitor -f
+set -uo pipefail
 
 CONFIG_DIR="${HYPR_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/hypr}"
 PROFILE_DIR="${HYPR_PROFILE_DIR:-$CONFIG_DIR/monitor_profiles}"
 MONITORS_FILE="$CONFIG_DIR/monitors.lua"
 WORKSPACES_FILE="$CONFIG_DIR/workspaces.lua"
-STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/hypr-monitor-profile-${HYPRLAND_INSTANCE_SIGNATURE:-default}"
+RUNTIME="${XDG_RUNTIME_DIR:-/tmp}"
+LOCK_FILE="$RUNTIME/hypr-monitor-profile.lock"
 HYPRCTL="${HYPRCTL:-hyprctl}"
+
+# How long to wait for the display stack to finish enumerating after a hotplug.
+SETTLE_TIMEOUT="${HYPR_SETTLE_TIMEOUT:-10}"
+SETTLE_INTERVAL="${HYPR_SETTLE_INTERVAL:-0.4}"
+# Samples the monitor set must stay identical for before we call it settled.
+SETTLE_STABLE="${HYPR_SETTLE_STABLE:-2}"
+
 FORCE=0
 DRY_RUN=0
-WATCH=0
+VERBOSE=0
+SKIP_SETTLE="${HYPR_SKIP_SETTLE:-0}"
 
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=1 ;;
-    --dry-run) DRY_RUN=1 ;;
-    --watch) WATCH=1 ;;
-    *) printf 'usage: %s [--force] [--dry-run] [--watch]\n' "$(basename "$0")" >&2; exit 2 ;;
+    --dry-run) DRY_RUN=1; VERBOSE=1 ;;
+    --verbose) VERBOSE=1 ;;
+    --no-settle) SKIP_SETTLE=1 ;;
+    *)
+      printf 'usage: %s [--force] [--dry-run] [--verbose] [--no-settle]\n' \
+        "$(basename "$0")" >&2
+      exit 2
+      ;;
   esac
 done
 
-has_monitor() {
-  grep -Fxq "$1" <<<"$2"
+log() {
+  command -v logger >/dev/null 2>&1 && logger -t hypr-monitor -- "$*" 2>/dev/null
+  [[ "$VERBOSE" == 1 ]] && printf '%s\n' "$*" >&2
+  return 0
 }
 
-pick_profile() {
-  local monitors
-  monitors="$("$HYPRCTL" -j monitors | jq -r '.[].name')"
+die() { log "FATAL: $*"; exit 1; }
 
-  if has_monitor DP-5 "$monitors" && has_monitor DP-7 "$monitors" && has_monitor DP-9 "$monitors"; then
+# ── The monitors that define the KVM setup, by EDID description ─────────────
+# Keep in sync with monitor_profiles/kvm.monitors.lua (capture-monitor-profile.sh
+# regenerates both from the live session).
+KVM_DESCS=(
+  "Dell Inc. DELL P2214H KW14V42L3ACB"
+  "Dell Inc. DELL P2722H CTCS1M3"
+  "Dell Inc. DELL P2725H 21MG834"
+)
+
+# ── Live state ──────────────────────────────────────────────────────────────
+LIVE_JSON=""
+
+refresh_live() {
+  LIVE_JSON="$("$HYPRCTL" -j monitors 2>/dev/null)" || return 1
+  [[ -n "$LIVE_JSON" ]] || return 1
+  # A malformed payload must not be mistaken for "no monitors".
+  jq -e 'type == "array"' >/dev/null 2>&1 <<<"$LIVE_JSON" || return 1
+  return 0
+}
+
+live_descs() { jq -r '.[].description // empty' <<<"$LIVE_JSON" | sort; }
+live_names() { jq -r '.[].name // empty' <<<"$LIVE_JSON" | sort; }
+
+has_desc() { grep -Fxq "$1" <<<"$(live_descs)"; }
+has_name() { grep -Fxq "$1" <<<"$(live_names)"; }
+
+kvm_present_count() {
+  local d n=0
+  for d in "${KVM_DESCS[@]}"; do has_desc "$d" && n=$((n + 1)); done
+  printf '%s\n' "$n"
+}
+
+# Resolve a profile key ("eDP-1" or "desc:...") to the live connector name.
+resolve_output() {
+  jq -r --arg k "$1" \
+    'first(.[] | select(.name == $k or ("desc:" + .description) == $k) | .name) // empty' \
+    <<<"$LIVE_JSON"
+}
+
+# ── Settle ──────────────────────────────────────────────────────────────────
+# A KVM switch emits a burst of add/remove events and the monitors do not all
+# come back at once. Waiting a flat interval is the guess that fails: if only
+# two of three panels have appeared we would select the laptop profile and
+# collapse every workspace onto the internal display. So wait for the set to
+# stop changing AND, if any KVM monitor is present, for all of them to arrive.
+settle() {
+  [[ "$SKIP_SETTLE" == 1 ]] && return 0
+
+  local deadline=$((SECONDS + SETTLE_TIMEOUT))
+  local prev="" cur stable=0 count
+
+  while ((SECONDS < deadline)); do
+    refresh_live || { sleep "$SETTLE_INTERVAL"; continue; }
+    cur="$(live_descs)"
+
+    if [[ "$cur" == "$prev" ]]; then
+      stable=$((stable + 1))
+    else
+      stable=0
+    fi
+    prev="$cur"
+
+    if ((stable >= SETTLE_STABLE)); then
+      count="$(kvm_present_count)"
+      # Stable but only part of the KVM set: keep waiting for the stragglers.
+      if ((count > 0 && count < ${#KVM_DESCS[@]})); then
+        log "settle: ${count}/${#KVM_DESCS[@]} KVM monitors present, waiting"
+        stable=0
+      else
+        return 0
+      fi
+    fi
+    sleep "$SETTLE_INTERVAL"
+  done
+
+  log "settle: timed out after ${SETTLE_TIMEOUT}s, proceeding with what is present"
+  refresh_live || true
+  return 0
+}
+
+# ── Profile selection ───────────────────────────────────────────────────────
+# Returns "none" when the KVM set is only partly present. A partial set is not
+# the same as an absent one: switching the KVM away disconnects all three, which
+# is a genuine laptop-only session, but losing a single monitor must NOT drag
+# every workspace onto the internal display. In that case we leave the session
+# exactly as it is.
+pick_profile() {
+  local count
+  count="$(kvm_present_count)"
+  if ((count == ${#KVM_DESCS[@]})); then
     printf '%s\n' kvm
-  elif has_monitor DP-4 "$monitors" && has_monitor HDMI-A-3 "$monitors"; then
+  elif ((count > 0)); then
+    printf '%s\n' none
+  elif has_name DP-4 && has_name HDMI-A-3; then
+    # Unrelated machine; left on connector names deliberately -- its EDID
+    # strings are not known here.
     printf '%s\n' desktop
   else
     printf '%s\n' laptop
   fi
 }
 
-workspace_monitor() {
-  local profile="$1"
-  local workspace="$2"
+# ── Desired layout, parsed out of the profile's Lua ─────────────────────────
+# Emits: output|mode|position|scale|transform|disabled
+desired_layout() {
+  local file="$PROFILE_DIR/$1.monitors.lua"
+  [[ -r "$file" ]] || return 1
+  awk '
+    function norm(v) { return sprintf("%.2f", v + 0) }
+    /hl\.monitor\(\{/ { inb = 1; o = m = p = ""; s = "1.00"; t = "0"; d = "false"; next }
+    inb && /output *=/     { if (match($0, /"[^"]*"/)) o = substr($0, RSTART + 1, RLENGTH - 2) }
+    inb && /mode *=/       { if (match($0, /"[^"]*"/)) m = substr($0, RSTART + 1, RLENGTH - 2) }
+    inb && /position *=/   { if (match($0, /"[^"]*"/)) p = substr($0, RSTART + 1, RLENGTH - 2) }
+    inb && /scale *=/      { if (match($0, /[0-9]+\.?[0-9]*/)) s = norm(substr($0, RSTART, RLENGTH)) }
+    inb && /transform *=/  { if (match($0, /[0-9]+/)) t = substr($0, RSTART, RLENGTH) }
+    inb && /disabled *= *true/ { d = "true" }
+    inb && /^\}\)/ {
+      inb = 0
+      if (o == "") next
+      if (d == "false" && m != "") {
+        # normalise "1920x1080@60.0" -> "1920x1080@60.00"
+        split(m, parts, "@")
+        m = parts[1] "@" norm(parts[2])
+      }
+      print o "|" m "|" p "|" s "|" t "|" d
+    }
+  ' "$file"
+}
 
-  case "$profile" in
+# Actual state of one profile key, in the same canonical shape.
+actual_state() {
+  jq -r --arg k "$1" '
+    first(.[] | select(.name == $k or ("desc:" + .description) == $k))
+    | "\(.width)x\(.height)@\(.refreshRate*100|round/100|tostring)"
+      + "|\(.x)x\(.y)|\(.scale*100|round/100|tostring)|\(.transform)"
+  ' <<<"$LIVE_JSON" 2>/dev/null
+}
+
+# Renders jq's numbers the way awk's %.2f does, so the two are comparable.
+canon_actual() {
+  local raw="$1" mode pos scale transform res rate
+  IFS='|' read -r mode pos scale transform <<<"$raw"
+  res="${mode%@*}"; rate="${mode#*@}"
+  printf '%s@%.2f|%s|%.2f|%s\n' "$res" "$rate" "$pos" "$scale" "$transform"
+}
+
+# ── Idempotence ─────────────────────────────────────────────────────────────
+# Compares the full tuple, not merely which monitors exist: the failure being
+# fixed here is monitors that are all present but arranged wrongly.
+layout_matches() {
+  local profile="$1" quiet="${2:-1}"
+  local key mode pos scale transform disabled want got ok=0
+
+  while IFS='|' read -r key mode pos scale transform disabled; do
+    [[ -n "$key" ]] || continue
+
+    if [[ "$disabled" == true ]]; then
+      if [[ -n "$(resolve_output "$key")" ]]; then
+        [[ "$quiet" == 0 ]] && printf '  %-46s want=disabled  got=enabled\n' "$key"
+        ok=1
+      elif [[ "$quiet" == 0 ]]; then
+        printf '  %-46s ok   disabled\n' "$key"
+      fi
+      continue
+    fi
+
+    want="$mode|$pos|$scale|$transform"
+    got="$(actual_state "$key")"
+    if [[ -z "$got" ]]; then
+      [[ "$quiet" == 0 ]] && printf '  %-46s want=%-28s got=ABSENT\n' "$key" "$want"
+      ok=1
+      continue
+    fi
+    got="$(canon_actual "$got")"
+    if [[ "$want" != "$got" ]]; then
+      [[ "$quiet" == 0 ]] && printf '  %-46s want=%-28s got=%s\n' "$key" "$want" "$got"
+      ok=1
+    elif [[ "$quiet" == 0 ]]; then
+      printf '  %-46s ok   %s\n' "$key" "$got"
+    fi
+  done < <(desired_layout "$profile")
+
+  return $ok
+}
+
+# The generated active files must actually come from this profile. Geometry
+# alone is not enough: workspaces.lua can be left over from another profile
+# while monitors.lua looks correct -- that is the state that pins every
+# workspace to a disabled eDP-1 and collapses them onto one screen.
+files_match() {
+  local profile="$1" quiet="${2:-1}" f rc=0
+  for f in monitors workspaces; do
+    local active="$CONFIG_DIR/$f.lua" want="$PROFILE_DIR/$profile.$f.lua"
+    if ! cmp -s "$active" "$want"; then
+      [[ "$quiet" == 0 ]] && printf '  %-46s stale (differs from %s)\n' "$f.lua" "$profile.$f.lua"
+      rc=1
+    elif [[ "$quiet" == 0 ]]; then
+      printf '  %-46s ok   matches %s\n' "$f.lua" "$profile.$f.lua"
+    fi
+  done
+  return $rc
+}
+
+# ── Workspace pinning ───────────────────────────────────────────────────────
+workspace_target() {
+  case "$1" in
     kvm)
-      if (( workspace <= 5 )); then printf '%s\n' DP-5
-      elif (( workspace <= 10 )); then printf '%s\n' DP-7
-      else printf '%s\n' DP-9; fi
+      if (($2 <= 5)); then printf '%s\n' "desc:Dell Inc. DELL P2722H CTCS1M3"
+      elif (($2 <= 10)); then printf '%s\n' "desc:Dell Inc. DELL P2214H KW14V42L3ACB"
+      else printf '%s\n' "desc:Dell Inc. DELL P2725H 21MG834"; fi
       ;;
     desktop)
-      if (( workspace <= 5 )); then printf '%s\n' HDMI-A-3
-      else printf '%s\n' DP-4; fi
+      if (($2 <= 5)); then printf '%s\n' HDMI-A-3; else printf '%s\n' DP-4; fi
       ;;
     laptop) printf '%s\n' eDP-1 ;;
   esac
 }
 
 move_existing_workspaces() {
-  local profile="$1"
-  local id monitor target
-
+  local profile="$1" id monitor key target
   while read -r id monitor; do
-    target="$(workspace_monitor "$profile" "$id")"
-    if [[ "$monitor" != "$target" ]]; then
-      "$HYPRCTL" dispatch "hl.dsp.workspace.move({ workspace = $id, monitor = \"$target\" })"
-    fi
-  done < <("$HYPRCTL" -j workspaces | jq -r '.[] | select(.id >= 1 and .id <= 15) | "\(.id) \(.monitor)"')
+    key="$(workspace_target "$profile" "$id")"
+    target="$(resolve_output "$key")"
+    # Never dispatch a move to a monitor that is not actually present.
+    [[ -n "$target" ]] || continue
+    [[ "$monitor" != "$target" ]] || continue
+    "$HYPRCTL" dispatch \
+      "hl.dsp.workspace.move({ workspace = $id, monitor = \"$target\" })" >/dev/null
+  done < <("$HYPRCTL" -j workspaces 2>/dev/null |
+    jq -r '.[] | select(.id >= 1 and .id <= 15) | "\(.id) \(.monitor)"')
 }
 
+# ── Apply ───────────────────────────────────────────────────────────────────
 apply_profile() {
+  local profile="$1"
+
+  [[ -r "$PROFILE_DIR/$profile.monitors.lua" ]] ||
+    die "missing profile file: $PROFILE_DIR/$profile.monitors.lua"
+  [[ -r "$PROFILE_DIR/$profile.workspaces.lua" ]] ||
+    die "missing profile file: $PROFILE_DIR/$profile.workspaces.lua"
+
+  cp "$PROFILE_DIR/$profile.monitors.lua" "$MONITORS_FILE" ||
+    die "could not write $MONITORS_FILE"
+  cp "$PROFILE_DIR/$profile.workspaces.lua" "$WORKSPACES_FILE" ||
+    die "could not write $WORKSPACES_FILE"
+
+  "$HYPRCTL" reload >/dev/null || log "warning: hyprctl reload reported failure"
+  refresh_live || true
+  move_existing_workspaces "$profile"
+
+  if [[ "$profile" == desktop ]]; then
+    "$HYPRCTL" dispatch 'hl.dsp.focus({ monitor = "HDMI-A-3" })' >/dev/null
+  fi
+}
+
+main() {
+  command -v jq >/dev/null 2>&1 || die "jq is required"
+
+  settle
+  refresh_live || die "cannot read monitors from hyprctl -- is Hyprland running?"
+
   local profile
   profile="$(pick_profile)"
 
-  if [[ "$FORCE" == 0 && -f "$STATE_FILE" && "$(<"$STATE_FILE")" == "$profile" ]]; then
-    return
+  if [[ "$profile" == none ]]; then
+    local msg
+    msg="incomplete KVM set ($(kvm_present_count)/${#KVM_DESCS[@]} present), leaving layout alone"
+    if [[ "$DRY_RUN" == 1 ]]; then
+      printf 'profile=none\n%s\nresult=no-action\n' "$msg"
+    else
+      log "$msg"
+    fi
+    return 0
   fi
 
   if [[ "$DRY_RUN" == 1 ]]; then
-    printf 'profile=%s\nmonitors=%s\nworkspaces=%s\n' \
-      "$profile" "$PROFILE_DIR/$profile.monitors.lua" "$PROFILE_DIR/$profile.workspaces.lua"
-    return
+    printf 'profile=%s\n' "$profile"
+    printf 'monitors=%s\n' "$PROFILE_DIR/$profile.monitors.lua"
+    printf 'workspaces=%s\n' "$PROFILE_DIR/$profile.workspaces.lua"
+    printf 'desired vs actual:\n'
+    local fok=0 lok=0
+    files_match "$profile" 0 || fok=1
+    layout_matches "$profile" 0 || lok=1
+    if ((fok == 0 && lok == 0)); then
+      printf 'result=already-correct (would do nothing)\n'
+    else
+      printf 'result=would-apply\n'
+    fi
+    return 0
   fi
 
-  cp "$PROFILE_DIR/$profile.monitors.lua" "$MONITORS_FILE"
-  cp "$PROFILE_DIR/$profile.workspaces.lua" "$WORKSPACES_FILE"
-  printf '%s\n' "$profile" >"$STATE_FILE"
-  "$HYPRCTL" reload
-  move_existing_workspaces "$profile"
-  if [[ "$profile" == desktop ]]; then
-    "$HYPRCTL" dispatch 'hl.dsp.focus({ monitor = "HDMI-A-3" })'
+  if [[ "$FORCE" == 0 ]] && files_match "$profile" && layout_matches "$profile"; then
+    log "profile=$profile already applied, nothing to do"
+    return 0
   fi
-  "$HYPRCTL" notify -1 3000 "rgb(88c0d0)" "Loaded monitor profile: $profile"
+
+  log "applying profile=$profile"
+  apply_profile "$profile"
+
+  # Verify, and retry once: the compositor occasionally needs a second pass
+  # when a monitor arrived while the reload was already in flight.
+  refresh_live || true
+  if ! { files_match "$profile" && layout_matches "$profile"; }; then
+    log "verify failed after apply, retrying once"
+    sleep 1
+    refresh_live || true
+    apply_profile "$profile"
+    refresh_live || true
+    if ! { files_match "$profile" && layout_matches "$profile"; }; then
+      log "ERROR: layout still incorrect after retry (profile=$profile)"
+      "$HYPRCTL" notify -1 5000 "rgb(bf616a)" \
+        "Monitor profile $profile failed to apply" >/dev/null 2>&1
+      return 1
+    fi
+  fi
+
+  log "profile=$profile applied and verified"
+  "$HYPRCTL" notify -1 3000 "rgb(88c0d0)" "Loaded monitor profile: $profile" >/dev/null 2>&1
+  return 0
 }
 
-apply_profile
-
-if [[ "$WATCH" == 1 && "$DRY_RUN" == 0 ]]; then
-  while sleep 15; do
-    apply_profile
-  done
+# ── Single-instance ─────────────────────────────────────────────────────────
+# A KVM switch fires several events; the first run wins and the rest exit
+# rather than queue up behind it and re-apply an already-correct layout.
+if [[ "$DRY_RUN" == 0 ]] && command -v flock >/dev/null 2>&1; then
+  exec 9>"$LOCK_FILE" || die "cannot open lock $LOCK_FILE"
+  if ! flock -n 9; then
+    log "another instance holds the lock, exiting"
+    exit 0
+  fi
 fi
+
+main

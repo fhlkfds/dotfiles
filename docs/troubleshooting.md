@@ -131,13 +131,40 @@ to it.
 
 ## Wrong monitor layout or missing workspaces
 
-Run `hyprctl monitors all` and compare exact connector names with the three
-profile signatures. Unknown hardware falls back to the laptop profile. The
-tracked active monitor and workspace files are currently inconsistent until the
-watcher runs, so a failed watcher may pin workspaces to absent eDP-1.
+First ask what the applier thinks:
 
-Check `jq`, the Hyprland instance/socket environment, and watcher execution. Make
-durable corrections under `monitor_profiles/`, not only in active files. The
+```sh
+~/.config/hypr/scripts/auto-monitor-profile.sh --dry-run
+journalctl -t hypr-monitor -n 50
+```
+
+The dry-run prints the selected profile and a desired-vs-actual table for every
+monitor, plus whether the generated `monitors.lua`/`workspaces.lua` still match
+the profile.
+
+If workspaces have collapsed onto one screen, the `laptop` profile was applied
+while the externals were connected: it pins workspaces 1–15 to `eDP-1`, which is
+disabled when docked. That happens when detection fails. Confirm the EDID
+descriptions still match `KVM_DESCS` in `auto-monitor-profile.sh`:
+
+```sh
+hyprctl monitors -j | jq -r '.[].description'
+```
+
+Do **not** diagnose by connector name — the KVM renumbers them on every switch.
+
+If nothing reacts to a hotplug, the watcher is not running:
+
+```sh
+pgrep -af hypr-monitor-watch.py
+hyprctl eval 'hl.exec_cmd("$HOME/.config/hypr/scripts/hypr-monitor-watch.py")'
+```
+
+Note `hyprctl dispatch exec` and `hyprctl keyword` are legacy dispatchers and do
+nothing under the Lua config; use `hyprctl eval` instead.
+
+Make durable corrections under `monitor_profiles/` via
+`capture-monitor-profile.sh`, not in the active files, which are overwritten. The
 display panel's scale helper persists only to the desktop profile.
 
 ## Launcher entry fails

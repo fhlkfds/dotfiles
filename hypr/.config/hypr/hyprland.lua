@@ -11,8 +11,14 @@ hl.monitor({
 
 hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
+-- ponytail: legacy DRM avoids Aquamarine's hotplug crash; remove after the page-flip bug is fixed.
+hl.env("AQ_NO_ATOMIC", "1")
 
 hl.config({
+    cursor = {
+        -- ponytail: software cursor avoids rotated-output glitches; retry hardware cursors after an upstream fix.
+        no_hardware_cursors = 1,
+    },
     input = {
         kb_layout = "us",
         kb_variant = "",

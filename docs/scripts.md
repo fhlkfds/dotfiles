@@ -106,12 +106,18 @@ and webcam discovery respectively.
 
 ### `auto-monitor-profile.sh`
 
-Inputs are live JSON from `hyprctl -j monitors`. It recognizes desktop, KVM, and
-laptop output signatures, copies profile files to active `monitors.lua` and
-`workspaces.lua`, reloads Hyprland, moves workspaces 1–15, and notifies. `--watch`
-polls every 15 seconds, `--force` reapplies an unchanged profile, and
-`--dry-run` reports the selected Lua sources without writing or dispatching. See
-[Monitors](./monitors.md).
+Inputs are live JSON from `hyprctl -j monitors`. The KVM profile is recognized by
+EDID description, because the KVM renumbers DisplayPort connectors on every
+switch; the desktop profile still matches connector names. It copies profile
+files to active `monitors.lua` and `workspaces.lua`, reloads Hyprland, moves
+workspaces 1–15, verifies the result, and notifies.
+
+It waits for the monitor set to settle, takes a `flock`, and exits without
+changing anything when the layout and generated files already match the profile.
+`--force` reapplies regardless, `--dry-run` prints a desired-vs-actual table
+without writing or dispatching, and `--verbose` mirrors the log to stderr. It has
+no polling mode; reapplication is driven by `hypr-monitor-watch.py`. Logs go to
+`journalctl -t hypr-monitor`. See [Monitors](./monitors.md).
 
 This script modifies tracked/Stowed configuration and live compositor state. Test
 changes with mocked `hyprctl` and temporary target files rather than invoking it
@@ -123,11 +129,20 @@ Accepts a monitor name and numeric scale, validates both, then atomically update
 the active monitor file and desktop profile. The Quickshell display panel applies
 the resulting setting. It does not persist to laptop/KVM profiles.
 
-### Optional udev dispatcher
+### `hypr-monitor-watch.py`
 
-`hypr/.config/hypr/udev/hyprland-monitor-hotplug.sh` is designed for a root-owned
-system path. It discovers a graphical user session and drops privileges before
-calling the user profile script. The paired udev rule is not installed by Stow.
+Subscribes to Hyprland's `socket2` IPC and runs `auto-monitor-profile.sh` when a
+monitor is added or removed, debouncing the burst a KVM switch produces. Started
+from `conf/autostart.lua`; exits when Hyprland closes the socket. Entirely
+user-level — it replaced a root udev dispatcher and a 15-second polling loop.
+
+### `capture-monitor-profile.sh`
+
+Snapshots the live monitor layout into `monitor_profiles/<profile>.monitors.lua`,
+keyed by EDID description. Shows a diff and asks before writing, keeps a `.bak`,
+and validates the generated Lua with `luac`. `--dry-run` previews, `--yes` skips
+the prompt, `--with-workspaces` also snapshots workspace pinning and reports
+which entries had to be inferred.
 
 ## YubiKey authentication
 
