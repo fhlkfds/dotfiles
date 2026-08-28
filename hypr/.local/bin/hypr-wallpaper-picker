@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
-repo_root="$(realpath -- "$(dirname "$(realpath -- "${BASH_SOURCE[0]}")")/../../..")"
-wallpaper_dir="${HYPR_WALLPAPER_DIR:-$repo_root/Wallpapers}"
+wallpaper_dir="${HYPR_WALLPAPER_DIR:-$HOME/Pictures/wallpapers}"
 runtime_dir="${HYPR_WALLPAPER_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-/tmp}/hypr-wallpaper-picker-$UID}"
 state_file="${HYPR_WALLPAPER_STATE_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprland-desktop/wallpaper/current}"
 
