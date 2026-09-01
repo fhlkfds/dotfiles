@@ -25,5 +25,6 @@ services:
     volumes:
       - "${WINDOWS_STORAGE_DIR:?windows-vm must provide its storage directory}:/storage"
       - "${WINDOWS_SHARE_DIR:?windows-vm must provide its shared directory}:/shared"
+      - "${WINDOWS_OEM_DIR:-./oem}:/oem:ro"
     restart: "no"
     stop_grace_period: 2m

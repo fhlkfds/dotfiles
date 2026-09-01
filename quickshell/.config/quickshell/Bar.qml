@@ -225,32 +225,23 @@ Scope {
         anchors.verticalCenter: parent.verticalCenter
         spacing: Theme.fs(2 * panel.barScale)
 
-        DisplayIcon { screenName: panel.modelData.name; barScale: panel.barScale }
-        NetworkIcon { screenName: panel.modelData.name; barScale: panel.barScale }
-        BluetoothIcon { screenName: panel.modelData.name; barScale: panel.barScale }
-        AudioIcon { screenName: panel.modelData.name; barScale: panel.barScale }
-
         // Only rendered while a screen recording is running.
         RecordIcon { barScale: panel.barScale }
+
+        // Amber while Windows is installing/booting, accent when RDP is ready.
+        WindowsVmIcon { barScale: panel.barScale }
 
         // Active temporary modes share one controller and open one focused-
         // monitor panel; notification history remains owned by NotifyState.
         ModeIndicators { screenName: panel.modelData.name; barScale: panel.barScale }
 
-        ClipboardIcon {
-          screenName: panel.modelData.name
-          barScale: panel.barScale
-        }
-
-        // Separates the status icons from the clock.
-        Item { width: Theme.fs(6 * panel.barScale); height: 1 }
-
-        // Last in the row, so the date and time sit at the right edge.
-        // Anchored vertically because it is slightly taller than the icons.
+        // The clock expands left on hover to reveal display, network,
+        // Bluetooth, audio, and clipboard controls.
         ClockWidget {
           id: clock
           anchors.verticalCenter: parent.verticalCenter
           barScale: panel.barScale
+          screenName: panel.modelData.name
         }
       }
     }

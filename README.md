@@ -196,6 +196,10 @@ continue to use the same notification path. Since RDP is loopback-only, FreeRDP
 uses non-interactive certificate handling so a regenerated VM certificate cannot
 leave a hidden modal dimming and blocking another window.
 
+New Windows installations also use Dockur's OEM hook to ensure WinGet, then
+install Sysinternals, Everything, Helium, and PuTTY. Its transcript is saved at
+`C:\OEM\post-install.log` inside the VM.
+
 ---
 
 ## Theme System

@@ -28,7 +28,7 @@ Usage: windows-vm COMMAND [OPTIONS]
 Commands:
   install                  configure and start Windows installation
   launch [--keep-alive]    start if needed and connect over RDP
-  status                   report configuration, VM, RDP, and KVM state
+  status [--bar]           report full status or one bar phase
   stop                     gracefully stop the managed VM
   logs                     follow the managed VM logs
   remove [--purge-data]    remove the container; optionally delete VM data
@@ -179,7 +179,9 @@ port_open() {
 }
 
 container_id() {
-  compose ps -q windows 2>/dev/null
+  docker ps --all --quiet \
+    --filter "label=com.docker.compose.project=$PROJECT_NAME" \
+    --filter 'label=com.docker.compose.service=windows' 2>/dev/null | head -n 1
 }
 
 container_status() {
@@ -294,6 +296,7 @@ write_configuration() {
     printf 'WINDOWS_RDP_PORT=3389\n'
     printf 'WINDOWS_STORAGE_DIR=%s\n' "$STORAGE_DIR"
     printf 'WINDOWS_SHARE_DIR=%s\n' "$SHARE_DIR"
+    printf 'WINDOWS_OEM_DIR=%s\n' "$DATA_DIR/oem"
   } > "$settings_tmp"
   {
     printf 'WINDOWS_USERNAME=%s\n' "$username"
@@ -419,6 +422,14 @@ launch_windows() {
 }
 
 status_windows() {
+  local bar=0
+  case "${1:-}" in
+    "") ;;
+    --bar) bar=1 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+  [[ $# -le 1 ]] || { usage >&2; exit 2; }
+
   local configured=no docker_state=unavailable kvm_state=unavailable container=not-configured rdp=not-ready port=3389
   [[ -r "$SETTINGS_FILE" && -r "$CREDENTIALS_FILE" ]] && configured=yes
   [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] && kvm_state=available
@@ -432,6 +443,16 @@ status_windows() {
       container=$(container_status)
       port_open "$port" && rdp=ready
     fi
+  fi
+  if ((bar)); then
+    if [[ "$container" != running ]]; then
+      printf 'off\n'
+    elif [[ "$rdp" == ready ]]; then
+      printf 'ready\n'
+    else
+      printf 'starting\n'
+    fi
+    return
   fi
   printf 'Installed:     %s\n' "$configured"
   printf 'Docker:        %s\n' "$docker_state"
@@ -503,7 +524,7 @@ fi
 case "$command_name" in
   install) install_windows "$@" ;;
   launch|start) launch_windows "$@" ;;
-  status) [[ $# -eq 0 ]] || { usage >&2; exit 2; }; status_windows ;;
+  status) status_windows "$@" ;;
   stop) [[ $# -eq 0 ]] || { usage >&2; exit 2; }; stop_windows ;;
   logs) [[ $# -eq 0 ]] || { usage >&2; exit 2; }; logs_windows ;;
   remove) remove_windows "$@" ;;

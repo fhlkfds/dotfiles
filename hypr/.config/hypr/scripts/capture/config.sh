@@ -21,7 +21,7 @@
 : "${SCREENSHOT_DIR:=$HOME/Pictures/screenshot}"
 
 # Opened by the "Edit" notification action. Empty disables the action.
-: "${SCREENSHOT_EDITOR:=satty}"
+: "${SCREENSHOT_EDITOR:=satty --copy-command wl-copy --filename}"
 
 # grim omits the pointer unless asked; set to 1 to bake the cursor in.
 : "${SCREENSHOT_CURSOR:=0}"

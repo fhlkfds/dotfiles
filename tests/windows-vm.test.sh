@@ -32,6 +32,7 @@ fi
 case "${1:-} ${2:-}" in
   'compose version') printf 'Docker Compose version fixture\n' ;;
   'info ') exit 0 ;;
+  'ps --all') printf 'fixture-container\n' ;;
   'inspect --format')
     if [[ -r "${WINDOWS_VM_TEST_STATE_FILE:-}" ]]; then
       cat "$WINDOWS_VM_TEST_STATE_FILE"
@@ -128,6 +129,12 @@ WINDOWS_VM_CONTAINER_ENV="$runtime_env" docker compose \
 assert_contains "$compose_file" '127.0.0.1:${WINDOWS_WEB_PORT:-8006}:8006/tcp'
 assert_contains "$compose_file" '127.0.0.1:${WINDOWS_RDP_PORT:-3389}:3389/tcp'
 assert_contains "$compose_file" '${WINDOWS_SHARE_DIR:?windows-vm must provide its shared directory}:/shared'
+assert_contains "$compose_file" '${WINDOWS_OEM_DIR:-./oem}:/oem:ro'
+assert_contains "$WINDOWS_VM_CONFIG_DIR/settings.env" "WINDOWS_OEM_DIR=$WINDOWS_VM_DATA_DIR/oem"
+assert_contains "$repo_root/windows/.local/share/windows-vm/oem/install.ps1" 'Microsoft.Sysinternals'
+assert_contains "$repo_root/windows/.local/share/windows-vm/oem/install.ps1" 'voidtools.Everything'
+assert_contains "$repo_root/windows/.local/share/windows-vm/oem/install.ps1" 'ImputNet.Helium'
+assert_contains "$repo_root/windows/.local/share/windows-vm/oem/install.ps1" 'PuTTY.PuTTY'
 
 # Status is concise and includes the security-sensitive paths and endpoints.
 "$helper" status > "$test_root/status.out"
@@ -135,6 +142,17 @@ assert_contains "$test_root/status.out" 'Installed:     yes'
 assert_contains "$test_root/status.out" 'KVM:'
 assert_contains "$test_root/status.out" "$WINDOWS_VM_SHARE_DIR"
 assert_contains "$test_root/status.out" '127.0.0.1:3389'
+
+# The bar needs one stable phase, not a second copy of Docker/RDP detection.
+WINDOWS_VM_TEST_CONTAINER_STATUS=running WINDOWS_VM_TEST_PORT_STATUS=0 \
+  "$helper" status --bar > "$test_root/bar-ready.out"
+[[ $(<"$test_root/bar-ready.out") == ready ]] || fail 'bar status did not report ready RDP'
+WINDOWS_VM_TEST_CONTAINER_STATUS=running WINDOWS_VM_TEST_PORT_STATUS=1 \
+  "$helper" status --bar > "$test_root/bar-starting.out"
+[[ $(<"$test_root/bar-starting.out") == starting ]] || fail 'bar status did not report startup progress'
+WINDOWS_VM_TEST_CONTAINER_STATUS=stopped WINDOWS_VM_TEST_PORT_STATUS=0 \
+  "$helper" status --bar > "$test_root/bar-off.out"
+[[ $(<"$test_root/bar-off.out") == off ]] || fail 'bar status showed a stopped VM'
 
 # Scale mapping uses only values FreeRDP supports.
 for pair in '1 100' '1.4 140' '1.8 180'; do
