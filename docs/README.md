@@ -40,8 +40,9 @@ the repository but are not started by the current Hyprland config.
 
 ## Repository layout
 
-Each top-level component is normally a Stow package whose contents mirror paths
-below `$HOME`.
+Most top-level components are Stow packages whose contents mirror paths below
+`$HOME`. `docs/`, `tests/` and `system/` are not: `system/` holds root-owned
+`/etc` templates deployed by `yubikey-auth`, never symlinked into `$HOME`.
 
 | Package | Main purpose |
 | --- | --- |

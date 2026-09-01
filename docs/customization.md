@@ -60,6 +60,11 @@ The active shell is Quickshell. Modify `Bar.qml`, components, and panel files be
 `quickshell/.config/quickshell/`. Theme colors should continue to come from
 `Theme.qml`/the generated active theme rather than hardcoded per-widget colors.
 
+The Waybar package has been removed; Quickshell is the only bar. Recovering it
+from Git history means restoring its theme template and generator target as well,
+and deciding whether Quickshell should remain for notifications and panels —
+starting both unchanged produces two top bars.
+
 ## Notifications
 
 Change timeouts, size, history limit, and DND bypass policy in the Quickshell
@@ -69,10 +74,10 @@ bindings that currently call `notificationctl`.
 
 ## Wallpapers
 
-Set `HYPR_WALLPAPER_DIR` to a durable directory or change the picker default. The
-picker currently expects a lowercase directory below `~/Pictures`. The current
-`Wallpapers/` package does not create `~/Wallpapers` under standard Stow semantics;
-fix or specially target that package before pointing the picker at it.
+Set `HYPR_WALLPAPER_DIR` to a durable directory or change the picker default. By
+default, the picker reads `~/Pictures/wallpapers`. The current `Wallpapers/`
+package does not create `~/Wallpapers` under standard Stow semantics; use
+`HYPR_WALLPAPER_DIR` to point the picker at any deployed or separate directory.
 
 Theme wallpapers and interactive search are related but separate paths. Update
 the theme asset resolver if a palette should choose a particular image.
@@ -82,10 +87,10 @@ the theme asset resolver if a palette should choose a particular image.
 Edit `hypr/.config/hypr/themes/<name>/colors.toml` for palette-specific changes.
 Edit `generate.py` or its templates only for changes that should affect every
 palette. Then validate and regenerate. Never commit a change only to ignored
-`decorations.lua`, `colors.css`, or current-theme files.
+`decorations.lua` or current-theme files.
 
-Rofi's structural layout is in `comet-glass.rasi`; Wofi styles are generated from
-themes. Cursor theme and GTK/Qt themes are not managed here, so add
+Rofi's structural layout is in `comet-glass.rasi`; Wofi styles are generated
+from themes. Cursor theme and GTK/Qt themes are not managed here, so add
 an explicit package/configuration if they should become repository-controlled.
 
 ## Applying changes

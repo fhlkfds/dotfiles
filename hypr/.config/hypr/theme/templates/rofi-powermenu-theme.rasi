@@ -1,0 +1,25 @@
+/**
+ * Power menu palette for {{ theme_name }} ({{ theme_mode }}).
+ * GENERATED from themes/{{ theme_slug }}/colors.toml -- do not edit.
+ */
+
+* {
+    power-scrim: {{ rgba(background, min(0.92, max(0.85, surface_opacity))) }};
+    power-card: {{ rgba(surface, min(0.98, surface_opacity + 0.04)) }};
+    power-card-raised: {{ rgba(surface_alt, min(1.0, surface_opacity + 0.06)) }};
+    power-card-hover: {{ rgba(accent, 0.20) }};
+    power-card-danger: {{ rgba(critical, 0.13) }};
+    power-card-danger-hover: {{ rgba(critical, 0.22) }};
+
+    power-text: {{ foreground_bright }};
+    power-text-muted: {{ muted }};
+    power-accent: {{ accent }};
+    power-danger: {{ critical }};
+    power-border: {{ rgba(border_active, 0.48) }};
+    power-border-hover: {{ rgba(accent, 0.86) }};
+    power-border-danger: {{ rgba(critical, 0.72) }};
+
+    power-radius-window: {{ radius_panel }}px;
+    power-radius-card: {{ radius_row }}px;
+    power-border-width: {{ border_width }}px;
+}

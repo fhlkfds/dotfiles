@@ -41,7 +41,9 @@ hl.window_rule({
 })
 
 hl.window_rule({
-    match = { class = "Brave-browser" },
+    -- Wayland app_id is lowercase; "Brave-browser" is the XWayland WM_CLASS, so
+    -- the unanchored capitalised form matched nothing and this rule was dead.
+    match = { class = "^[Bb]rave-browser$" },
     opacity = "1.0 override 0.95 override 1.0 override",
 })
 

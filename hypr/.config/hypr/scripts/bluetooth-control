@@ -8,10 +8,13 @@ Usage: bluetooth-control COMMAND [ARGUMENT]
 Commands:
   status                 print adapter and known-device state as JSON
   power on|off           enable or disable the default adapter
-  scan [SECONDS]         discover nearby devices (default: 12 seconds)
+  scan [SECONDS|off]     discover nearby devices (default: 12 seconds)
   connect MAC            connect a paired device
   disconnect MAC         disconnect a device
   pair MAC               pair, trust, and connect a discovered device
+  trust MAC              mark a device as trusted
+  untrust MAC            remove trust from a device
+  forget MAC             disconnect and remove a device entirely
 EOF
 }
 
@@ -38,6 +41,13 @@ require_mac() {
   }
 }
 
+# `bluetoothctl devices FILTER` prints usage text instead of failing on the
+# filters an older BlueZ does not know, so every listing is reduced to real
+# device lines before it is searched.
+device_lines() {
+  grep -E '^Device ([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}( |$)' || true
+}
+
 has_device() {
   local listing="$1" address="$2" line
   while IFS= read -r line; do
@@ -45,6 +55,115 @@ has_device() {
   done <<< "$listing"
   return 1
 }
+
+info_field() {
+  local info="$1" field="$2"
+  sed -nE "s/^[[:space:]]*${field}:[[:space:]]*(.*[^[:space:]])[[:space:]]*$/\1/p" \
+    <<< "$info" | sed -n '1p'
+}
+
+# --- device-class cache -------------------------------------------------------
+#
+# The panel polls `status` every couple of seconds, so a `bluetoothctl info`
+# per known device per poll would spawn dozens of processes a minute just to
+# learn a device type that never changes. Device classes are therefore resolved
+# once and cached on disk; only connected devices (which need a live battery
+# reading anyway) are re-inspected on every poll.
+
+declare -A icon_cache=()
+icon_cache_dirty=false
+
+icon_cache_path() {
+  printf '%s\n' "${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/bluetooth-control/device-icons.tsv"
+}
+
+load_icon_cache() {
+  local file address icon
+  file=$(icon_cache_path)
+  [[ -r "$file" ]] || return 0
+  while IFS=$'\t' read -r address icon; do
+    [[ "$address" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]] || continue
+    icon_cache["$address"]="$icon"
+  done < "$file"
+}
+
+save_icon_cache() {
+  [[ "$icon_cache_dirty" == true ]] || return 0
+  local file dir tmp address
+  file=$(icon_cache_path)
+  dir=${file%/*}
+  mkdir -p "$dir" 2>/dev/null || return 0
+  tmp="$file.$$"
+  : > "$tmp" 2>/dev/null || return 0
+  for address in "${!icon_cache[@]}"; do
+    printf '%s\t%s\n' "$address" "${icon_cache[$address]}" >> "$tmp"
+  done
+  mv -f "$tmp" "$file" 2>/dev/null || rm -f -- "$tmp"
+}
+
+# --- battery ------------------------------------------------------------------
+
+battery_from_info() {
+  local info="$1" hex percentage
+  hex=$(sed -nE \
+    's/^[[:space:]]*Battery Percentage:[[:space:]]*0x([[:xdigit:]]+).*$/\1/p' \
+    <<< "$info" | sed -n '1p')
+  [[ -n "$hex" ]] || return 1
+
+  percentage=$((16#$hex))
+  (( percentage >= 0 && percentage <= 100 )) || return 1
+  printf '%d\n' "$percentage"
+}
+
+upower_devices=""
+upower_devices_loaded=false
+
+load_upower_devices() {
+  [[ "$upower_devices_loaded" == false ]] || return 0
+  upower_devices_loaded=true
+  command -v upower >/dev/null 2>&1 || return 0
+  upower_devices=$(upower -e 2>/dev/null || true)
+}
+
+battery_from_upower() {
+  local address="$1" needle device details searchable percentage
+  load_upower_devices
+  [[ -n "$upower_devices" ]] || return 1
+
+  needle=${address,,}
+  needle=${needle//:/_}
+  while IFS= read -r device; do
+    [[ -n "$device" ]] || continue
+    details=$(upower -i "$device" 2>/dev/null) || continue
+    searchable=${device,,}
+    searchable+=$'\n'${details,,}
+    searchable=${searchable//:/_}
+    [[ "$searchable" == *"$needle"* ]] || continue
+
+    percentage=$(sed -nE \
+      's/^[[:space:]]*percentage:[[:space:]]*([0-9]{1,3})(\.[0-9]+)?%.*$/\1/p' \
+      <<< "$details" | sed -n '1p')
+    [[ "$percentage" =~ ^[0-9]{1,3}$ ]] || continue
+    (( percentage >= 0 && percentage <= 100 )) || continue
+    printf '%d\n' "$percentage"
+    return 0
+  done <<< "$upower_devices"
+  return 1
+}
+
+device_battery() {
+  local info="$1" address="$2" percentage
+
+  if percentage=$(battery_from_info "$info"); then
+    printf '%s\n' "$percentage"
+  elif percentage=$(battery_from_upower "$address"); then
+    printf '%s\n' "$percentage"
+  else
+    return 1
+  fi
+}
+
+# --- status -------------------------------------------------------------------
 
 status_json() {
   command -v jq >/dev/null 2>&1 || {
@@ -68,30 +187,100 @@ status_json() {
   grep -Eq '^[[:space:]]*Powered:[[:space:]]+yes' <<< "$controller" && powered=true
   grep -Eq '^[[:space:]]*Discovering:[[:space:]]+yes' <<< "$controller" && scanning=true
 
-  local devices_raw paired_raw connected_raw devices_json='[]'
-  devices_raw=$(bt devices 2>/dev/null || true)
-  paired_raw=$(bt devices Paired 2>/dev/null || bt paired-devices 2>/dev/null || true)
-  connected_raw=$(bt devices Connected 2>/dev/null || true)
+  local devices_raw paired_raw connected_raw trusted_raw
+  devices_raw=$(bt devices 2>/dev/null | device_lines)
+  paired_raw=$( { bt devices Paired 2>/dev/null || bt paired-devices 2>/dev/null; } | device_lines)
+  connected_raw=$(bt devices Connected 2>/dev/null | device_lines)
+  trusted_raw=$(bt devices Trusted 2>/dev/null | device_lines)
 
-  local prefix address name paired connected entry
+  load_icon_cache
+  declare -A seen=()
+
+  # One tab-separated row per device, parsed by a single jq below. The previous
+  # version spawned two jq processes per device to append to a JSON array.
+  local rows="" prefix address upper name paired connected trusted icon info
+  local battery trusted_field
   while IFS=' ' read -r prefix address name; do
     [[ "$prefix" == Device ]] || continue
     valid_mac "$address" || continue
-    paired=false
-    connected=false
-    has_device "$paired_raw" "$address" && paired=true
-    has_device "$connected_raw" "$address" && connected=true
-    [[ -n "${name:-}" ]] || name="$address"
-    entry=$(jq -cn --arg address "${address^^}" --arg name "$name" \
-      --argjson paired "$paired" --argjson connected "$connected" \
-      '{address:$address,name:$name,paired:$paired,connected:$connected}')
-    devices_json=$(jq -cn --argjson items "$devices_json" --argjson item "$entry" \
-      '$items + [$item]')
+    upper=${address^^}
+    [[ -z "${seen[$upper]:-}" ]] || continue
+    seen["$upper"]=1
+
+    paired=0
+    connected=0
+    trusted=0
+    has_device "$paired_raw" "$address" && paired=1
+    has_device "$connected_raw" "$address" && connected=1
+    has_device "$trusted_raw" "$address" && trusted=1
+
+    icon=${icon_cache[$upper]:-}
+    info=""
+    # Connected devices need a live read for battery and trust; unknown devices
+    # need exactly one read, ever, to learn their class.
+    if [[ "$connected" == 1 || -z "$icon" ]]; then
+      info=$(bt info "$address" 2>/dev/null) || info=""
+    fi
+
+    battery=""
+    if [[ -n "$info" ]]; then
+      local resolved
+      resolved=$(info_field "$info" "Icon")
+      if [[ -n "$resolved" && "$resolved" != "$icon" ]]; then
+        icon=$resolved
+        icon_cache["$upper"]=$resolved
+        icon_cache_dirty=true
+      elif [[ -z "$icon" ]]; then
+        # Cache the miss so an iconless device is not re-inspected every poll.
+        icon_cache["$upper"]=""
+        icon_cache_dirty=true
+      fi
+      trusted_field=$(info_field "$info" "Trusted")
+      [[ "$trusted_field" == yes ]] && trusted=1
+      [[ "$trusted_field" == no ]] && trusted=0
+      if [[ "$connected" == 1 ]]; then
+        battery=$(device_battery "$info" "$address" || true)
+      fi
+    fi
+
+    [[ -n "${name:-}" ]] || name="$upper"
+    # Tabs and newlines would break the row encoding; BlueZ names may contain
+    # neither in practice, but a hostile name must not be able to inject rows.
+    name=${name//$'\t'/ }
+    rows+="$upper"$'\t'"$name"$'\t'"$paired"$'\t'"$connected"$'\t'"$trusted"
+    rows+=$'\t'"$icon"$'\t'"$battery"$'\n'
   done <<< "$devices_raw"
 
-  jq -cn --argjson powered "$powered" --argjson scanning "$scanning" \
-    --argjson devices "$devices_json" \
-    '{available:true,powered:$powered,scanning:$scanning,devices:$devices,error:""}'
+  # Drop cache entries for devices BlueZ no longer knows about.
+  for address in "${!icon_cache[@]}"; do
+    [[ -n "${seen[$address]:-}" ]] && continue
+    unset 'icon_cache[$address]'
+    icon_cache_dirty=true
+  done
+  save_icon_cache
+
+  printf '%s' "$rows" | jq -Rs \
+    --argjson powered "$powered" --argjson scanning "$scanning" '
+    {
+      available: true,
+      powered: $powered,
+      scanning: $scanning,
+      error: "",
+      devices: (
+        split("\n")
+        | map(select(length > 0))
+        | map(split("\t"))
+        | map({
+            address: .[0],
+            name: .[1],
+            paired: (.[2] == "1"),
+            connected: (.[3] == "1"),
+            trusted: (.[4] == "1"),
+            icon: (.[5] // ""),
+            battery: (if (.[6] // "") == "" then null else (.[6] | tonumber) end)
+          })
+      )
+    }'
 }
 
 require_bluetoothctl
@@ -108,9 +297,13 @@ case "$command_name" in
     bt power "$1"
     ;;
   scan)
+    if [[ $# -eq 1 && "$1" == off ]]; then
+      bt scan off
+      exit 0
+    fi
     seconds="${1:-12}"
     [[ $# -le 1 && "$seconds" =~ ^[0-9]+$ && "$seconds" -ge 1 && "$seconds" -le 60 ]] || {
-      printf 'bluetooth-control: scan duration must be 1-60 seconds\n' >&2
+      printf 'bluetooth-control: scan duration must be 1-60 seconds, or off\n' >&2
       exit 2
     }
     bt --timeout "$seconds" scan on
@@ -119,6 +312,20 @@ case "$command_name" in
     [[ $# -eq 1 ]] || { usage >&2; exit 2; }
     require_mac "$1"
     bt "$command_name" "${1^^}"
+    ;;
+  trust|untrust)
+    [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+    require_mac "$1"
+    bt "$command_name" "${1^^}"
+    ;;
+  forget)
+    [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+    require_mac "$1"
+    address="${1^^}"
+    # Disconnect first so BlueZ tears the link down cleanly; a still-connected
+    # device can otherwise reappear immediately after removal.
+    bt disconnect "$address" >/dev/null 2>&1 || true
+    bt remove "$address"
     ;;
   pair)
     [[ $# -eq 1 ]] || { usage >&2; exit 2; }
@@ -137,4 +344,3 @@ case "$command_name" in
     exit 2
     ;;
 esac
-

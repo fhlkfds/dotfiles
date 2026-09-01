@@ -65,7 +65,9 @@ typeset -g POWERLEVEL9K_INSTANT_PROMPT=off
 
 alias gam="/home/liam/bin/gam7/gam"
 
-export PATH="$HOME/.local/bin:$PATH"
+# Also set for the graphical session by hyprland.lua; guard so a login shell
+# under Hyprland does not prepend a duplicate entry.
+[[ ":$PATH:" == *":$HOME/.local/bin:"* ]] || export PATH="$HOME/.local/bin:$PATH"
 
 # Standalone coding-agent launchers from the `ai` Stow package.
 [[ -r ~/.config/ai-agent/shell.zsh ]] && source ~/.config/ai-agent/shell.zsh

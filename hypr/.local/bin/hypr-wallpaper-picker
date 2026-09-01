@@ -210,18 +210,10 @@ apply_wallpaper() {
         return 1
     }
 
-    pkill -x hyprpaper 2>/dev/null || true
-    for _ in {1..40}; do
-        pgrep -x hyprpaper >/dev/null || break
-        sleep 0.05
-    done
-    if pgrep -x hyprpaper >/dev/null; then
-        notify "hyprpaper failed to stop before applying the wallpaper"
-        printf 'hyprpaper failed to stop\n' >&2
-        return 1
-    fi
-
-    hyprpaper >/dev/null 2>&1 &
+    # hyprpaper 0.8 loads on demand and re-points a live daemon over IPC, so it
+    # must not be restarted here: hyprpaper.conf declares no wallpaper block, and
+    # a fresh daemon therefore blanks every output until the handshake lands.
+    ensure_hyprpaper_running
     for _ in {1..40}; do
         if hyprctl hyprpaper wallpaper ",$wallpaper,cover" >/dev/null 2>&1; then
             return

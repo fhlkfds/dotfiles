@@ -130,11 +130,31 @@ If you change the physical monitors, update `KVM_DESCS` in
 Do not make durable edits only to active `monitors.lua` or `workspaces.lua`; they
 are replaced from the profile.
 
+## Untracked machine state
+
+`monitors.lua`, `workspaces.lua`, `monitors.conf` and `workspaces.conf` are
+**not tracked**: the applier rewrites the first two from the profile pair on
+every connected-output change, and nwg-displays rewrites them too. Tracking them
+let the two halves drift apart — a `git restore` or an nwg-displays run touching
+only `monitors.lua` left workspace rules pinned to outputs that were not
+connected. The applier compares both active files against the selected profile
+rather than trusting a cached profile name, so an external edit to either half
+is reconciled on the next trigger.
+
+A fresh clone materialises them with:
+
+```bash
+~/.config/hypr/scripts/auto-monitor-profile.sh --force
+```
+
 ## Other monitor files
 
-- The retained `monitors.conf` is **inactive**. Hyprland loads the Lua config
-  (`[cfg] Using lua config found at .../hyprland.lua`), so `nwg-displays` output
-  written there has no effect. It is compatibility residue only.
+- `hypr/.config/hypr/monitors.lua` and `workspaces.lua` are required by the entry
+  point and replaced from the selected profile at runtime.
+- `monitors.conf` and `workspaces.conf` are the inactive hyprlang mirror kept as a
+  rollback path. Hyprland loads the Lua config (`[cfg] Using lua config found at
+  .../hyprland.lua`), so `nwg-displays` output written there has no effect;
+  regenerate them by hand alongside the profile if that path is ever used.
 - `hypr/.config/hypr/monitors.conf.bak` is empty.
 
 ## Display panel and scale changes

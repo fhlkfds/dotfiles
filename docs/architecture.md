@@ -167,8 +167,8 @@ under `~/.config/windows`.
 | Wofi | Retained alternative | no active binding/startup |
 | Noctalia | Retained configuration | no active startup call |
 
-This distinction matters during troubleshooting: editing SwayNC will not change
-the currently visible Quickshell UI.
+This distinction matters during troubleshooting: editing SwayNC or Noctalia will
+not change the currently visible Quickshell UI.
 
 ## Environment variables
 
@@ -177,7 +177,7 @@ honor feature-specific variables:
 
 | Variable | Purpose / default |
 | --- | --- |
-| `HYPR_WALLPAPER_DIR` | wallpaper directory; `/home/liam/Pictures/Wallpapers` |
+| `HYPR_WALLPAPER_DIR` | wallpaper directory; defaults to `~/Pictures/wallpapers` |
 | `HYPR_WALLPAPER_RUNTIME_DIR` | wallpaper search/download runtime data |
 | `CHROMIUM_YTDLP_DIR` | browser video destination; `~/Videos` |
 | `AI_AGENT_DEFAULT`, `AI_AGENT_CONFIG` | default AI CLI and config path |

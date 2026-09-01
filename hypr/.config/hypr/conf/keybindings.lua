@@ -11,16 +11,25 @@ local function exec(keys, description, command, flags)
     bind(keys, description, hl.dsp.exec_cmd(command), flags)
 end
 
+-- Entry points owned by a separate Stow package. Routed through
+-- run-if-deployed.sh so an undeployed package reports itself instead of making
+-- the keybinding silently do nothing.
+local function package_exec(keys, description, package, command, flags)
+    exec(keys, description,
+        cfg.scripts_dir .. "/run-if-deployed.sh " .. package .. " " .. command, flags)
+end
+
 -- Core desktop and helper commands.
 exec(mod .. " + Return", "terminal", cfg.terminal)
 exec(mod .. " + SHIFT + Return", "drop-down terminal", cfg.scripts_dir .. "/Dropterminal.sh kitty")
 bind(mod .. " + Q", "close window", hl.dsp.window.close())
 exec(mod .. " + L", "lock screen", "pidof hyprlock || hyprlock --config ~/.config/hypr/hyprlock.conf")
-exec(mod .. " + P", "power menu", cfg.scripts_dir .. "/power-menu.sh")
+exec(mod .. " + P", "power menu", "bash " .. cfg.scripts_dir .. "/power-menu.sh")
 exec(mod .. " + ALT + P", "monitor profiles", cfg.scripts_dir .. "/monitor-profile-menu.sh")
 exec(mod .. " + ALT + E", "emoji menu", cfg.scripts_dir .. "/RofiEmoji.sh")
 exec(mod .. " + K", "keybindings", "quickshell ipc call keybinds toggle")
-exec(mod .. " + I", "coding agent", cfg.terminal .. " -e $HOME/.local/bin/ai-agent")
+exec(mod .. " + I", "coding agent",
+    cfg.terminal .. " -e " .. cfg.scripts_dir .. "/run-if-deployed.sh ai ai-agent")
 
 exec(mod .. " + C", "universal copy", cfg.scripts_dir .. "/universal-clipboard.sh copy")
 exec(mod .. " + X", "universal cut", cfg.scripts_dir .. "/universal-clipboard.sh cut")
@@ -44,12 +53,12 @@ end)
 
 exec(mod .. " + comma", "dismiss newest notification", "$HOME/.local/bin/notificationctl dismiss-one")
 exec(mod .. " + SHIFT + comma", "dismiss all notifications", "$HOME/.local/bin/notificationctl dismiss-all")
-exec(mod .. " + CTRL + comma", "toggle do not disturb", "$HOME/.local/bin/desktop-mode toggle do-not-disturb")
+package_exec(mod .. " + CTRL + comma", "toggle do not disturb", "modes", "desktop-mode toggle do-not-disturb")
 exec(mod .. " + ALT + comma", "invoke newest notification", "$HOME/.local/bin/notificationctl invoke-latest")
 exec(mod .. " + SHIFT + ALT + comma", "notification history", "$HOME/.local/bin/notificationctl history")
-exec(mod .. " + ALT + M", "desktop modes", "$HOME/.local/bin/desktop-mode menu")
-exec(mod .. " + SHIFT + I", "stay awake", "$HOME/.local/bin/desktop-mode toggle stay-awake")
-exec(mod .. " + CTRL + Escape", "start ASCII screensaver", "$HOME/.local/bin/desktop-mode action screensaver")
+package_exec(mod .. " + ALT + M", "desktop modes", "modes", "desktop-mode menu")
+package_exec(mod .. " + SHIFT + I", "stay awake", "modes", "desktop-mode toggle stay-awake")
+package_exec(mod .. " + CTRL + Escape", "start ASCII screensaver", "modes", "desktop-mode action screensaver")
 exec(mod .. " + SHIFT + G", "start Gaming VM", [[bash -lc 'virsh -c qemu:///system start Gaming-VM && sleep 15 && looking-glass-client -F -f /dev/shm/looking-glass']])
 
 -- Capture suite.

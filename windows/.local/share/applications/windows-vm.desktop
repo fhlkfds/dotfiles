@@ -1,4 +1,9 @@
 [Desktop Entry]
+# Exec/TryExec are resolved against the launcher's PATH: the Desktop Entry spec
+# defines no field code for $HOME and performs no variable expansion, so a bare
+# name is the only portable way to reach ~/.local/bin/windows-vm. hyprland.lua
+# puts ~/.local/bin on the session PATH so Rofi and the app menu resolve it; a
+# non-resolving TryExec would hide this entry from menus entirely.
 Name=Windows
 Comment=Start the Windows 11 VM and connect over RDP
 Exec=windows-vm launch

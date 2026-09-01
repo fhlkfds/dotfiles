@@ -22,6 +22,15 @@ if night_light_state then
     night_light_state:close()
 end
 
+-- greetd -> start-hyprland never sources ~/.zshrc, so the session PATH has no
+-- ~/.local/bin and every Stow package's entry point lives there. hl.env runs
+-- before the display server initialises, so this takes effect at next login,
+-- not on `hyprctl reload`.
+local path = os.getenv("PATH")
+if path and not path:find(home .. "/.local/bin", 1, true) then
+    hl.env("PATH", home .. "/.local/bin:" .. path)
+end
+
 hl.config({
     decoration = {
         screen_shader = night_light_enabled

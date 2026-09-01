@@ -33,6 +33,9 @@ Panel-specific failures often indicate a missing external command:
 - desktop modes: run `desktop-mode doctor --json`; the panel intentionally
   reports unavailable backends rather than claiming a toggle succeeded.
 
+Editing SwayNC's or Noctalia's configuration does not change the active bar or
+panels; only Quickshell does.
+
 ## Notifications do not appear
 
 Use `notificationctl status --json` to determine whether the Quickshell service is
@@ -109,12 +112,12 @@ browser processes.
 
 ## Wallpaper picker shows no local results
 
-The tool defaults to `/home/liam/Pictures/wallpapers`, while tracked assets are in
-the repository's `Wallpapers/` tree. Standard `stow Wallpapers` currently targets
-that package's children directly below `$HOME`, not `~/Wallpapers` as the root
-README claims. Correct/specially target the package and set
-`HYPR_WALLPAPER_DIR` to the resulting directory. Local matching uses filenames
-and recognizes JPEG/PNG files. Empty remote results additionally require `curl`,
+The tool defaults to `~/Pictures/wallpapers`. Create that directory and put
+JPEG/PNG files there. Standard `stow Wallpapers` targets the package's children
+directly below `$HOME`, rather than creating `~/Wallpapers`; set
+`HYPR_WALLPAPER_DIR` to use that deployed layout or another directory. Local
+matching uses filenames and recognizes JPEG/PNG files.
+Empty remote results additionally require `curl`,
 `jq`, DNS/network access, and a successful Wallhaven API response.
 
 If the menu says Wallhaven is blocked by Cisco Umbrella DNS, allow-list
@@ -241,9 +244,11 @@ interactive shell and loads several plugin files. Missing commands can produce
 startup errors. Disable that greeting or missing plugin source lines in
 `zsh/.zshrc`. Also replace the personal GAM and VPN paths before reuse.
 
-The tracked `zsh/.oh-my-zsh` path is a Gitlink without a `.gitmodules` mapping.
-If a fresh clone leaves Oh My Zsh unavailable, install it independently or repair
-the repository metadata; `git submodule update` cannot infer the missing URL.
+Oh My Zsh is not tracked here and `zsh/.oh-my-zsh/` is ignored, so a fresh clone
+leaves it absent by design. `source $ZSH/oh-my-zsh.sh` failing on every prompt
+means the install step was skipped — see
+[Installation](./installation.md#shell) for the three clone commands, which also
+cover the Powerlevel10k theme and the `fzf-tab` plugin.
 
 ## General diagnostic boundaries
 

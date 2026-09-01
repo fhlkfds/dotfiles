@@ -13,12 +13,30 @@ hypr/.config/hypr/themes/current-theme
 kitty/.config/kitty/theme/
 rofi/.config/rofi/color-themes/
 rofi/.config/rofi/current-theme.rasi
+rofi/.config/rofi/powermenu/theme.rasi
 hyprlock/.config/hyprlock/colors.conf
 hyprlock/.config/hyprlock/layouts/colors.conf
 swaync/.config/swaync/style.css
 wofi/.config/wofi/style.css
 noctalia/.config/noctalia/colors.json
 noctalia/.config/noctalia/colorschemes/
+
+# ── Generated monitor/workspace state ─────────────────────────────────────────
+# Sources of truth are hypr/.config/hypr/monitor_profiles/<profile>.*.lua.
+# scripts/auto-monitor-profile.sh copies the matching pair over the files below
+# on every connected-output change, and nwg-displays rewrites them too, so they
+# are machine state rather than configuration. A fresh clone materialises them
+# with `~/.config/hypr/scripts/auto-monitor-profile.sh --force`.
+hypr/.config/hypr/monitors.lua
+hypr/.config/hypr/workspaces.lua
+hypr/.config/hypr/monitors.conf
+hypr/.config/hypr/workspaces.conf
+
+# ── Oh My Zsh ─────────────────────────────────────────────────────────────────
+# Installed by the user, not vendored here: its own .gitignore excludes custom/,
+# so a submodule could never carry the powerlevel10k theme or the fzf-tab plugin
+# that .zshrc depends on. See README "Shell" for the three install commands.
+zsh/.oh-my-zsh/
 
 # Python bytecode from the theme generator
 __pycache__/

@@ -26,8 +26,13 @@ the login session's runtime directory, then restores that width while retaining
 the active window's current height.
 
 `hypr/.config/hypr/scripts/bluetooth-control` is the fixture-testable backend for the
-Quickshell Bluetooth widget. It reports adapter/device state as JSON and provides
-validated power, scan, pair, connect, and disconnect commands over `bluetoothctl`.
+Quickshell Bluetooth widget. It reports adapter/device state as JSON — including
+each device's class, trust flag, and battery level — and provides validated
+power, scan (`SECONDS` or `off`), pair, connect, disconnect, trust, untrust, and
+forget commands over `bluetoothctl`. `status` encodes the whole device list with
+a single `jq` run and caches device classes under
+`${XDG_CACHE_HOME:-~/.cache}/bluetooth-control/`, so the panel's poll stays
+cheap; only connected devices are re-inspected on each poll.
 
 `LayoutToggle.sh` can switch between master and dwindle layouts, but no current
 binding invokes it. The older `Screenshot.sh`, `shot-copy.sh`, `shot-edit.sh`, and
@@ -228,17 +233,28 @@ The repair tool is intentionally a dry run unless `--apply` is supplied, and it
 refuses unsafe live-profile editing when the browser is running. Browser fixture
 coverage is in `tests/browser-native-tools.test.sh`.
 
+## Package deployment guard
+
+`hypr/.config/hypr/scripts/run-if-deployed.sh <package> <command> [args...]`
+runs `~/.local/bin/<command>`, falls back to a `PATH` lookup, and otherwise sends
+a desktop notification naming the Stow package that has not been deployed.
+
+Hyprland discards `exec` output, so a binding pointing at an undeployed package's
+entry point does nothing at all with no diagnostic. The `SUPER+I` coding-agent
+binding and the four `desktop-mode` bindings route through this wrapper, as does
+the desktop-mode daemon line in `conf/autostart.lua`. `hypridle.conf` guards its
+`condition_cmd` the same way inline.
+
 ## Power menu
 
-`hypr/.config/hypr/scripts/power-menu.sh` provides the active `SUPER+P` menu. It
-chooses Fuzzel, then Rofi, Wofi, or Bemenu, and confirms logout, reboot, and
-shutdown actions.
+`hypr/.config/hypr/scripts/power-menu.sh` is a launcher-neutral
+lock/logout/suspend/reboot/shutdown menu with confirmation prompts. It chooses
+Fuzzel, then Rofi, Wofi, or Bemenu, and the `SUPER+P` binding invokes it through
+`bash`.
 
-## Arch updates
-
-`hypr/.config/hypr/scripts/arch-updates` prints repository and AUR counts as
-JSON. Its `update` command opens Kitty with the available `yay` or `paru` helper;
-the Quickshell bar is the only caller.
+It previously lived in the Waybar package. When Waybar was retired it was the
+only script there with a consumer outside that package, so it moved here and the
+rest were removed — recoverable from Git history if ever wanted.
 
 ## AI launcher
 

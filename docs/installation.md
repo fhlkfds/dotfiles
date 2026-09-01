@@ -37,8 +37,10 @@ effect at the next reboot, or restart it deliberately from a TTY.
 
 ### YubiKey authentication
 
-`system/pam.d/sudo` and `system/pam.d/hyprlock` are repository-owned templates
-for the attached YubiKey Bio. They try its enrolled fingerprint first, its FIDO
+`system/pam.d/sudo`, `system/pam.d/doas` and `system/pam.d/hyprlock` are
+repository-owned templates for the attached YubiKey Bio. Both escalation stacks
+are deployed because `.zshrc` aliases `sudo` to `doas`: a stack installed only to
+`/etc/pam.d/sudo` would never be reached by the command actually typed. They try its enrolled fingerprint first, its FIDO
 PIN second, and the existing account password last. Both key rules use
 `sufficient`, so initial greetd login and password recovery remain unchanged.
 
@@ -97,19 +99,22 @@ sudo install -o root -g root -m0600 "$u2f_tmp" /etc/u2f_mappings
 rm -f "$u2f_tmp"
 ```
 
-Deploy and test `sudo` first. Do not install the Hyprlock template until both
-the key and password paths have succeeded in separate terminals:
+Deploy and test both escalation stacks first. Do not install the Hyprlock
+template until the key and password paths have both succeeded in separate
+terminals:
 
 ```bash
 sudo cp -a /etc/pam.d/sudo /etc/pam.d/sudo.pre-yubikey
 sudo install -o root -g root -m0644 system/pam.d/sudo /etc/pam.d/sudo
+sudo cp -a /etc/pam.d/doas /etc/pam.d/doas.pre-yubikey
+sudo install -o root -g root -m0644 system/pam.d/doas /etc/pam.d/doas
 
-sudo -k
-sudo -v # touch the inserted key
+sudo -k;  sudo -v   # touch the inserted key
+doas -L;  doas true # touch the inserted key
 
-# Remove the key, then confirm the normal password still works.
-sudo -k
-sudo -v
+# Remove the key, then confirm the normal password still works for both.
+sudo -k;  sudo -v
+doas -L;  doas true
 ```
 
 Once both checks pass, deploy Hyprlock:
@@ -170,10 +175,18 @@ Optional shell and startup-display packages are:
 stow zsh fastfetch ai
 ```
 
-The `zsh/.oh-my-zsh` entry is recorded as a Gitlink, but this repository has no
-`.gitmodules` mapping for it. A fresh clone therefore cannot initialize it with
-`git submodule update`. Install Oh My Zsh separately at `~/.oh-my-zsh`, or repair
-the repository's submodule metadata before relying on the `zsh` package.
+Oh My Zsh is **not** tracked by this repository, and cannot be: its own
+`.gitignore` excludes `custom/`, so neither a Gitlink nor a submodule could carry
+the Powerlevel10k theme and the `fzf-tab` plugin that `.zshrc` loads from
+`$ZSH_CUSTOM`. Install all three before stowing `zsh`:
+
+```bash
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+git clone --depth=1 https://github.com/romkatv/powerlevel10k.git \
+  ~/.oh-my-zsh/custom/themes/powerlevel10k
+git clone --depth=1 https://github.com/Aloxaf/fzf-tab.git \
+  ~/.oh-my-zsh/custom/plugins/fzf-tab
+```
 
 Alternative or retained desktop components may be deployed separately:
 
@@ -181,18 +194,16 @@ Alternative or retained desktop components may be deployed separately:
 stow swaync wofi noctalia
 ```
 
-The wallpaper package is unusual. Despite the root `README.md` saying it creates
-`~/Wallpapers`, the package currently contains `static/`, `dynamic/`, `theme/`,
+The wallpaper package is unusual. It contains `static/`, `dynamic/`, `theme/`,
 and image files directly at its package root. Standard `stow Wallpapers`
 therefore targets `~/static`, `~/dynamic`, `~/theme`, and individual files in
-`~`, not a containing `~/Wallpapers` directory. A Stow simulation confirms this
-layout. To keep them contained, either reorganize the package to contain a nested
-`Wallpapers/` directory or deliberately use `~/Wallpapers` as that package's
-Stow target. The active picker separately defaults to
-`/home/liam/Pictures/wallpapers`, so it will not find either layout automatically.
+`~`, not a containing `~/Wallpapers` directory. The active picker defaults to
+`~/Pictures/wallpapers`; create that directory and place your wallpaper files
+there, or set `HYPR_WALLPAPER_DIR` to use another durable location.
 
-The root `README.md` has an example “deploy everything” loop, but it omits the
-tracked `cliphist` and `xdg` packages. Prefer choosing packages explicitly.
+The root `README.md`'s “deploy everything” line lists every package, but
+choosing packages explicitly is still preferable on a machine that does not want
+all of them.
 
 ### Optional Windows VM
 
@@ -252,7 +263,7 @@ The following are not portable without review:
 | Assumption | Where it appears |
 | --- | --- |
 | `/home/liam/.config/hypr/scripts` | Hyprland variables, bindings, autostart |
-| `/home/liam/Pictures/wallpapers` | Wallpaper picker tool |
+| `~/Pictures/wallpapers` | Wallpaper picker default; override with `HYPR_WALLPAPER_DIR` |
 | `/home/liam/.config/hypr/scripts/capture/capture.sh` | Quickshell recording state |
 | `/home/liam` native-host executable paths | Browser manifests and browser flags |
 | DP/eDP connector names and exact resolutions | Monitor profiles |

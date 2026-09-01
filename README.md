@@ -25,12 +25,18 @@ cd ~/dotfiles
 
 ### Deploy with Stow
 
-Each top-level directory is a Stow package. Run `stow <package>` to symlink its contents into `~`.
+Most top-level directories are Stow packages. Run `stow <package>` to symlink its
+contents into `~`.
+
+> **`docs/`, `tests/` and `system/` are not packages — never stow them.**
+> `system/` holds root-owned `/etc` templates that `yubikey-auth` deploys;
+> stowing it would create `~/greetd` and `~/pam.d`.
 
 **Deploy everything at once:**
 
 ```bash
-stow ai browser fastfetch hypr hyprlock kitty modes noctalia quickshell rofi screensaver security swaync windows Wallpapers wofi zsh
+stow ai browser cliphist fastfetch hypr hyprlock kitty modes noctalia quickshell \
+     rofi screensaver security swaync windows Wallpapers wofi xdg zsh
 ```
 
 **Or deploy packages individually:**
@@ -51,7 +57,9 @@ stow fastfetch   # ~/.config/fastfetch
 stow noctalia    # ~/.config/noctalia
 stow quickshell  # ~/.config/quickshell
 stow windows     # Windows VM helper, Compose template, and application entry
-stow zsh         # ~/.zshrc, ~/.p10k.zsh, ~/.oh-my-zsh
+stow cliphist    # ~/.config/cliphist
+stow xdg         # ~/.config/mimeapps.list, ~/.local/share/applications
+stow zsh         # ~/.zshrc, ~/.p10k.zsh (see Shell setup below)
 ```
 
 ## ASCII Screensaver
@@ -113,7 +121,8 @@ The command validates mappings, creates timestamped `/etc` backups, installs
 sudo first, and waits for explicit confirmation after key/password testing
 before installing Hyprlock PAM. See [installation and recovery](docs/installation.md#yubikey-authentication).
 
-**Wallpapers** (optional — symlinks `~/Wallpapers`):
+**Wallpapers** (optional — see the layout note in
+[installation](docs/installation.md#optional-packages) before deploying):
 
 ```bash
 stow Wallpapers
@@ -317,8 +326,9 @@ Each theme consistently updates:
 - **Wofi** — launcher CSS
 - **Noctalia** — shell colour scheme
 - **Fastfetch** — section key colours
-- **Wallpaper** — set via `hyprpaper` over `hyprctl` for the 11 themes that have
-  an asset; the other 12 leave your current wallpaper alone rather than clearing it
+- **Wallpaper** — set via `hyprpaper` over `hyprctl` for the 10 themes that have
+  an asset; the other 13 leave your current wallpaper alone rather than clearing it.
+  `theme index` prints which is which
 
 ### Dependencies
 
@@ -596,7 +606,7 @@ OSD commands; it never downloads media or changes the live clipboard.
 | `swaync` | [SwayNC](https://github.com/ErikReider/SwayNotificationCenter) | Optional rollback notification backend |
 | `fastfetch` | [Fastfetch](https://github.com/fastfetch-cli/fastfetch) | System info with themed key colors |
 | `noctalia` | Noctalia | Custom plugin system with themed color scheme |
-| `zsh` | Zsh | Shell config — Oh My Zsh, Powerlevel10k, fzf-tab, eza aliases |
+| `zsh` | Zsh | Shell config — `.zshrc` and `.p10k.zsh`; Oh My Zsh itself is installed separately |
 
 ---
 
@@ -616,6 +626,18 @@ OSD commands; it never downloads media or changes the live clipboard.
 - `fzf`, `fzf-tab`
 - `eza` (ls replacement)
 - `powerlevel10k`
+
+Oh My Zsh and the two pieces `.zshrc` loads out of `$ZSH_CUSTOM` are **not
+vendored in this repo** — Oh My Zsh's own `.gitignore` excludes `custom/`, so
+nothing tracked here could ever carry them. Install them once:
+
+```bash
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+git clone --depth=1 https://github.com/romkatv/powerlevel10k.git \
+  ~/.oh-my-zsh/custom/themes/powerlevel10k
+git clone --depth=1 https://github.com/Aloxaf/fzf-tab.git \
+  ~/.oh-my-zsh/custom/plugins/fzf-tab
+```
 
 **Theme system:**
 - `python3` (3.11+, for `tomllib`)

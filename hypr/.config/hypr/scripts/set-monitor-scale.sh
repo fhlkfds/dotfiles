@@ -28,10 +28,16 @@ SCALE=$2
 [[ $SCALE =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "invalid scale: $SCALE" >&2; exit 2; }
 
 HYPR_DIR=${HYPR_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/hypr}
-TARGETS=(
-  "$HYPR_DIR/monitors.lua"
-  "$HYPR_DIR/monitor_profiles/desktop.monitors.lua"
-)
+# The live file plus every profile that actually declares this output. Hardcoding
+# the desktop profile silently dropped laptop and kvm scales the next time
+# auto-monitor-profile.sh copied a profile over monitors.lua.
+TARGETS=("$HYPR_DIR/monitors.lua")
+for _profile in "$HYPR_DIR/monitor_profiles/"*.monitors.lua; do
+  [[ -f $_profile ]] || continue
+  if grep -q "output[[:space:]]*=[[:space:]]*\"$MON\"" "$_profile"; then
+    TARGETS+=("$_profile")
+  fi
+done
 
 total_hits=0
 for f in "${TARGETS[@]}"; do

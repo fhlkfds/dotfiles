@@ -15,10 +15,10 @@ opened with `SUPER+K`.
 | `SUPER+SHIFT+Return` | drop-down terminal | `Dropterminal.sh kitty` |
 | `SUPER+Q` | close active window | `killactive` |
 | `SUPER+L` | lock screen | start Hyprlock if not already running |
-| `SUPER+P` | power menu | `hypr/.config/hypr/scripts/power-menu.sh` |
+| `SUPER+P` | power menu | `scripts/power-menu.sh`, launcher-neutral |
 | `SUPER+ALT+P` | monitor profiles | themed Rofi menu; includes the next-profile cycle |
 | `SUPER+K` | searchable bindings | Quickshell keybinding panel |
-| `SUPER+I` | coding agent | `kitty -e ~/.local/bin/ai-agent` |
+| `SUPER+I` | coding agent | `ai-agent` in Kitty, via `run-if-deployed.sh` |
 | `SUPER+CTRL+T` | activity | `btop` in the configured terminal |
 | `SUPER+SHIFT+G` | start Gaming VM | starts `Gaming-VM`, waits 15 seconds, then Looking Glass |
 

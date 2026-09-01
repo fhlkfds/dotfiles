@@ -14,6 +14,7 @@ AUTH_ORIGIN=${YUBIKEY_AUTH_ORIGIN:-pam://Kelper}
 ETC_ROOT=${YUBIKEY_AUTH_ETC_ROOT:-/etc}
 MAPPING_FILE="$ETC_ROOT/u2f_mappings"
 SUDO_PAM="$ETC_ROOT/pam.d/sudo"
+DOAS_PAM="$ETC_ROOT/pam.d/doas"
 HYPRLOCK_PAM="$ETC_ROOT/pam.d/hyprlock"
 
 script_path=$(readlink -f -- "${BASH_SOURCE[0]}")
@@ -23,7 +24,7 @@ TEMPLATE_DIR=${YUBIKEY_AUTH_TEMPLATE_DIR:-$repo_root/system/pam.d}
 
 FIDO2_TOKEN=${YUBIKEY_AUTH_FIDO2_TOKEN:-fido2-token}
 PAMU2FCFG=${YUBIKEY_AUTH_PAMU2FCFG:-pamu2fcfg}
-SUDO=${YUBIKEY_AUTH_SUDO:-sudo}
+SUDO=${YUBIKEY_AUTH_SUDO:-$(command -v sudo >/dev/null 2>&1 && echo sudo || echo doas)}
 
 usage() {
   cat <<EOF
@@ -171,7 +172,8 @@ show_status() {
     failed=1
   fi
 
-  for pair in "$TEMPLATE_DIR/sudo:$SUDO_PAM" "$TEMPLATE_DIR/hyprlock:$HYPRLOCK_PAM"; do
+  for pair in "$TEMPLATE_DIR/sudo:$SUDO_PAM" "$TEMPLATE_DIR/doas:$DOAS_PAM" \
+           "$TEMPLATE_DIR/hyprlock:$HYPRLOCK_PAM"; do
     local template=${pair%%:*} active=${pair#*:}
     if [[ -r $template && -r $active ]] && cmp -s -- "$template" "$active"; then
       printf 'pam: deployed %s\n' "$active"
@@ -222,6 +224,7 @@ require_cmd "$FIDO2_TOKEN"
 require_cmd "$PAMU2FCFG"
 require_cmd "$SUDO"
 [[ -r $TEMPLATE_DIR/sudo ]] || fail "sudo PAM template not found: $TEMPLATE_DIR/sudo"
+[[ -r $TEMPLATE_DIR/doas ]] || fail "doas PAM template not found: $TEMPLATE_DIR/doas"
 [[ -r $TEMPLATE_DIR/hyprlock ]] || fail "Hyprlock PAM template not found: $TEMPLATE_DIR/hyprlock"
 
 detect_device
@@ -236,7 +239,8 @@ if [[ $DRY_RUN == true ]]; then
   [[ $ENROLL_FINGERPRINT == true ]] && printf 'would enroll: fingerprint\n'
   printf 'would update: %s\n' "$MAPPING_FILE"
   if [[ $ACTION == setup ]]; then
-    printf 'would deploy: %s\nwould deploy: %s\n' "$SUDO_PAM" "$HYPRLOCK_PAM"
+    printf 'would deploy: %s\nwould deploy: %s\nwould deploy: %s\n' \
+      "$SUDO_PAM" "$DOAS_PAM" "$HYPRLOCK_PAM"
   fi
   exit 0
 fi
@@ -298,12 +302,19 @@ if [[ $ACTION == add ]]; then
   exit 0
 fi
 
+# Both escalation stacks go in before the checkpoint, so the tests below cover
+# whichever command is actually in use. doas is the one .zshrc's `sudo` alias
+# reaches; deploying only /etc/pam.d/sudo left the key unreachable in practice.
 backup_file "$SUDO_PAM" "$stamp"
 install_file "$TEMPLATE_DIR/sudo" "$SUDO_PAM" 0644
 printf 'installed: %s\n' "$SUDO_PAM"
-printf '\nTest both sudo paths in another terminal before continuing:\n'
+backup_file "$DOAS_PAM" "$stamp"
+install_file "$TEMPLATE_DIR/doas" "$DOAS_PAM" 0644
+printf 'installed: %s\n' "$DOAS_PAM"
+printf '\nTest every escalation path in another terminal before continuing:\n'
 printf '  1. sudo -k; sudo -v       # use the key\n'
-printf '  2. unplug it; sudo -k; sudo -v  # use the password\n\n'
+printf '  2. doas -L; doas true     # use the key\n'
+printf '  3. unplug it and repeat both  # use the password\n\n'
 
 if [[ $CONFIRM_SUDO_TESTED == false ]]; then
   [[ -t 0 ]] || fail "interactive confirmation unavailable; rerun with --confirm-sudo-tested after testing sudo"

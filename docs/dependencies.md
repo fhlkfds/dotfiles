@@ -163,8 +163,8 @@ packages and either `yay` or `paru` for AUR packages.
 
 The active wallpaper tool uses Bash, `curl`, `jq`, ImageMagick, Hyprpaper,
 Quickshell IPC, and notifications. The theme system uses Python 3.11+ and
-can call Hyprland, Hyprpaper, Kitty, SwayNC, and Quickshell to refresh
-running components.
+can call Hyprland, Hyprpaper, Kitty, SwayNC, and Quickshell to refresh running
+components.
 
 ## Fonts and icon themes
 

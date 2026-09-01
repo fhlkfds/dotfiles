@@ -15,7 +15,7 @@ import sys
 import tempfile
 import time
 import tomllib
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
@@ -24,6 +24,19 @@ MODES = ("night-light", "do-not-disturb", "stay-awake", "screensaver-auto")
 TRANSIENT = frozenset(MODES[:3])
 DURATION_RE = re.compile(r"^([1-9][0-9]*)([smh])$")
 LISTENER_RE = re.compile(r"listener\s*\{(.*?)\}", re.DOTALL)
+
+
+def _local_bin(name: str) -> str:
+    """Absolute path to a sibling Stow package's entry point.
+
+    The Hyprland session PATH does not contain ~/.local/bin -- it is exported
+    from .zshrc, which the compositor never sources -- so a bare name will not
+    resolve for the daemon started from conf/autostart.lua. Fall back to the
+    bare name so a system-wide install still works, and so an explicit
+    config.toml override is always honoured verbatim.
+    """
+    candidate = Path.home() / ".local/bin" / name
+    return str(candidate) if candidate.exists() else name
 
 
 class ModeError(RuntimeError):
@@ -37,8 +50,10 @@ class Config:
     maximum_duration_seconds: int = 86400
     duration_presets: tuple[str, ...] = ("15m", "30m", "1h")
     reconcile_seconds: float = 2.0
-    notification_command: tuple[str, ...] = ("notificationctl",)
-    screensaver_command: tuple[str, ...] = ("ascii-screensaver",)
+    notification_command: tuple[str, ...] = field(
+        default_factory=lambda: (_local_bin("notificationctl"),))
+    screensaver_command: tuple[str, ...] = field(
+        default_factory=lambda: (_local_bin("ascii-screensaver"),))
 
 
 def config_path() -> Path:
@@ -117,8 +132,8 @@ def load_config(path: Path | None = None) -> Config:
         maximum_duration_seconds=maximum,
         duration_presets=tuple(presets),
         reconcile_seconds=float(interval),
-        notification_command=_argv(raw.get("notification_command", ["notificationctl"]), "notification_command"),
-        screensaver_command=_argv(raw.get("screensaver_command", ["ascii-screensaver"]), "screensaver_command"),
+        notification_command=_argv(raw.get("notification_command", [_local_bin("notificationctl")]), "notification_command"),
+        screensaver_command=_argv(raw.get("screensaver_command", [_local_bin("ascii-screensaver")]), "screensaver_command"),
     )
 
 

@@ -1,0 +1,122 @@
+/**
+ * Full-screen power menu layout.
+ * Colors and structural tokens come from the generated theme.rasi beside it.
+ */
+
+@theme "theme.rasi"
+
+configuration {
+    show-icons: false;
+    hover-select: true;
+    me-select-entry: "";
+    me-accept-entry: "MousePrimary";
+}
+
+* {
+    font: "JetBrainsMono Nerd Font 12";
+    background-color: transparent;
+    text-color: @power-text;
+}
+
+window {
+    transparency: "real";
+    fullscreen: true;
+    location: center;
+    anchor: center;
+    padding: 18%;
+    background-color: @power-scrim;
+    cursor: "default";
+}
+
+mainbox {
+    spacing: 1.5em;
+    padding: 2.2em;
+    border: @power-border-width;
+    border-radius: @power-radius-window;
+    border-color: @power-border;
+    background-color: @power-card;
+    children: [ "inputbar", "listview", "message" ];
+}
+
+inputbar {
+    padding: 0.2em 0.4em 0.5em 0.4em;
+    background-color: transparent;
+    children: [ "textbox-prompt-colon" ];
+}
+
+textbox-prompt-colon {
+    expand: true;
+    str: "Session";
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    font: "JetBrainsMono Nerd Font Bold 18";
+    text-color: @power-accent;
+    background-color: transparent;
+}
+
+entry {
+    enabled: false;
+}
+
+listview {
+    columns: 5;
+    lines: 1;
+    cycle: true;
+    dynamic: false;
+    fixed-height: true;
+    layout: vertical;
+    scrollbar: false;
+    spacing: 1em;
+    background-color: transparent;
+}
+
+element {
+    orientation: vertical;
+    spacing: 0.5em;
+    padding: 1.6em 0.8em;
+    border: @power-border-width;
+    border-radius: @power-radius-card;
+    border-color: @power-border;
+    background-color: @power-card-raised;
+    text-color: @power-text;
+    cursor: pointer;
+}
+
+element selected.normal,
+element selected.active {
+    background-color: @power-card-hover;
+    border-color: @power-border-hover;
+    text-color: @power-text;
+}
+
+element normal.urgent {
+    background-color: @power-card-danger;
+    border-color: @power-border-danger;
+    text-color: @power-text;
+}
+
+element selected.urgent {
+    background-color: @power-card-danger-hover;
+    border-color: @power-danger;
+    text-color: @power-text;
+}
+
+element-text {
+    expand: true;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    background-color: transparent;
+    text-color: inherit;
+}
+
+message {
+    padding: 0.4em 0.4em 0 0.4em;
+    background-color: transparent;
+}
+
+textbox {
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    background-color: transparent;
+    text-color: @power-text-muted;
+}

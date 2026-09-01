@@ -63,6 +63,7 @@ def targets(prefix: Path) -> list[tuple[str, Path]]:
         ("kitty-theme.conf",          prefix / "kitty/theme/current-theme.conf"),
         ("zsh-theme.zsh",             prefix / "zsh/current-theme.zsh"),
         ("rofi-theme.rasi",           prefix / "rofi/color-themes/current.rasi"),
+        ("rofi-powermenu-theme.rasi", prefix / "rofi/powermenu/theme.rasi"),
         ("hyprlock-colors.conf",      prefix / "hyprlock/colors.conf"),
         ("swaync-style.css",          prefix / "swaync/style.css"),
         ("wofi-style.css",            prefix / "wofi/style.css"),

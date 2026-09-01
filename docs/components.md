@@ -22,7 +22,11 @@ Workspace buttons switch to their numbered workspace. Other interactions include
 - Media: media panel.
 - Display: display panel; wheel adjusts DDC/CI brightness.
 - Network: panel, or `kitty -e nmtui` for the Wi-Fi path.
-- Bluetooth: enable/disable, scan, pair, connect, and disconnect devices.
+- Bluetooth: enable/disable, scan, pair, connect, disconnect, trust, and forget
+  devices. The list is keyboard navigable (arrows/Home/End/PageUp/PageDown to
+  select, Enter for the primary action, `CTRL+T` trust, `CTRL+Delete` forget,
+  `CTRL+S` scan, `CTRL+B` power, Escape to close) and sorts connected devices
+  first.
 - Audio: panel on left/middle click, mute on right click, 3% wheel adjustment.
 - Recording indicator: appears while recording and stops it when clicked.
 - Desktop-mode indicators: active night light, DND, stay-awake,
@@ -157,11 +161,10 @@ Search order is intentional:
 3. Additional Wallhaven pages when the UI requests them.
 
 The backend caches previews, downloads the full selected image, validates it with
-ImageMagick, restarts Hyprpaper, and applies the image in cover mode. The default
-local directory is `/home/liam/Pictures/wallpapers`, which does not match the
-tracked asset tree. Standard Stow deployment of the current `Wallpapers/` package
-also places its contents directly below `$HOME`, contrary to the root README's
-`~/Wallpapers` claim.
+ImageMagick, restarts Hyprpaper, and applies the image in cover mode. By default,
+it reads `~/Pictures/wallpapers`. Standard Stow deployment of the tracked
+`Wallpapers/` package places its contents directly below `$HOME`, so it is not
+the picker's default directory. Set `HYPR_WALLPAPER_DIR` to use another location.
 
 Older `WallpaperSwitch.sh` and `WallpaperEffects.sh` scripts are retained but are
 not used by the current binding.
@@ -203,8 +206,10 @@ The optional `zsh/` package provides Oh My Zsh with Powerlevel10k, `git` and
 `fzf-tab` plugins, fzf integrations, syntax highlighting, autosuggestions, eza
 aliases, Neovim as `MANPAGER`, AI CLI aliases, and a Pokémon/Fastfetch greeting.
 It also includes personal VPN and GAM paths that must be adapted without copying
-private path details into shared documentation. Its `.oh-my-zsh` Gitlink has no
-matching `.gitmodules` entry, so a fresh clone cannot populate it as a submodule.
+private path details into shared documentation. Oh My Zsh itself is not tracked:
+`zsh/.oh-my-zsh/` is ignored, because Oh My Zsh's own `.gitignore` excludes
+`custom/` and therefore no tracked form of it could carry the Powerlevel10k theme
+or the `fzf-tab` plugin that `.zshrc` depends on.
 
 `fastfetch/` provides the normal and Pokémon-oriented display configurations; the
 theme generator updates the configured accent color.
@@ -247,6 +252,16 @@ browser is closed. Fixture tests live in `tests/browser-native-tools.test.sh`.
 The clock's hover tray shows repository and AUR update counts from
 `arch-updates`. It refreshes every 30 minutes and after its click-only Kitty
 update window closes. Pending updates use the active theme accent.
+
+## Waybar: removed
+
+The Waybar package was retired once Quickshell became the authoritative bar. It
+had no startup command, no theme consumer that mattered, and its helper scripts
+referenced an `open-terminal.sh` that never existed. The only script with a
+consumer outside the package, `power-menu.sh`, now lives at
+`hypr/.config/hypr/scripts/power-menu.sh` and still backs `SUPER+P`.
+
+The rest is recoverable from Git history if it is ever wanted back.
 
 ## Noctalia: retained configuration
 
