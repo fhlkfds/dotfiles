@@ -17,6 +17,7 @@ exec(mod .. " + SHIFT + Return", "drop-down terminal", cfg.scripts_dir .. "/Drop
 bind(mod .. " + Q", "close window", hl.dsp.window.close())
 exec(mod .. " + L", "lock screen", "pidof hyprlock || hyprlock --config ~/.config/hypr/hyprlock.conf")
 exec(mod .. " + P", "power menu", "bash /home/liam/.config/waybar/scripts/power-menu.sh")
+exec(mod .. " + ALT + P", "monitor profiles", cfg.scripts_dir .. "/monitor-profile-menu.sh")
 exec(mod .. " + ALT + E", "emoji menu", cfg.scripts_dir .. "/RofiEmoji.sh")
 exec(mod .. " + K", "keybindings", "quickshell ipc call keybinds toggle")
 exec(mod .. " + I", "coding agent", cfg.terminal .. " -e $HOME/.local/bin/ai-agent")

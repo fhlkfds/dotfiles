@@ -9,9 +9,11 @@
 # hypr-monitor-watch.py, and once at session start from conf/autostart.lua.
 # It has no polling loop of its own.
 #
-#   --force     apply even if the live layout already matches
-#   --dry-run   report desired vs actual and exit without touching anything
-#   --verbose   also mirror the log to stderr
+#   --profile NAME  apply a named profile instead of auto-detecting one
+#   --force         apply even if the live layout already matches
+#   --dry-run       read monitor JSON from $SIMULATED_MONITORS or stdin and
+#                   print the files that would be installed
+#   --verbose       also mirror the log to stderr
 #
 # Logs to the journal:  journalctl -t hypr-monitor -f
 set -uo pipefail
@@ -34,20 +36,32 @@ FORCE=0
 DRY_RUN=0
 VERBOSE=0
 SKIP_SETTLE="${HYPR_SKIP_SETTLE:-0}"
+PROFILE=""
 
-for arg in "$@"; do
-  case "$arg" in
+while (($#)); do
+  case "$1" in
+    --profile)
+      (($# >= 2)) || { printf '%s\n' '--profile requires a name' >&2; exit 2; }
+      PROFILE="$2"
+      shift
+      ;;
     --force) FORCE=1 ;;
     --dry-run) DRY_RUN=1; VERBOSE=1 ;;
     --verbose) VERBOSE=1 ;;
     --no-settle) SKIP_SETTLE=1 ;;
     *)
-      printf 'usage: %s [--force] [--dry-run] [--verbose] [--no-settle]\n' \
+      printf 'usage: %s [--profile NAME] [--force] [--dry-run] [--verbose] [--no-settle]\n' \
         "$(basename "$0")" >&2
       exit 2
       ;;
   esac
+  shift
 done
+
+[[ -z "$PROFILE" || "$PROFILE" =~ ^[a-zA-Z0-9_-]+$ ]] || {
+  printf 'invalid profile name: %s\n' "$PROFILE" >&2
+  exit 2
+}
 
 log() {
   command -v logger >/dev/null 2>&1 && logger -t hypr-monitor -- "$*" 2>/dev/null
@@ -75,6 +89,19 @@ refresh_live() {
   # A malformed payload must not be mistaken for "no monitors".
   jq -e 'type == "array"' >/dev/null 2>&1 <<<"$LIVE_JSON" || return 1
   return 0
+}
+
+load_simulated_live() {
+  if [[ -n "${SIMULATED_MONITORS:-}" ]]; then
+    LIVE_JSON="$SIMULATED_MONITORS"
+  elif [[ ! -t 0 ]]; then
+    LIVE_JSON="$(</dev/stdin)"
+  else
+    die 'dry-run requires monitor JSON in $SIMULATED_MONITORS or stdin'
+  fi
+  [[ -n "$LIVE_JSON" ]] || die 'simulated monitor list is empty'
+  jq -e 'type == "array"' >/dev/null 2>&1 <<<"$LIVE_JSON" ||
+    die 'simulated monitor list must be a JSON array'
 }
 
 live_descs() { jq -r '.[].description // empty' <<<"$LIVE_JSON" | sort; }
@@ -242,6 +269,23 @@ layout_matches() {
   return $ok
 }
 
+profile_missing_outputs() {
+  local profile="$1" key mode pos scale transform disabled
+  while IFS='|' read -r key mode pos scale transform disabled; do
+    [[ -n "$key" && "$disabled" == false ]] || continue
+    [[ -n "$(resolve_output "$key")" ]] || printf '%s\n' "$key"
+  done < <(desired_layout "$profile")
+}
+
+profile_has_connected_output() {
+  local profile="$1" key mode pos scale transform disabled
+  while IFS='|' read -r key mode pos scale transform disabled; do
+    [[ -n "$key" && "$disabled" == false ]] || continue
+    [[ -n "$(resolve_output "$key")" ]] && return 0
+  done < <(desired_layout "$profile")
+  return 1
+}
+
 # The generated active files must actually come from this profile. Geometry
 # alone is not enough: workspaces.lua can be left over from another profile
 # while monitors.lua looks correct -- that is the state that pins every
@@ -261,24 +305,22 @@ files_match() {
 }
 
 # ── Workspace pinning ───────────────────────────────────────────────────────
-workspace_target() {
-  case "$1" in
-    kvm)
-      if (($2 <= 5)); then printf '%s\n' "desc:Dell Inc. DELL P2722H CTCS1M3"
-      elif (($2 <= 10)); then printf '%s\n' "desc:Dell Inc. DELL P2214H KW14V42L3ACB"
-      else printf '%s\n' "desc:Dell Inc. DELL P2725H 21MG834"; fi
-      ;;
-    desktop)
-      if (($2 <= 5)); then printf '%s\n' HDMI-A-3; else printf '%s\n' DP-4; fi
-      ;;
-    laptop) printf '%s\n' eDP-1 ;;
-  esac
-}
-
 move_existing_workspaces() {
-  local profile="$1" id monitor key target
+  local rules id monitor key target
+  declare -A target_by_workspace=()
+
+  rules="$("$HYPRCTL" -j workspacerules 2>/dev/null)" || {
+    log 'warning: could not read loaded workspace rules; existing workspaces were not moved'
+    return 0
+  }
+  while IFS=$'\t' read -r id key; do
+    [[ "$id" =~ ^([1-9]|1[0-5])$ && -n "$key" ]] || continue
+    target_by_workspace["$id"]="$key"
+  done < <(jq -r '.[] | select(.enabled and (.workspaceString | test("^([1-9]|1[0-5])$"))) | [.workspaceString, .monitor] | @tsv' <<<"$rules")
+
   while read -r id monitor; do
-    key="$(workspace_target "$profile" "$id")"
+    key="${target_by_workspace[$id]:-}"
+    [[ -n "$key" ]] || continue
     target="$(resolve_output "$key")"
     # Never dispatch a move to a monitor that is not actually present.
     [[ -n "$target" ]] || continue
@@ -290,6 +332,46 @@ move_existing_workspaces() {
 }
 
 # ── Apply ───────────────────────────────────────────────────────────────────
+install_profile_files() {
+  local profile="$1" temp_dir had_monitors=0 had_workspaces=0
+  temp_dir="$(mktemp -d "$CONFIG_DIR/.monitor-profile.XXXXXX")" ||
+    die "could not create temporary directory in $CONFIG_DIR"
+
+  if [[ -f "$MONITORS_FILE" ]]; then
+    cp "$MONITORS_FILE" "$temp_dir/monitors.old" || {
+      rmdir "$temp_dir"
+      die "could not back up $MONITORS_FILE"
+    }
+    had_monitors=1
+  fi
+  if [[ -f "$WORKSPACES_FILE" ]]; then
+    cp "$WORKSPACES_FILE" "$temp_dir/workspaces.old" || {
+      rm -f "$temp_dir"/*; rmdir "$temp_dir"
+      die "could not back up $WORKSPACES_FILE"
+    }
+    had_workspaces=1
+  fi
+  cp "$PROFILE_DIR/$profile.monitors.lua" "$temp_dir/monitors.new" || {
+    rm -f "$temp_dir"/*; rmdir "$temp_dir"
+    die 'could not stage monitor profile'
+  }
+  cp "$PROFILE_DIR/$profile.workspaces.lua" "$temp_dir/workspaces.new" || {
+    rm -f "$temp_dir"/*; rmdir "$temp_dir"
+    die 'could not stage workspace profile'
+  }
+
+  if ! mv "$temp_dir/monitors.new" "$MONITORS_FILE" ||
+     ! mv "$temp_dir/workspaces.new" "$WORKSPACES_FILE"; then
+    if ((had_monitors)); then cp "$temp_dir/monitors.old" "$MONITORS_FILE"; else rm -f "$MONITORS_FILE"; fi
+    if ((had_workspaces)); then cp "$temp_dir/workspaces.old" "$WORKSPACES_FILE"; else rm -f "$WORKSPACES_FILE"; fi
+    rm -f "$temp_dir"/*; rmdir "$temp_dir"
+    die 'could not install both profile files; previous files restored'
+  fi
+
+  rm -f "$temp_dir"/*
+  rmdir "$temp_dir"
+}
+
 apply_profile() {
   local profile="$1"
 
@@ -298,14 +380,11 @@ apply_profile() {
   [[ -r "$PROFILE_DIR/$profile.workspaces.lua" ]] ||
     die "missing profile file: $PROFILE_DIR/$profile.workspaces.lua"
 
-  cp "$PROFILE_DIR/$profile.monitors.lua" "$MONITORS_FILE" ||
-    die "could not write $MONITORS_FILE"
-  cp "$PROFILE_DIR/$profile.workspaces.lua" "$WORKSPACES_FILE" ||
-    die "could not write $WORKSPACES_FILE"
+  install_profile_files "$profile"
 
   "$HYPRCTL" reload >/dev/null || log "warning: hyprctl reload reported failure"
   refresh_live || true
-  move_existing_workspaces "$profile"
+  move_existing_workspaces
 
   if [[ "$profile" == desktop ]]; then
     "$HYPRCTL" dispatch 'hl.dsp.focus({ monitor = "HDMI-A-3" })' >/dev/null
@@ -315,11 +394,15 @@ apply_profile() {
 main() {
   command -v jq >/dev/null 2>&1 || die "jq is required"
 
-  settle
-  refresh_live || die "cannot read monitors from hyprctl -- is Hyprland running?"
+  if [[ "$DRY_RUN" == 1 ]]; then
+    load_simulated_live
+  else
+    settle
+    refresh_live || die "cannot read monitors from hyprctl -- is Hyprland running?"
+  fi
 
   local profile
-  profile="$(pick_profile)"
+  profile="${PROFILE:-$(pick_profile)}"
 
   if [[ "$profile" == none ]]; then
     local msg
@@ -332,10 +415,42 @@ main() {
     return 0
   fi
 
+  [[ -r "$PROFILE_DIR/$profile.monitors.lua" &&
+     -r "$PROFILE_DIR/$profile.workspaces.lua" ]] ||
+    die "profile '$profile' does not have paired monitor and workspace files"
+
+  local missing
+  missing="$(profile_missing_outputs "$profile")"
+  if ! profile_has_connected_output "$profile"; then
+    local msg="profile=$profile has no connected enabled output; refusing to apply"
+    if [[ "$DRY_RUN" == 1 ]]; then
+      printf 'profile=%s\nwarning=%s\nresult=refused-no-connected-output\n' "$profile" "$msg"
+      printf '%s\n' '=== monitors.lua ==='
+      cat "$PROFILE_DIR/$profile.monitors.lua"
+      printf '%s\n' '=== workspaces.lua ==='
+      cat "$PROFILE_DIR/$profile.workspaces.lua"
+    else
+      log "$msg"
+      "$HYPRCTL" notify -1 5000 "rgb(bf616a)" \
+        "Monitor profile $profile refused: no requested output is connected" >/dev/null 2>&1
+    fi
+    return 1
+  fi
+  if [[ -n "$missing" ]]; then
+    log "warning: profile=$profile outputs not connected: ${missing//$'\n'/, }"
+    if [[ "$DRY_RUN" == 0 ]]; then
+      "$HYPRCTL" notify -1 4000 "rgb(ebcb8b)" \
+        "Monitor profile $profile: some requested outputs are not connected" >/dev/null 2>&1
+    fi
+  fi
+
   if [[ "$DRY_RUN" == 1 ]]; then
     printf 'profile=%s\n' "$profile"
-    printf 'monitors=%s\n' "$PROFILE_DIR/$profile.monitors.lua"
-    printf 'workspaces=%s\n' "$PROFILE_DIR/$profile.workspaces.lua"
+    [[ -z "$missing" ]] || printf 'warning=outputs not connected: %s\n' "${missing//$'\n'/, }"
+    printf '%s\n' '=== monitors.lua ==='
+    cat "$PROFILE_DIR/$profile.monitors.lua"
+    printf '%s\n' '=== workspaces.lua ==='
+    cat "$PROFILE_DIR/$profile.workspaces.lua"
     printf 'desired vs actual:\n'
     local fok=0 lok=0
     files_match "$profile" 0 || fok=1

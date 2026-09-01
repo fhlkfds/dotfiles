@@ -109,19 +109,29 @@ and webcam discovery respectively.
 Inputs are live JSON from `hyprctl -j monitors`. The KVM profile is recognized by
 EDID description, because the KVM renumbers DisplayPort connectors on every
 switch; the desktop profile still matches connector names. It copies profile
-files to active `monitors.lua` and `workspaces.lua`, reloads Hyprland, moves
-workspaces 1–15, verifies the result, and notifies.
+files to active `monitors.lua` and `workspaces.lua`, reloads Hyprland, reads the
+loaded workspace rules, moves workspaces 1–15, verifies the result, and notifies.
+Pass `--profile NAME` to apply a named profile.
 
 It waits for the monitor set to settle, takes a `flock`, and exits without
 changing anything when the layout and generated files already match the profile.
-`--force` reapplies regardless, `--dry-run` prints a desired-vs-actual table
-without writing or dispatching, and `--verbose` mirrors the log to stderr. It has
-no polling mode; reapplication is driven by `hypr-monitor-watch.py`. Logs go to
+`--force` reapplies regardless. `--dry-run` reads monitor JSON from
+`SIMULATED_MONITORS` or stdin and prints the resulting config without writing or
+dispatching. `--verbose` mirrors the log to stderr. It has no polling mode;
+reapplication is driven by `hypr-monitor-watch.py`. Logs go to
 `journalctl -t hypr-monitor`. See [Monitors](./monitors.md).
 
 This script modifies tracked/Stowed configuration and live compositor state. Test
 changes with mocked `hyprctl` and temporary target files rather than invoking it
 against an unrelated live session.
+
+### `monitor-profile-menu.sh`
+
+Opens the themed Rofi monitor-profile menu. It discovers paired profiles from
+`monitor_profiles/`, marks the active pair, and delegates every change to
+`auto-monitor-profile.sh`. The `Next profile` entry cycles through `desktop`,
+`laptop`, `work`, and `presentation`; from any other profile it starts at
+`desktop`. `--next --dry-run` exercises the same path with simulated monitor JSON.
 
 ### `set-monitor-scale.sh`
 

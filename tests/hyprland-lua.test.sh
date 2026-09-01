@@ -140,6 +140,9 @@ case "$*" in
   '-j monitors')
     printf '%s\n' '[{"name":"DP-4","description":"","width":1280,"height":1024,"refreshRate":75.03,"x":0,"y":0,"scale":1.0,"transform":1},{"name":"HDMI-A-3","description":"","width":2560,"height":1080,"refreshRate":60.0,"x":1024,"y":0,"scale":1.0,"transform":0}]'
     ;;
+  '-j workspacerules')
+    printf '%s\n' '[{"workspaceString":"1","enabled":true,"monitor":"HDMI-A-3"},{"workspaceString":"6","enabled":true,"monitor":"DP-4"}]'
+    ;;
   '-j workspaces')
     printf '%s\n' '[{"id":1,"monitor":"DP-4"},{"id":6,"monitor":"HDMI-A-3"}]'
     ;;
@@ -175,10 +178,13 @@ for file in "$fixture_hypr/monitors.lua" "$fixture_hypr/monitor_profiles/desktop
 done
 
 : >"$HYPRCTL_CALLS"
+desktop_monitors="$("$test_root/bin/hyprctl-fixture" -j monitors)"
+: >"$HYPRCTL_CALLS"
 HYPR_DIR="$fixture_hypr" \
 HYPRCTL="$test_root/bin/hyprctl-fixture" \
 XDG_RUNTIME_DIR="$test_root/profile-runtime" \
 HYPR_SKIP_SETTLE=1 \
+SIMULATED_MONITORS="$desktop_monitors" \
   "$hypr_root/scripts/auto-monitor-profile.sh" --force --dry-run >"$test_root/dry-run.out"
 grep -Fq 'profile=desktop' "$test_root/dry-run.out" || fail 'dry-run did not report the selected profile'
 ! grep -Fq 'reload' "$HYPRCTL_CALLS" || fail 'dry-run contacted a mutating Hyprland command'
@@ -212,6 +218,7 @@ SH
   HYPRCTL="$test_root/bin/hyprctl-kvm" \
   XDG_RUNTIME_DIR="$test_root/profile-runtime" \
   HYPR_SKIP_SETTLE=1 \
+  SIMULATED_MONITORS="$(kvm_monitors_json "$n1" "$n2" "$n3")" \
     "$hypr_root/scripts/auto-monitor-profile.sh" --dry-run >"$test_root/kvm.out" 2>&1
 
   grep -Fq 'profile=kvm' "$test_root/kvm.out" ||
@@ -237,6 +244,7 @@ HYPR_DIR="$fixture_hypr" \
 HYPRCTL="$test_root/bin/hyprctl-kvm-drift" \
 XDG_RUNTIME_DIR="$test_root/profile-runtime" \
 HYPR_SKIP_SETTLE=1 \
+SIMULATED_MONITORS="$("$test_root/bin/hyprctl-kvm-drift" -j monitors)" \
   "$hypr_root/scripts/auto-monitor-profile.sh" --dry-run >"$test_root/drift.out" 2>&1
 grep -Fq 'result=would-apply' "$test_root/drift.out" ||
   fail 'rotated/misplaced monitor was not detected as drift'
@@ -260,6 +268,7 @@ HYPR_DIR="$fixture_hypr" \
 HYPRCTL="$test_root/bin/hyprctl-kvm-partial" \
 XDG_RUNTIME_DIR="$test_root/profile-runtime" \
 HYPR_SKIP_SETTLE=1 \
+SIMULATED_MONITORS="$("$test_root/bin/hyprctl-kvm-partial" -j monitors)" \
   "$hypr_root/scripts/auto-monitor-profile.sh" --dry-run >"$test_root/partial.out" 2>&1
 ! grep -Fq 'profile=kvm' "$test_root/partial.out" ||
   fail 'an incomplete KVM monitor set selected the kvm profile'
@@ -267,6 +276,62 @@ grep -Fq 'result=no-action' "$test_root/partial.out" ||
   fail 'an incomplete KVM monitor set did not leave the layout alone'
 ! grep -Fq 'profile=laptop' "$test_root/partial.out" ||
   fail 'losing one monitor fell back to laptop and would collapse workspaces'
+
+# ── Manual profile menu and safe dry-run matrix ─────────────────────────────
+laptop_monitors='[{"name":"eDP-1","description":"","width":2256,"height":1504,"refreshRate":60.0,"x":0,"y":0,"scale":1.0,"transform":0}]'
+laptop_external_monitors='[{"name":"eDP-1","description":"","width":2256,"height":1504,"refreshRate":60.0,"x":0,"y":0,"scale":1.0,"transform":0},{"name":"DP-4","description":"","width":1280,"height":1024,"refreshRate":75.03,"x":0,"y":0,"scale":1.0,"transform":1},{"name":"HDMI-A-3","description":"","width":2560,"height":1080,"refreshRate":60.0,"x":1024,"y":0,"scale":1.0,"transform":0}]'
+
+HYPR_DIR="$fixture_hypr" SIMULATED_MONITORS="$laptop_monitors" \
+  "$hypr_root/scripts/auto-monitor-profile.sh" --profile laptop --dry-run >"$test_root/laptop-only.out"
+grep -Fq 'profile=laptop' "$test_root/laptop-only.out" || fail 'laptop-only dry-run chose the wrong profile'
+grep -Fq 'result=already-correct' "$test_root/laptop-only.out" ||
+  grep -Fq 'result=would-apply' "$test_root/laptop-only.out" || fail 'laptop-only dry-run produced no result'
+
+HYPR_DIR="$fixture_hypr" SIMULATED_MONITORS="$laptop_external_monitors" \
+  "$hypr_root/scripts/auto-monitor-profile.sh" --profile desktop --dry-run >"$test_root/laptop-external.out"
+grep -Fq 'profile=desktop' "$test_root/laptop-external.out" || fail 'external dry-run chose the wrong profile'
+grep -Fq '=== monitors.lua ===' "$test_root/laptop-external.out" || fail 'dry-run did not print monitor config'
+grep -Fq '=== workspaces.lua ===' "$test_root/laptop-external.out" || fail 'dry-run did not print workspace config'
+
+if HYPR_DIR="$fixture_hypr" SIMULATED_MONITORS="$laptop_monitors" \
+  "$hypr_root/scripts/auto-monitor-profile.sh" --profile desktop --dry-run >"$test_root/absent-output.out" 2>&1; then
+  fail 'profile with no connected enabled output was accepted'
+fi
+grep -Fq 'result=refused-no-connected-output' "$test_root/absent-output.out" ||
+  fail 'absent-output dry-run did not explain its refusal'
+
+for step in 'desktop laptop' 'laptop work' 'work presentation' 'presentation desktop' 'kvm desktop'; do
+  read -r current expected <<<"$step"
+  cp "$fixture_hypr/monitor_profiles/$current.monitors.lua" "$fixture_hypr/monitors.lua"
+  cp "$fixture_hypr/monitor_profiles/$current.workspaces.lua" "$fixture_hypr/workspaces.lua"
+  HYPR_DIR="$fixture_hypr" SIMULATED_MONITORS="$laptop_external_monitors" \
+    "$hypr_root/scripts/monitor-profile-menu.sh" --next --dry-run >"$test_root/cycle-$current.out"
+  grep -Fq "profile=$expected" "$test_root/cycle-$current.out" ||
+    fail "cycle from $current did not choose $expected"
+done
+
+cat >"$test_root/bin/rofi" <<'SH'
+#!/usr/bin/env bash
+tee "$ROFI_MENU" >/dev/null
+exit 1
+SH
+chmod +x "$test_root/bin/rofi"
+cp "$fixture_hypr/monitor_profiles/kvm.monitors.lua" "$fixture_hypr/monitors.lua"
+cp "$fixture_hypr/monitor_profiles/kvm.workspaces.lua" "$fixture_hypr/workspaces.lua"
+ROFI_MENU="$test_root/profile-menu.out" PATH="$test_root/bin:$PATH" HYPR_DIR="$fixture_hypr" \
+  "$hypr_root/scripts/monitor-profile-menu.sh"
+for profile in desktop kvm laptop presentation work; do
+  grep -Eq "^[●○] $profile$" "$test_root/profile-menu.out" || fail "menu did not glob profile $profile"
+done
+grep -Fqx '● kvm' "$test_root/profile-menu.out" || fail 'menu did not mark the active profile'
+
+# The menu owns a piped fixture once, then passes the captured value to the
+# applier. A second read from this pipe would be empty.
+cp "$fixture_hypr/monitor_profiles/laptop.monitors.lua" "$fixture_hypr/monitors.lua"
+cp "$fixture_hypr/monitor_profiles/laptop.workspaces.lua" "$fixture_hypr/workspaces.lua"
+printf '%s\n' "$laptop_external_monitors" | HYPR_DIR="$fixture_hypr" \
+  "$hypr_root/scripts/monitor-profile-menu.sh" --next --dry-run >"$test_root/piped-once.out"
+grep -Fq 'profile=work' "$test_root/piped-once.out" || fail 'piped monitor fixture was not captured once'
 
 luac -p "$fixture_hypr/monitor_profiles/kvm.monitors.lua" \
       "$fixture_hypr/monitor_profiles/kvm.workspaces.lua"

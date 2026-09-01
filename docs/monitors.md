@@ -48,6 +48,8 @@ Profiles live below `hypr/.config/hypr/monitor_profiles/`.
 | `kvm` | all three KVM EDID descriptions present | eDP-1 disabled; P2214H portrait at left, P2722H centre, P2725H right |
 | `desktop` | DP-4 and HDMI-A-3 present | DP-4 rotated at left; 2560×1080 HDMI-A-3 to its right; DP-1 disabled |
 | `laptop` | fallback | eDP-1 at 2256×1504 |
+| `work` | manual stub | eDP-1 at 2256×1504 until captured |
+| `presentation` | manual stub | eDP-1 at 2256×1504 until captured |
 
 `desktop` still matches on connector names: it describes different hardware whose
 EDID strings are not recorded here. It is unaffected by the KVM renumbering.
@@ -56,6 +58,12 @@ A **partial** KVM set never selects `kvm`. During a hotplug the monitors do not
 all reappear at once, and acting on a partial set is precisely what collapsed the
 workspaces.
 
+`SUPER+ALT+P` opens the manual profile menu. It discovers paired profile files,
+marks the active pair, and includes a `Next profile` entry. The cycle is
+`desktop` → `laptop` → `work` → `presentation`; `kvm` remains directly selectable.
+The applier refuses a manual profile when none of its enabled outputs are
+connected, so a docked profile cannot disable the only usable screen.
+
 ## Workspace mapping
 
 | Profile | Workspaces |
@@ -63,11 +71,14 @@ workspaces.
 | `kvm` | 1–5 on P2722H (centre); 6–10 on P2214H (left, portrait); 11–15 on P2725H (right) |
 | `desktop` | 1–5 on HDMI-A-3; 6–15 on DP-4 |
 | `laptop` | 1–15 on eDP-1 |
+| `work` | 1–15 on eDP-1 until captured |
+| `presentation` | 1–15 on eDP-1 until captured |
 
-When applying a profile, the script dispatches `hl.dsp.workspace.move()` for
-workspaces 1 through 15, resolving each `desc:` to its current connector first
-and skipping any monitor that is not actually present. The desktop profile then
-focuses HDMI-A-3 through `hl.dsp.focus()`.
+When applying a profile, the script reloads the pair, reads Hyprland's loaded
+workspace rules, and dispatches `hl.dsp.workspace.move()` for workspaces 1
+through 15. It resolves each `desc:` to its current connector and skips monitors
+that are not present. The desktop profile then focuses HDMI-A-3 through
+`hl.dsp.focus()`.
 
 ## Automatic reapplication
 

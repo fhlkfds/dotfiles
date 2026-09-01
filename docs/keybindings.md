@@ -16,6 +16,7 @@ opened with `SUPER+K`.
 | `SUPER+Q` | close active window | `killactive` |
 | `SUPER+L` | lock screen | start Hyprlock if not already running |
 | `SUPER+P` | power menu | Waybar package's launcher-neutral power script |
+| `SUPER+ALT+P` | monitor profiles | themed Rofi menu; includes the next-profile cycle |
 | `SUPER+K` | searchable bindings | Quickshell keybinding panel |
 | `SUPER+I` | coding agent | `kitty -e ~/.local/bin/ai-agent` |
 | `SUPER+CTRL+T` | activity | `btop` in the configured terminal |
