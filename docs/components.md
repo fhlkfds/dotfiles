@@ -134,6 +134,10 @@ readiness progress, errors, and successful container lifecycle transitions.
 a clean RDP exit. `--keep-alive`, readiness timeouts, and FreeRDP failures leave
 the VM running and therefore do not emit the stop notification.
 
+While the VM container is running, the bar shows a Windows icon. It pulses amber
+while installation or startup is waiting for RDP, then becomes a solid accent
+when RDP is ready. The icon disappears when the VM stops.
+
 ## Wallpaper
 
 `SUPER+SHIFT+W` calls `~/.local/bin/hypr-wallpaper-picker` with no arguments,
@@ -143,7 +147,7 @@ which toggles the Quickshell cover-flow UI. The same tracked script at
 The read-only `current` operation supplies the active image to Hyprlock. Successful
 standalone and theme wallpaper applications atomically save the selected path
 to `$XDG_STATE_HOME/hyprland-desktop/wallpaper/current`; autostart restores it.
-Missing or stale state falls back to starting plain Hyprpaper.
+Missing or stale state starts plain Hyprpaper without choosing a fallback image.
 
 Search order is intentional:
 
