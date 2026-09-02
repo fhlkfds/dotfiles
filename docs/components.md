@@ -242,17 +242,11 @@ families. Absolute `/home/liam` paths mean the package is not account-portable a
 checked in. The repair helper can inspect or repair command registration while the
 browser is closed. Fixture tests live in `tests/browser-native-tools.test.sh`.
 
-## Waybar: retained alternative bar
+## Arch update indicator
 
-`waybar/.config/waybar/config` describes a top, 34-pixel bar with Hyprland
-window/workspace modules, update indicator and clock, CPU, memory, network,
-PulseAudio, battery, tray, and power button. The CSS imports generated
-`colors.css` and uses Nerd Font glyphs.
-
-The update and power click actions invoke scripts explicitly through `bash`.
-Waybar is not active unless a user adds it to startup. Two other helper scripts
-refer to missing `open-terminal.sh`; only the misspelled
-`open-terninal.sh` is tracked.
+The clock's hover tray shows repository and AUR update counts from
+`arch-updates`. It refreshes every 30 minutes and after its click-only Kitty
+update window closes. Pending updates use the active theme accent.
 
 ## Noctalia: retained configuration
 

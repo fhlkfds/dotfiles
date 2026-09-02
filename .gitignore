@@ -10,7 +10,6 @@ hypr/.config/hypr/conf/decorations.conf
 hypr/.config/hypr/conf/decorations.lua
 hypr/.config/hypr/themes/.active/
 hypr/.config/hypr/themes/current-theme
-waybar/.config/waybar/colors.css
 kitty/.config/kitty/theme/
 rofi/.config/rofi/color-themes/
 rofi/.config/rofi/current-theme.rasi

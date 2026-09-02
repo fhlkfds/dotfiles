@@ -5,7 +5,7 @@ import QtQuick
 
 // State for the fullscreen theme picker (Super+Ctrl+Shift+Space).
 //
-// The picker is a front-end only: this singleton never touches Waybar, Kitty,
+// The picker is a front-end only: this singleton never touches Kitty,
 // Rofi, Zsh, Hyprland or the wallpaper itself. It reads a model from the theme
 // backend and hands a slug back to that same backend, which owns every side
 // effect and remains the single source of truth for what theme is active.

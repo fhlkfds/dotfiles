@@ -153,14 +153,17 @@ On Arch, the currently optional additions are installed separately rather than
 by these dotfiles:
 
 ```bash
-sudo pacman -S --needed btop libheif localsend
+sudo pacman -S --needed btop libheif localsend pacman-contrib
 ```
+
+The update indicator uses `checkupdates` from `pacman-contrib` for repository
+packages and either `yay` or `paru` for AUR packages.
 
 ### Wallpaper and themes
 
 The active wallpaper tool uses Bash, `curl`, `jq`, ImageMagick, Hyprpaper,
 Quickshell IPC, and notifications. The theme system uses Python 3.11+ and
-can call Hyprland, Hyprpaper, Kitty, Waybar, SwayNC, and Quickshell to refresh
+can call Hyprland, Hyprpaper, Kitty, SwayNC, and Quickshell to refresh
 running components.
 
 ## Fonts and icon themes
@@ -179,7 +182,6 @@ itself works.
 
 | Component | Why optional here |
 | --- | --- |
-| Waybar | configured but not autostarted |
 | SwayNC | configuration retained; startup commented |
 | Wofi, Fuzzel, Bemenu | fallback launchers for power menu; Wofi config retained |
 | Noctalia | settings/plugins retained; startup commented |

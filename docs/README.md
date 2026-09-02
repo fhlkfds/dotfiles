@@ -3,8 +3,8 @@
 This repository is a GNU Stow-managed Hyprland desktop configuration. Its active
 session is centered on Hyprland and a custom Quickshell desktop shell, with
 Hyprpaper, Hypridle, Hyprlock, Rofi, Kitty, and a collection of shell/Python
-helpers. It also retains alternative or legacy configurations for Waybar,
-SwayNC, Wofi, and Noctalia.
+helpers. It also retains alternative or legacy configurations for SwayNC, Wofi,
+and Noctalia.
 
 The configuration is personal and machine-aware rather than a distribution-ready
 installer. In particular, several paths contain `/home/liam`, the monitor profiles
@@ -35,8 +35,8 @@ Hyprland
 ```
 
 The active process list comes from
-`hypr/.config/hypr/conf/autostart.lua`. Waybar, SwayNC, Wofi, and Noctalia are
-present in the repository but are not started by the current Hyprland config.
+`hypr/.config/hypr/conf/autostart.lua`. SwayNC, Wofi, and Noctalia are present in
+the repository but are not started by the current Hyprland config.
 
 ## Repository layout
 
@@ -52,7 +52,7 @@ below `$HOME`.
 | `hyprlock/` | Lock-screen layouts, generated colors, lock helpers |
 | `browser/` | Chromium extensions and native hosts for URL copy/video download |
 | `rofi/`, `wofi/` | Active Rofi launcher and retained Wofi launcher config |
-| `waybar/`, `swaync/` | Retained alternative bar and notification configuration |
+| `swaync/` | Retained alternative notification configuration |
 | `kitty/` | Terminal configuration and generated theme include |
 | `zsh/`, `fastfetch/`, `ai/` | Shell, prompt/startup display, AI CLI launcher |
 | `cliphist/` | Clipboard-history limits |

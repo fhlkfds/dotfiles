@@ -15,7 +15,7 @@ opened with `SUPER+K`.
 | `SUPER+SHIFT+Return` | drop-down terminal | `Dropterminal.sh kitty` |
 | `SUPER+Q` | close active window | `killactive` |
 | `SUPER+L` | lock screen | start Hyprlock if not already running |
-| `SUPER+P` | power menu | Waybar package's launcher-neutral power script |
+| `SUPER+P` | power menu | `hypr/.config/hypr/scripts/power-menu.sh` |
 | `SUPER+ALT+P` | monitor profiles | themed Rofi menu; includes the next-profile cycle |
 | `SUPER+K` | searchable bindings | Quickshell keybinding panel |
 | `SUPER+I` | coding agent | `kitty -e ~/.local/bin/ai-agent` |

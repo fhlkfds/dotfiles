@@ -60,7 +60,6 @@ def targets(prefix: Path) -> list[tuple[str, Path]]:
     return [
         ("hyprland-decorations.lua",  prefix / "hypr/conf/decorations.lua"),
         ("quickshell-theme.json",     prefix / "hypr/themes/.active/theme.json"),
-        ("waybar-colors.css",         prefix / "waybar/colors.css"),
         ("kitty-theme.conf",          prefix / "kitty/theme/current-theme.conf"),
         ("zsh-theme.zsh",             prefix / "zsh/current-theme.zsh"),
         ("rofi-theme.rasi",           prefix / "rofi/color-themes/current.rasi"),
@@ -140,10 +139,6 @@ def reload_apps(theme: tl.Theme, kitty_conf: Path) -> tuple[list[str], list[str]
                       str(theme.style["surface_opacity"])])
         if hits:
             done.append(f"kitty ({hits}/{len(kitty_pids)})")
-
-    # Waybar reloads its stylesheet on SIGUSR2. Exact-name match only.
-    if _pids_of("waybar") and _run(["pkill", "-USR2", "-x", "waybar"]):
-        done.append("waybar")
 
     if _pids_of("swaync") and shutil.which("swaync-client"):
         if _run(["swaync-client", "--reload-config"]):

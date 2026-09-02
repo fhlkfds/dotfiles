@@ -235,7 +235,7 @@ Scope {
         // monitor panel; notification history remains owned by NotifyState.
         ModeIndicators { screenName: panel.modelData.name; barScale: panel.barScale }
 
-        // The clock expands left on hover to reveal display, network,
+        // The clock expands left on hover to reveal update, display, network,
         // Bluetooth, audio, and clipboard controls.
         ClockWidget {
           id: clock

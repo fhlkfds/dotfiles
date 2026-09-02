@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+set -u
+
+count_lines() {
+  local output line count=0
+
+  command -v "$1" >/dev/null 2>&1 || { printf '0'; return; }
+  output=$("$@" 2>/dev/null) || { printf '0'; return; }
+  while IFS= read -r line; do
+    [[ -n $line ]] && ((count += 1))
+  done <<< "$output"
+  printf '%d' "$count"
+}
+
+aur_helper() {
+  if command -v yay >/dev/null 2>&1; then
+    command -v yay
+  elif command -v paru >/dev/null 2>&1; then
+    command -v paru
+  else
+    return 1
+  fi
+}
+
+print_count() {
+  local helper repo aur=0
+
+  repo=$(count_lines checkupdates)
+  if helper=$(aur_helper); then
+    aur=$(count_lines "$helper" -Qua)
+  fi
+  printf '{"repo":%d,"aur":%d,"total":%d}\n' "$repo" "$aur" "$((repo + aur))"
+}
+
+run_update() {
+  local helper
+
+  if ! helper=$(aur_helper); then
+    command -v notify-send >/dev/null 2>&1 && notify-send "Arch Updates" "Install yay or paru to update."
+    return 0
+  fi
+  if ! command -v kitty >/dev/null 2>&1; then
+    command -v notify-send >/dev/null 2>&1 && notify-send "Arch Updates" "Kitty is not installed."
+    return 0
+  fi
+
+  kitty --hold --title "System Update" bash -lc 'exec "$1" -Syyu' _ "$helper"
+}
+
+case ${1:-count} in
+  update) run_update ;;
+  *) print_count ;;
+esac

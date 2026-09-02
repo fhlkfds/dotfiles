@@ -60,10 +60,6 @@ The active shell is Quickshell. Modify `Bar.qml`, components, and panel files be
 `quickshell/.config/quickshell/`. Theme colors should continue to come from
 `Theme.qml`/the generated active theme rather than hardcoded per-widget colors.
 
-To switch to Waybar intentionally, add a Waybar startup command and remove or
-adapt the Quickshell bar while deciding whether Quickshell should remain for
-notifications/panels. Starting both unchanged produces two top bars.
-
 ## Notifications
 
 Change timeouts, size, history limit, and DND bypass policy in the Quickshell
@@ -88,8 +84,8 @@ Edit `generate.py` or its templates only for changes that should affect every
 palette. Then validate and regenerate. Never commit a change only to ignored
 `decorations.lua`, `colors.css`, or current-theme files.
 
-Rofi's structural layout is in `comet-glass.rasi`; Wofi and Waybar styles are
-generated from themes. Cursor theme and GTK/Qt themes are not managed here, so add
+Rofi's structural layout is in `comet-glass.rasi`; Wofi styles are generated from
+themes. Cursor theme and GTK/Qt themes are not managed here, so add
 an explicit package/configuration if they should become repository-controlled.
 
 ## Applying changes

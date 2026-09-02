@@ -178,7 +178,7 @@ the repository's submodule metadata before relying on the `zsh` package.
 Alternative or retained desktop components may be deployed separately:
 
 ```bash
-stow waybar swaync wofi noctalia
+stow swaync wofi noctalia
 ```
 
 The wallpaper package is unusual. Despite the root `README.md` saying it creates
@@ -192,8 +192,7 @@ Stow target. The active picker separately defaults to
 `/home/liam/Pictures/wallpapers`, so it will not find either layout automatically.
 
 The root `README.md` has an example “deploy everything” loop, but it omits the
-tracked `cliphist`, `waybar`, and `xdg` packages. Prefer choosing packages
-explicitly.
+tracked `cliphist` and `xdg` packages. Prefer choosing packages explicitly.
 
 ### Optional Windows VM
 
@@ -253,7 +252,6 @@ The following are not portable without review:
 | Assumption | Where it appears |
 | --- | --- |
 | `/home/liam/.config/hypr/scripts` | Hyprland variables, bindings, autostart |
-| `/home/liam/.config/waybar/scripts/power-menu.sh` | Power-menu binding |
 | `/home/liam/Pictures/wallpapers` | Wallpaper picker tool |
 | `/home/liam/.config/hypr/scripts/capture/capture.sh` | Quickshell recording state |
 | `/home/liam` native-host executable paths | Browser manifests and browser flags |

@@ -19,7 +19,7 @@ hardcoded `/home/liam` definition in `conf/variables.lua`.
 
 ## Quickshell bar or panels do not appear
 
-The active bar is Quickshell, not Waybar. Check that `quickshell` exists and that
+The active bar is Quickshell. Check that `quickshell` exists and that
 `quickshell/.config/quickshell/shell.qml` is deployed. Inspect Quickshell's log for
 QML parse/runtime errors and verify the generated active theme JSON exists.
 
@@ -32,9 +32,6 @@ Panel-specific failures often indicate a missing external command:
 - weather/lyrics/wallpaper: network access to the relevant public API.
 - desktop modes: run `desktop-mode doctor --json`; the panel intentionally
   reports unavailable backends rather than claiming a toggle succeeded.
-
-Starting Waybar will not repair Quickshell panels. Conversely, editing Waybar's
-JSON/CSS does not change the active bar.
 
 ## Notifications do not appear
 
@@ -175,7 +172,6 @@ display panel's scale helper persists only to the desktop profile.
 | HEIC transcode fails | install `libheif` so ImageMagick can load its HEIC/HEIF delegate |
 | LocalSend or activity binding does nothing | install `localsend` or `btop` from Arch repositories |
 | old wallpaper selector has theme error | missing `config-wallpaper.rasi` |
-| Waybar network/Bluetooth action fails | scripts request `open-terminal.sh`, but only `open-terninal.sh` exists |
 
 Rofi itself also needs the generated current theme. Run the theme bootstrap rather
 than inventing an empty current-theme file.

@@ -42,7 +42,6 @@ A theme selection renders coordinated output for:
 | Zsh | live `~/.config/zsh/current-theme.zsh` (not a tracked Stow path) |
 | Rofi | current palette/import files below `rofi/.config/rofi/` |
 | Hyprlock | `hyprlock/.config/hyprlock/colors.conf` |
-| Waybar | `waybar/.config/waybar/colors.css` |
 | SwayNC | `swaync/.config/swaync/style.css` |
 | Wofi | `wofi/.config/wofi/style.css` |
 | Noctalia | generated colors/scheme data |
@@ -75,7 +74,7 @@ On selection, the theme system can:
 - reload Hyprland so generated decoration values take effect;
 - notify the Quickshell theme watcher;
 - update running Kitty windows through remote control;
-- signal Waybar and SwayNC when they are running; and
+- signal SwayNC when it is running; and
 - leave generated output ready for applications that load it later.
 
 This means `theme set` is not a purely read-only renderer, although it does not

@@ -47,8 +47,7 @@ Hyprland `hyprland.start` event
 └── desktop applications assigned to workspaces by rules
 ```
 
-The top bar is Quickshell. The tracked Waybar configuration is not started by the
-current autostart file. SwayNC and Noctalia have no active startup calls.
+The top bar is Quickshell. SwayNC and Noctalia have no active startup calls.
 
 No systemd user unit files are tracked. Session processes are launched through
 Hyprland `hl.exec_cmd()` calls; `systemctl` is used only as an external command for the
@@ -66,7 +65,7 @@ hypr-theme / generate.py
 themes/<name>/colors.toml
         ↓
 Hyprland, Quickshell, Kitty, Rofi, Hyprlock,
-Waybar, Wofi, SwayNC, Noctalia, Zsh, Fastfetch
+Wofi, SwayNC, Noctalia, Zsh, Fastfetch
 ```
 
 ### Wallpaper search
@@ -133,7 +132,6 @@ include:
 - `kitty/.config/kitty/theme/current-theme.conf`
 - `rofi/.config/rofi/color-themes/current.rasi`
 - `hyprlock/.config/hyprlock/colors.conf`
-- `waybar/.config/waybar/colors.css`
 - SwayNC, Wofi, and Noctalia theme outputs
 
 The generator also writes `~/.config/zsh/current-theme.zsh`, which `.zshrc`
@@ -165,13 +163,12 @@ under `~/.config/windows`.
 | Desktop-mode daemon | Active when package is deployed | `conf/autostart.lua` |
 | Rofi | Active on demand | `SUPER+A` and helper scripts |
 | Kitty | Active/default terminal | `conf/variables.lua` |
-| Waybar | Retained alternative | no active startup command |
 | SwayNC | Retained fallback | no active startup call |
 | Wofi | Retained alternative | no active binding/startup |
 | Noctalia | Retained configuration | no active startup call |
 
-This distinction matters during troubleshooting: editing Waybar or SwayNC will
-not change the currently visible Quickshell UI.
+This distinction matters during troubleshooting: editing SwayNC will not change
+the currently visible Quickshell UI.
 
 ## Environment variables
 

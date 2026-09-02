@@ -19,8 +19,8 @@ Singleton {
   id: root
 
   // --- semantic palette --------------------------------------------------------
-  // These are the roles the theme system defines, in the same vocabulary Waybar,
-  // Rofi, Kitty and Hyprland receive. New shell code should use these names.
+  // These are the roles the theme system defines, in the same vocabulary Rofi,
+  // Kitty and Hyprland receive. New shell code should use these names.
   //
   // Surfaces, deepest to nearest. Cards should step up one level, not pick an
   // arbitrary shade: background -> surface -> surfaceAlt.

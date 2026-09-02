@@ -228,22 +228,17 @@ The repair tool is intentionally a dry run unless `--apply` is supplied, and it
 refuses unsafe live-profile editing when the browser is running. Browser fixture
 coverage is in `tests/browser-native-tools.test.sh`.
 
-## Waybar scripts
+## Power menu
 
-These are below `waybar/.config/waybar/scripts/` and matter only when the retained
-Waybar configuration is used.
+`hypr/.config/hypr/scripts/power-menu.sh` provides the active `SUPER+P` menu. It
+chooses Fuzzel, then Rofi, Wofi, or Bemenu, and confirms logout, reboot, and
+shutdown actions.
 
-| Script | Purpose |
-| --- | --- |
-| `power-menu.sh` | launcher-neutral lock/logout/suspend/reboot/shutdown menu with confirmation |
-| `update-system.sh` | opens a terminal and dispatches to a detected distribution package manager |
-| `updates.sh` | counts repository/AUR updates; not used by the current Waybar JSON |
-| `network-menu.sh` | network helper; currently references a missing terminal wrapper |
-| `bluetooth-manager.sh` | Bluetooth helper; currently references a missing terminal wrapper |
-| `open-terninal.sh` | terminal wrapper with a misspelled filename |
+## Arch updates
 
-`power-menu.sh` chooses Fuzzel, then Rofi, Wofi, or Bemenu. The active
-`SUPER+P` binding invokes it through `bash`, even though Waybar itself is inactive.
+`hypr/.config/hypr/scripts/arch-updates` prints repository and AUR counts as
+JSON. Its `update` command opens Kitty with the available `yay` or `paru` helper;
+the Quickshell bar is the only caller.
 
 ## AI launcher
 
@@ -294,7 +289,4 @@ preview command.
 
 - retained `WallpaperSwitch.sh` references a missing
   `~/.config/rofi/config-wallpaper.rasi`.
-- Waybar's network and Bluetooth scripts call `open-terminal.sh`, but the tracked
-  file is named `open-terninal.sh`.
-
 The older calculator mode scripts remain as unbound historical helpers.

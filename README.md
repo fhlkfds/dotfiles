@@ -307,7 +307,6 @@ config change.
 Each theme consistently updates:
 
 - **Hyprland** — active/inactive border colours, rounding, gaps, opacity, shadow, blur
-- **Waybar** — bar/module colours via generated `colors.css`
 - **Quickshell** — shell palette via generated `themes/.active/theme.json`
 - **Kitty** — 16-colour ANSI palette, foreground/background, selection, cursor
 - **Rofi** — launcher colours via generated `current.rasi`
