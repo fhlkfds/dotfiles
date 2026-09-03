@@ -82,9 +82,24 @@ that are not present. The desktop profile then focuses HDMI-A-3 through
 
 ## Automatic reapplication
 
-`hypr/.config/hypr/scripts/hypr-monitor-watch.py` is started from
-`conf/autostart.lua`. It subscribes to Hyprland's `socket2` IPC and calls the
+The watcher runs as the systemd user unit
+`hypr-monitor-watch.service`; Hyprland's direct `exec-once` now starts that
+unit instead of `hypr-monitor-watch.py` itself. It subscribes to Hyprland's
+`socket2` IPC and calls the
 applier when a monitor is added or removed. There is no polling loop.
+
+This change does not enable the unit automatically. After installing the
+dotfiles, run:
+
+```sh
+stow systemd
+systemctl --user daemon-reload
+systemctl --user enable --now hypr-monitor-watch.service
+```
+
+No udev rule is shipped in the repository. The optional system udev rule
+described in [Installation](installation.md#optional-monitor-hotplug-helper) is
+installed manually.
 
 Sequence on a KVM switch:
 
@@ -175,13 +190,13 @@ apply; capture it into the profile instead.
 # stop the watcher for this session
 pkill -f hypr-monitor-watch.py
 
-# stop it starting again: remove this line from conf/autostart.lua
-#   start("$HOME/.config/hypr/scripts/hypr-monitor-watch.py")
+# stop it starting again:
+systemctl --user disable --now hypr-monitor-watch.service
 ```
 
-Nothing is installed outside `$HOME`: no systemd units, no udev rules, no root
-files. Removing the autostart line and killing the process fully disables the
-feature; `monitors.lua` and `workspaces.lua` keep whatever was last applied.
+No udev rules or root files are shipped. Disabling the service and stopping the
+process fully disables the feature; `monitors.lua` and `workspaces.lua` keep
+whatever was last applied.
 
 ## Testing
 
