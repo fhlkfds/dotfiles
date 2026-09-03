@@ -50,7 +50,9 @@ Item {
     }
 
     // Four bars at staggered durations. When not playing the animations stop
-    // and every bar rests at its flat minimum.
+    // and every bar rests at its flat minimum. While playing with a live
+    // cava feed, heights track the real spectrum (CavaState.levels);
+    // otherwise they fall back to this animation.
     Row {
       id: bars
       anchors.verticalCenter: parent.verticalCenter
@@ -64,13 +66,20 @@ Item {
           required property int modelData
           required property int index
           width: root.s(2)
-          height: root.s(3)
+          // 3 + level * 10 keeps the existing 3..13 geometry, with cava
+          // levels (0..1) driving the height in place of the animation.
+          height: root.spectrumActive ? root.s(3 + CavaState.levels[index] * 10) : root.s(3)
           radius: 1
           anchors.verticalCenter: parent.verticalCenter
           color: root.playing ? Theme.accent : Theme.textMuted
 
+          // Cava data only wins while audio is actually playing; otherwise
+          // (paused, cava missing) the staggered animation below runs.
+          readonly property bool spectrumActive:
+              root.playing && CavaState.available
+
           SequentialAnimation on height {
-            running: root.playing
+            running: root.playing && !spectrumActive
             loops: Animation.Infinite
             // Staggered start so the bars do not move in lockstep.
             PauseAnimation { duration: index * 90 }
@@ -86,8 +95,10 @@ Item {
             }
           }
 
-          onPlayingChanged: if (!root.playing) height = root.s(3)
-          readonly property bool playing: root.playing
+          // No imperative reset: when playing goes false the height binding
+          // above evaluates to the flat minimum, and the stopped animation
+          // returns control of the property to the binding. An assignment
+          // here (the old pattern) would permanently break the binding.
         }
       }
     }
