@@ -187,8 +187,8 @@ apply; capture it into the profile instead.
 ## Disabling or uninstalling
 
 ```sh
-# stop the watcher for this session
-pkill -f hypr-monitor-watch.py
+# stop the watcher for this session (a plain pkill would trip Restart=on-failure)
+systemctl --user stop hypr-monitor-watch.service
 
 # stop it starting again:
 systemctl --user disable --now hypr-monitor-watch.service
