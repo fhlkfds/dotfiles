@@ -38,7 +38,9 @@ exec(mod .. " + CTRL + A", "toggle audio panel", "quickshell ipc call audio togg
 exec(mod .. " + CTRL + B", "toggle Bluetooth panel", "quickshell ipc call bluetooth toggle")
 exec(mod .. " + CTRL + W", "manage Wi-Fi and network", "quickshell ipc call network manage")
 exec(mod .. " + CTRL + SHIFT + SPACE", "theme picker", "quickshell ipc call theme toggle")
-exec(mod .. " + CTRL + N", "night light", cfg.scripts_dir .. "/night-light.sh toggle")
+bind(mod .. " + CTRL + N", "night light", function()
+    hl.dispatch(hl.dsp.exec_cmd(cfg.scripts_dir .. "/night-light.sh toggle"))
+end)
 
 exec(mod .. " + comma", "dismiss newest notification", "$HOME/.local/bin/notificationctl dismiss-one")
 exec(mod .. " + SHIFT + comma", "dismiss all notifications", "$HOME/.local/bin/notificationctl dismiss-all")

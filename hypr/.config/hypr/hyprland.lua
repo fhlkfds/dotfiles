@@ -14,7 +14,20 @@ hl.env("HYPRCURSOR_SIZE", "24")
 -- ponytail: legacy DRM avoids Aquamarine's hotplug crash; remove after the page-flip bug is fixed.
 hl.env("AQ_NO_ATOMIC", "1")
 
+local home = assert(os.getenv("HOME"), "HOME is required")
+local state_home = os.getenv("XDG_STATE_HOME") or (home .. "/.local/state")
+local night_light_state = io.open(state_home .. "/hyprland-desktop/night-light-shader", "r")
+local night_light_enabled = night_light_state ~= nil
+if night_light_state then
+    night_light_state:close()
+end
+
 hl.config({
+    decoration = {
+        screen_shader = night_light_enabled
+            and (home .. "/.config/hypr/shaders/night-light.frag")
+            or "",
+    },
     cursor = {
         -- ponytail: software cursor avoids rotated-output glitches; retry hardware cursors after an upstream fix.
         no_hardware_cursors = 1,
