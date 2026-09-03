@@ -39,6 +39,31 @@ ShellRoot {
                 // Throttle repaints to ~30fps to match the cava framerate.
                 readonly property int frameIntervalMs: 33
                 property bool paintPending: false
+                property real idleFadeOpacity: 0.15
+                // Idle timeout in minutes. cava.conf sets the same value via
+                // its sleep_timer: after that much silence cava stops the
+                // FFT and pauses frame output, and the idleWatch timer below
+                // marks the panel idle once frames stop arriving. Any new
+                // frame (cava wakes on audio input) wakes the panel.
+                property int idleTimeoutMinutes: 3
+                // Grace beyond cava's own sleep so the frame gap is real.
+                readonly property int idleGraceMs: 5000
+                // Cava prints a near-zero FFT noise floor on silence, so
+                // only sustained above-threshold audio counts as audio.
+                readonly property real audioThreshold: 0.02
+                readonly property int audioSustainFrames: 4
+                property bool idle: false
+                property int silenceMs: 0
+                property int audioFrames: 0
+                property real lastFrameMs: 0
+                // Set once cava has produced frames; guards crash respawn.
+                property bool everAvailable: false
+                // Respawn backoff: attempts reset on any successful frame.
+                property int respawnAttempts: 0
+                readonly property int respawnMaxAttempts: 5
+
+                onIdleChanged: canvas.requestPaint()
+                onAvailableChanged: canvas.requestPaint()
 
                 screen: modelData
 
@@ -93,9 +118,18 @@ ShellRoot {
                     }
                     stderr: StdioCollector {}
                     // If cava is missing or dies, `available` stays/becomes
-                    // false and only the baseline line is shown.
+                    // false and only the baseline line is shown. The
+                    // respawn timer below restarts it unless we are idle
+                    // (cava's own sleep mode).
                     onExited: {
                         panel.available = false
+                        // A crash must not masquerade as cava's sleep
+                        // mode: drop any latched idle state so respawn
+                        // restarts the visualiser fully awake.
+                        panel.idle = false
+                        panel.audioFrames = 0
+                        panel.silenceMs = 0
+                        respawnTimer.restart()
                     }
                 }
 
@@ -110,6 +144,72 @@ ShellRoot {
                     }
                     levels = out
                     available = true
+                    everAvailable = true
+                    respawnAttempts = 0
+                    lastFrameMs = Date.now()
+
+                    const audioPresent = out.some(level => level > audioThreshold)
+                    if (audioPresent) {
+                        silenceMs = 0
+                        audioFrames = Math.min(audioSustainFrames, audioFrames + 1)
+                    } else {
+                        audioFrames = 0
+                        silenceMs += frameIntervalMs
+                    }
+
+                    if (idle && audioFrames >= audioSustainFrames) {
+                        idle = false
+                        silenceMs = 0
+                    }
+                    if (!idle && silenceMs >= idleTimeoutMinutes * 60000)
+                        idle = true
+                }
+
+                // Sleep / wake detection: cava.conf's sleep_timer pauses
+                // cava's frame output (and FFT) after the same silence
+                // duration, so a sustained frame gap means cava is asleep.
+                // The frame-rate-based silence counter above handles the
+                // in-frame silence path; this handles the stopped-stream
+                // path using wall-clock time.
+                Timer {
+                    id: idleWatch
+
+                    interval: 1000
+                    repeat: true
+                    running: panel.everAvailable
+                    onTriggered: {
+                        const now = Date.now()
+                        if (panel.lastFrameMs > 0 &&
+                            now - panel.lastFrameMs >=
+                                panel.idleTimeoutMinutes * 60000 +
+                                panel.idleGraceMs) {
+                            if (!panel.idle) {
+                                panel.idle = true
+                                panel.audioFrames = 0
+                            }
+                        }
+                    }
+                }
+
+                // Restart cava if it crashes while it should be running.
+                // Skipped while idle (cava's own sleep mode) so a clean
+                // config sleep isn't mistaken for a crash.
+                Timer {
+                    id: respawnTimer
+
+                    interval: 5000
+                    repeat: false
+                    onTriggered: {
+                        if (!panel.available && !panel.idle &&
+                            panel.everAvailable && cavaProc.running === false) {
+                            if (panel.respawnAttempts < panel.respawnMaxAttempts) {
+                                panel.respawnAttempts += 1
+                                cavaProc.running = true
+                            }
+                            // Exceeding the cap leaves cava down; it comes
+                            // back on the next shell reload or start.
+                        }
+                    }
                 }
 
                 Timer {
@@ -117,6 +217,9 @@ ShellRoot {
 
                     interval: panel.frameIntervalMs
                     repeat: true
+                    // Stays running while idle: idle only pauses cava's
+                    // frame output, and the timer is what paints a waking
+                    // frame instantly (the idle fade is on the Canvas).
                     running: panel.available
                     onTriggered: {
                         if (!panel.paintPending) {
@@ -179,6 +282,13 @@ ShellRoot {
                     }
                     onWidthChanged: requestPaint()
                     onHeightChanged: requestPaint()
+                    opacity: panel.idle ? panel.idleFadeOpacity : 1.0
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: 400
+                        }
+                    }
                 }
             }
         }
