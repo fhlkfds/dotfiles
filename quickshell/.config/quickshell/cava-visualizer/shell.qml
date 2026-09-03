@@ -34,7 +34,14 @@ ShellRoot {
                 // Accent follows the desktop theme (same source the main
                 // shell's Theme singleton reads), with the repo's fallback.
                 property string accentHex: "#8a6fae"
-                readonly property color accentColor: accentHex
+                // Opt-in: sample the current wallpaper's dominant colour
+                // and use it as the bar accent when it survives the
+                // brightness thresholds.
+                property bool wallpaperAccent: false
+                property string wallpaperHex: ""
+                readonly property color accentColor:
+                    (wallpaperAccent && wallpaperHex !== "") ? wallpaperHex : accentHex
+                property string lastSampledPath: ""
                 readonly property real accentOpacity: 0.78
                 // Throttle repaints to ~30fps to match the cava framerate.
                 readonly property int frameIntervalMs: 33
@@ -103,6 +110,42 @@ ShellRoot {
                     onLoadFailed: {}
                 }
 
+                FileView {
+                    id: wallpaperStateView
+
+                    path: Quickshell.env("XDG_STATE_HOME")
+                          ? Quickshell.env("XDG_STATE_HOME") +
+                            "/hyprland-desktop/wallpaper/current"
+                          : Quickshell.env("HOME") +
+                            "/.local/state/hyprland-desktop/wallpaper/current"
+                    watchChanges: true
+                    printErrors: false
+
+                    onFileChanged: reload()
+                    onLoaded: {
+                        const wallpaperPath = String(wallpaperStateView.text()).trim()
+                        if (wallpaperPath !== "" &&
+                            wallpaperPath !== panel.lastSampledPath)
+                            panel.sampleWallpaper(wallpaperPath)
+                    }
+                    onLoadFailed: {}
+                }
+
+                Process {
+                    id: sampleProc
+
+                    property string targetPath: ""
+                    stdout: SplitParser {
+                        onRead: line => {
+                            const match = /^#[0-9a-f]{6}$/.exec(String(line).trim())
+                            if (match)
+                                panel.wallpaperHex = match[0]
+                        }
+                    }
+                    stderr: StdioCollector {}
+                    onExited: sampleProc.targetPath = ""
+                }
+
                 Process {
                     id: cavaProc
 
@@ -163,6 +206,24 @@ ShellRoot {
                     }
                     if (!idle && silenceMs >= idleTimeoutMinutes * 60000)
                         idle = true
+                }
+
+                function sampleWallpaper(path) {
+                    if (sampleProc.targetPath !== "")
+                        return
+                    lastSampledPath = path
+                    sampleProc.targetPath = path
+                    sampleProc.command = [
+                        Quickshell.env("HOME") +
+                            "/.config/quickshell/cava-visualizer/sample-accent.py",
+                        "--threshold", "24", path
+                    ]
+                    sampleProc.running = true
+                }
+
+                Component.onCompleted: {
+                    if (wallpaperAccent)
+                        wallpaperStateView.reload()
                 }
 
                 // Sleep / wake detection: cava.conf's sleep_timer pauses
