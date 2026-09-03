@@ -143,7 +143,15 @@ ShellRoot {
                         }
                     }
                     stderr: StdioCollector {}
-                    onExited: sampleProc.targetPath = ""
+                    // A failed sample (unreadable wallpaper, Pillow
+                    // missing, threshold rejection) must not keep the
+                    // previous wallpaper's colour: fall back to the
+                    // theme accent.
+                    onExited: function (code) {
+                        sampleProc.targetPath = ""
+                        if (code !== 0)
+                            panel.wallpaperHex = ""
+                    }
                 }
 
                 Process {
@@ -209,7 +217,9 @@ ShellRoot {
                 }
 
                 function sampleWallpaper(path) {
-                    if (sampleProc.targetPath !== "")
+                    // Feature is opt-in: never spawn the sampler (and
+                    // never override the theme accent) while disabled.
+                    if (!wallpaperAccent || sampleProc.targetPath !== "")
                         return
                     lastSampledPath = path
                     sampleProc.targetPath = path
@@ -222,6 +232,13 @@ ShellRoot {
                 }
 
                 Component.onCompleted: {
+                    if (wallpaperAccent)
+                        wallpaperStateView.reload()
+                }
+
+                // Enabling the switch at runtime (live reload) kicks off
+                // the first sample without waiting for a wallpaper change.
+                onWallpaperAccentChanged: {
                     if (wallpaperAccent)
                         wallpaperStateView.reload()
                 }
