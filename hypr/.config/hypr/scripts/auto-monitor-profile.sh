@@ -379,6 +379,10 @@ apply_profile() {
     die "missing profile file: $PROFILE_DIR/$profile.monitors.lua"
   [[ -r "$PROFILE_DIR/$profile.workspaces.lua" ]] ||
     die "missing profile file: $PROFILE_DIR/$profile.workspaces.lua"
+  # A monitor event can arrive while Git is replacing this Stow-linked tree.
+  # Do not write profile state or ask Hyprland to reload a missing entrypoint.
+  [[ -r "$CONFIG_DIR/hyprland.lua" ]] ||
+    die "missing active Lua config: $CONFIG_DIR/hyprland.lua"
 
   install_profile_files "$profile"
 

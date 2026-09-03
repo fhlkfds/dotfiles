@@ -132,6 +132,7 @@ grep -Fq 'config ok' "$test_root/verify.log" || fail 'config verification did no
 fixture_hypr="$test_root/profile-hypr"
 mkdir -p "$fixture_hypr/monitor_profiles" "$test_root/bin" "$test_root/profile-runtime"
 cp "$hypr_root/monitor_profiles/"*.lua "$fixture_hypr/monitor_profiles/"
+cp "$hypr_root/hyprland.lua" "$fixture_hypr/hyprland.lua"
 
 cat >"$test_root/bin/hyprctl-fixture" <<'SH'
 #!/usr/bin/env bash
@@ -165,6 +166,21 @@ grep -Fq 'dispatch hl.dsp.workspace.move({ workspace = 1, monitor = "HDMI-A-3" }
   fail 'workspace migration did not use the Lua dispatcher'
 grep -Fq 'dispatch hl.dsp.focus({ monitor = "HDMI-A-3" })' "$HYPRCTL_CALLS" ||
   fail 'desktop focus did not use the Lua dispatcher'
+
+rm "$fixture_hypr/hyprland.lua"
+: >"$HYPRCTL_CALLS"
+if HYPR_DIR="$fixture_hypr" \
+  HYPRCTL="$test_root/bin/hyprctl-fixture" \
+  XDG_RUNTIME_DIR="$test_root/profile-runtime" \
+  HYPR_SKIP_SETTLE=1 \
+  "$hypr_root/scripts/auto-monitor-profile.sh" --force --verbose >"$test_root/missing-entrypoint.out" 2>&1; then
+  fail 'monitor profile applied without its active Lua entrypoint'
+fi
+grep -Fq "missing active Lua config: $fixture_hypr/hyprland.lua" "$test_root/missing-entrypoint.out" ||
+  fail 'missing Lua entrypoint was not reported'
+! grep -Fq 'reload' "$HYPRCTL_CALLS" ||
+  fail 'missing Lua entrypoint still triggered a Hyprland reload'
+cp "$hypr_root/hyprland.lua" "$fixture_hypr/hyprland.lua"
 
 HYPR_DIR="$fixture_hypr" "$hypr_root/scripts/set-monitor-scale.sh" HDMI-A-3 1.25 >/dev/null
 for file in "$fixture_hypr/monitors.lua" "$fixture_hypr/monitor_profiles/desktop.monitors.lua"; do
