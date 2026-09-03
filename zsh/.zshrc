@@ -67,6 +67,17 @@ alias gam="/home/liam/bin/gam7/gam"
 
 export PATH="$HOME/.local/bin:$PATH"
 
+# gpg-agent SSH agent for interactive shells only.
+if [[ -o interactive ]]; then
+  gnupg_ssh_socket="$(gpgconf --list-dirs agent-ssh-socket 2>/dev/null)" && [[ -n "$gnupg_ssh_socket" ]] || gnupg_ssh_socket=
+  if [[ -n "$gnupg_ssh_socket" ]]; then
+    export SSH_AUTH_SOCK="$gnupg_ssh_socket"
+    export GPG_TTY="$(tty 2>/dev/null)"
+    gpg-connect-agent updatestartuptty /bye >/dev/null 2>&1
+  fi
+  unset gnupg_ssh_socket
+fi
+
 # Standalone coding-agent launchers from the `ai` Stow package.
 [[ -r ~/.config/ai-agent/shell.zsh ]] && source ~/.config/ai-agent/shell.zsh
 

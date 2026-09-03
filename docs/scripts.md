@@ -156,6 +156,11 @@ which entries had to be inferred.
 
 ## YubiKey authentication
 
+`security/.config/gnupg-conf/` contains example `gpg.conf` and
+`gpg-agent.conf` templates with one-hour SSH-key caching. Copy them into
+`~/.gnupg/` manually as described in that directory's `README.md`; interactive
+Zsh sessions export `SSH_AUTH_SOCK` to the matching `gpg-agent` socket.
+
 `security/.local/bin/yubikey-auth` manages the host-local PAM-U2F mapping and
 repository-owned sudo/Hyprlock templates without placing credentials in Git.
 
