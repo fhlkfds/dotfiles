@@ -52,7 +52,7 @@ def render_all(theme: tl.Theme, root: Path) -> list[Path]:
 def summary(theme: tl.Theme, outputs: list[Path]) -> dict[str, object]:
     """The stable subset worth snapshotting: identity and rendered bytes."""
     files = {
-        output.name: hashlib.sha256(output.read_bytes()[:200]).hexdigest()
+        output.name: hashlib.sha256(output.read_bytes()).hexdigest()
         for output in outputs
     }
     return {
@@ -82,6 +82,16 @@ class ThemeGeneratorTest(unittest.TestCase):
         patcher = unittest.mock.patch.dict(os.environ, env)
         patcher.start()
         self.addCleanup(patcher.stop)
+        original_config_home = generate.CONFIG_HOME
+        original_cache_home = generate.CACHE_HOME
+        original_wallpaper_state_file = generate.WALLPAPER_STATE_FILE
+
+        def restore_generator_paths() -> None:
+            generate.CONFIG_HOME = original_config_home
+            generate.CACHE_HOME = original_cache_home
+            generate.WALLPAPER_STATE_FILE = original_wallpaper_state_file
+
+        self.addCleanup(restore_generator_paths)
         generate.CONFIG_HOME = Path(env["XDG_CONFIG_HOME"])
         generate.CACHE_HOME = Path(env["XDG_CACHE_HOME"])
         generate.WALLPAPER_STATE_FILE = self.root / "state/wallpaper"
@@ -103,10 +113,13 @@ class ThemeGeneratorTest(unittest.TestCase):
                     self.assertTrue(rendered, f"{name} is empty")
                     self.assertNotIn("{{", rendered, f"{name} has unresolved markers")
 
-                css = (self.root / slug / "stage" / "swaync-style.css").read_text()
-                css += (self.root / slug / "stage" / "wofi-style.css").read_text()
-                self.assertIn(accent, css)
-                self.assertIn(accent[1:], css)
+                for css_name in ("swaync-style.css", "wofi-style.css"):
+                    css = (self.root / slug / "stage" / css_name).read_text()
+                    if css_name == "wofi-style.css":
+                        red, green, blue = tl._rgb(accent)
+                        self.assertIn(f"rgba({red}, {green}, {blue}", css)
+                    else:
+                        self.assertIn(accent[1:], css)
 
                 quickshell = json.loads(
                     (self.root / slug / "stage" / "quickshell-theme.json").read_text()
@@ -142,15 +155,20 @@ class ThemeGeneratorTest(unittest.TestCase):
         self.assertTrue(warnings)
         self.assertEqual(theme.warnings, [])
         self.assertIn("1.11:1", warnings[0])
-        self.assertIn(":1", warnings[0])
 
         render_all(theme, self.root / "synthetic-low-contrast")
 
-    def test_fixture_or_snapshot_mode(self) -> None:
+    def test_snapshot_comparison(self) -> None:
         fixture_dir = os.environ.get(FIXTURE_ENV)
         snapshot_path = os.environ.get(SNAPSHOT_ENV)
-        if not fixture_dir and not snapshot_path:
-            self.skipTest("fixture mode disabled")
+        committed_snapshot = ROOT / "tests/fixtures/theme-generator-snapshots.json"
+        if not fixture_dir:
+            if snapshot_path:
+                snapshot = Path(snapshot_path)
+            elif committed_snapshot.exists():
+                snapshot = committed_snapshot
+            else:
+                self.skipTest("snapshot comparison disabled; baseline absent")
 
         rendered = {}
         for slug, theme in self.themes.items():
@@ -163,7 +181,7 @@ class ThemeGeneratorTest(unittest.TestCase):
             fixture.write_text(json.dumps(rendered, indent=2, sort_keys=True) + "\n")
             return
 
-        with open(snapshot_path, encoding="utf-8") as handle:
+        with open(snapshot, encoding="utf-8") as handle:
             expected = json.load(handle)
         self.maxDiff = None
         for slug in sorted(set(rendered) | set(expected)):
