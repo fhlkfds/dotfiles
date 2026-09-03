@@ -111,7 +111,7 @@ CHOICE=$(printf '%s\n' "$MENU" | rofi -dmenu -i -p "Eject" \
 
 SELECTED=""
 DRIVE_LABEL=""
-while IFS=$'\t' read -r name label mountpoint; do
+while IFS=$'\t' read -r name label _mountpoint; do
   case "$CHOICE" in
     *" [$name]")
       SELECTED=$name
@@ -119,7 +119,7 @@ while IFS=$'\t' read -r name label mountpoint; do
       break
       ;;
   esac
-done < <(jq 2>/dev/null || true -r '.[] | [.name, (.label // .name), .mountpoint] | @tsv' <<<"$DRIVES")
+done < <(jq -r '.[] | [.name, (.label // .name), .mountpoint] | @tsv' <<<"$DRIVES")
 
 [[ -n "$SELECTED" ]] || exit 0
 
