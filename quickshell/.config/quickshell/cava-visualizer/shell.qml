@@ -47,16 +47,18 @@ ShellRoot {
                 // then $HOME/.local/state. Empty while the feature is
                 // disabled so the FileView neither watches nor reads
                 // anything (FileView autoloads whenever path is set).
-                readonly property string wallpaperStatePath:
-                    wallpaperAccent
-                      ? (Quickshell.env("HYPR_WALLPAPER_STATE_FILE") !== ""
-                         ? Quickshell.env("HYPR_WALLPAPER_STATE_FILE")
-                         : (Quickshell.env("XDG_STATE_HOME") !== ""
-                            ? Quickshell.env("XDG_STATE_HOME")
-                              + "/hyprland-desktop/wallpaper/current"
-                            : Quickshell.env("HOME")
-                              + "/.local/state/hyprland-desktop/wallpaper/current"))
-                      : ""
+                readonly property string wallpaperStatePath: {
+                    if (!wallpaperAccent)
+                        return ""
+                    // Quickshell.env() yields undefined for unset vars, so
+                    // guard with truthiness, not !== "".
+                    const override = Quickshell.env("HYPR_WALLPAPER_STATE_FILE")
+                    if (override)
+                        return override
+                    const stateHome = Quickshell.env("XDG_STATE_HOME") ||
+                        (Quickshell.env("HOME") + "/.local/state")
+                    return stateHome + "/hyprland-desktop/wallpaper/current"
+                }
                 readonly property real accentOpacity: 0.78
                 // Throttle repaints to ~30fps to match the cava framerate.
                 readonly property int frameIntervalMs: 33
