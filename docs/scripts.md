@@ -29,11 +29,15 @@ the active window's current height.
 Quickshell Bluetooth widget. It reports adapter/device state as JSON and provides
 validated power, scan, pair, connect, and disconnect commands over `bluetoothctl`.
 
-`eject-drive.sh` opens a themed Rofi menu of mounted removable drives. After a
-confirmation prompt, it unmounts the selected node with `udisksctl`, powers off
-its parent disk, and reports the result with a desktop notification.
+`eject-drive.sh` opens a themed Rofi menu of mounted removable drives (label,
+device, and size), asks for confirmation, unmounts every mounted filesystem on
+the selected drive with `udisksctl`, powers the disk off, and reports the
+result with a desktop notification that bypasses Do Not Disturb. It handles
+partitioned sticks, multi-mountpoint nodes, and LUKS holders.
 `--dry-run --fixture <lsblk-json-file>` prints the planned actions without
-calling `udisksctl` or `notify-send`, so it can be tested non-interactively.
+calling `udisksctl` or `notify-send`; `--fixture` implies `--dry-run`, so the
+fixture path can never mutate system state. See
+`tests/eject-drive.test.sh`.
 
 `LayoutToggle.sh` can switch between master and dwindle layouts, but no current
 binding invokes it. The older `Screenshot.sh`, `shot-copy.sh`, `shot-edit.sh`, and
