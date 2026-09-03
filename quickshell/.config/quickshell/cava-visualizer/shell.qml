@@ -41,7 +41,22 @@ ShellRoot {
                 property string wallpaperHex: ""
                 readonly property color accentColor:
                     (wallpaperAccent && wallpaperHex !== "") ? wallpaperHex : accentHex
-                property string lastSampledPath: ""
+                // Current-wallpaper path, read from the same state file
+                // the wallpaper picker writes. Resolution mirrors the
+                // picker: $HYPR_WALLPAPER_STATE_FILE, then $XDG_STATE_HOME,
+                // then $HOME/.local/state. Empty while the feature is
+                // disabled so the FileView neither watches nor reads
+                // anything (FileView autoloads whenever path is set).
+                readonly property string wallpaperStatePath:
+                    wallpaperAccent
+                      ? (Quickshell.env("HYPR_WALLPAPER_STATE_FILE") !== ""
+                         ? Quickshell.env("HYPR_WALLPAPER_STATE_FILE")
+                         : (Quickshell.env("XDG_STATE_HOME") !== ""
+                            ? Quickshell.env("XDG_STATE_HOME")
+                              + "/hyprland-desktop/wallpaper/current"
+                            : Quickshell.env("HOME")
+                              + "/.local/state/hyprland-desktop/wallpaper/current"))
+                      : ""
                 readonly property real accentOpacity: 0.78
                 // Throttle repaints to ~30fps to match the cava framerate.
                 readonly property int frameIntervalMs: 33
@@ -71,6 +86,7 @@ ShellRoot {
 
                 onIdleChanged: canvas.requestPaint()
                 onAvailableChanged: canvas.requestPaint()
+                onAccentColorChanged: canvas.requestPaint()
 
                 screen: modelData
 
@@ -113,11 +129,9 @@ ShellRoot {
                 FileView {
                     id: wallpaperStateView
 
-                    path: Quickshell.env("XDG_STATE_HOME")
-                          ? Quickshell.env("XDG_STATE_HOME") +
-                            "/hyprland-desktop/wallpaper/current"
-                          : Quickshell.env("HOME") +
-                            "/.local/state/hyprland-desktop/wallpaper/current"
+                    // Bound to "" while the feature is disabled, so the
+                    // FileView is inert: no watch, no read, no sampler.
+                    path: panel.wallpaperStatePath
                     watchChanges: true
                     printErrors: false
 
@@ -231,15 +245,10 @@ ShellRoot {
                     sampleProc.running = true
                 }
 
-                Component.onCompleted: {
-                    if (wallpaperAccent)
-                        wallpaperStateView.reload()
-                }
-
-                // Enabling the switch at runtime (live reload) kicks off
-                // the first sample without waiting for a wallpaper change.
-                onWallpaperAccentChanged: {
-                    if (wallpaperAccent)
+                // First sample / re-arm when the opt-in flips on (startup
+                // or live reload); FileView loads once a path is bound.
+                onWallpaperStatePathChanged: {
+                    if (wallpaperStatePath !== "")
                         wallpaperStateView.reload()
                 }
 
