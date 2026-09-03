@@ -31,7 +31,10 @@ ShellRoot {
                 // When false (cava missing or not yet producing frames)
                 // only the baseline line is drawn.
                 property bool available: false
-                readonly property color accentColor: "#89b4fa"
+                // Accent follows the desktop theme (same source the main
+                // shell's Theme singleton reads), with the repo's fallback.
+                property string accentHex: "#8a6fae"
+                readonly property color accentColor: accentHex
                 readonly property real accentOpacity: 0.78
                 // Throttle repaints to ~30fps to match the cava framerate.
                 readonly property int frameIntervalMs: 33
@@ -50,6 +53,30 @@ ShellRoot {
                 keyboardFocus: WlrKeyboardFocus.None
                 color: "transparent"
                 implicitHeight: 120
+
+                // Follow the desktop theme: read the semantic `accent` role
+                // from the same theme.json the main shell's Theme singleton
+                // watches, so `theme set <slug>` recolours the bars live.
+                FileView {
+                    id: themeView
+
+                    path: Quickshell.env("HOME") + "/.config/hypr/themes/.active/theme.json"
+                    watchChanges: true
+                    printErrors: false
+
+                    onFileChanged: reload()
+                    onLoaded: {
+                        try {
+                            const data = JSON.parse(themeView.text()) || ({})
+                            if (typeof data.accent === "string")
+                                panel.accentHex = data.accent
+                        } catch (e) {
+                            // Keep the fallback colour on malformed JSON.
+                        }
+                    }
+                    // Missing theme file: keep the fallback colour.
+                    onLoadFailed: {}
+                }
 
                 Process {
                     id: cavaProc
@@ -124,8 +151,10 @@ ShellRoot {
                         ctx.lineTo(w, baseline)
                         ctx.stroke()
 
-                        if (!panel.available)
+                        if (!panel.available) {
+                            panel.paintPending = false
                             return
+                        }
 
                         // 64 evenly spaced bars across the full width.
                         const n = panel.barCount
