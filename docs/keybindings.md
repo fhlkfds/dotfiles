@@ -44,6 +44,7 @@ opened with `SUPER+K`.
 | `SUPER+CTRL+W` | Wi-Fi/network manager | existing `kitty -e nmtui` action |
 | `SUPER+CTRL+A` | audio panel | Quickshell IPC |
 | `SUPER+CTRL+B` | Bluetooth panel | Quickshell IPC |
+| `SUPER+SHIFT+B` | power profile menu | Rofi picker over `powerprofilesctl` profiles |
 | `SUPER+CTRL+D` | display panel | Quickshell IPC |
 | `SUPER+CTRL+M` | media panel | Quickshell IPC |
 

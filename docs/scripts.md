@@ -11,6 +11,7 @@ These scripts are below `hypr/.config/hypr/scripts/`.
 | `transcode-menu.sh` | `SUPER+CTRL+.` | fuzzy media/format/size picker; delegates conversion and clipboard work to `transcode` | Rofi, `file`, `transcode` |
 | `RofiEmoji.sh` | `SUPER+ALT+E` | fuzzy-searches emoji data with the active application-menu theme and copies the chosen glyph | Rofi, `wl-copy` |
 | `universal-clipboard.sh` | `SUPER+C/X/V` | detects terminal classes and sends the correct copy/cut/paste shortcut | `hyprctl` |
+| `power-profile.sh` | `SUPER+SHIFT+B` | lists, reports, sets, cycles, or intelligently toggles `powerprofilesctl` profiles; the bound action opens a Rofi picker | `power-profiles-daemon`; optional Rofi and notifications |
 | `files-here.sh` | `SUPER+SHIFT+ALT+F` | discovers a focused terminal's current directory and opens Nautilus there | terminal APIs, `hyprctl`, Nautilus |
 | `night-light.sh` | `SUPER+CTRL+N` | toggles Hyprsunset between 1000 K and 6500 K; delegates to `desktop-mode` when installed and otherwise controls Hyprsunset directly | `hyprctl`, `hyprsunset`; optional `desktop-mode` |
 | `spotify-notify.sh` | autostart | watches Spotify metadata and sends track-change notifications | `playerctl`, `curl`, notification command |
