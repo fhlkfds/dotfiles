@@ -29,6 +29,12 @@ the active window's current height.
 Quickshell Bluetooth widget. It reports adapter/device state as JSON and provides
 validated power, scan, pair, connect, and disconnect commands over `bluetoothctl`.
 
+`eject-drive.sh` opens a themed Rofi menu of mounted removable drives. After a
+confirmation prompt, it unmounts the selected node with `udisksctl`, powers off
+its parent disk, and reports the result with a desktop notification.
+`--dry-run --fixture <lsblk-json-file>` prints the planned actions without
+calling `udisksctl` or `notify-send`, so it can be tested non-interactively.
+
 `LayoutToggle.sh` can switch between master and dwindle layouts, but no current
 binding invokes it. The older `Screenshot.sh`, `shot-copy.sh`, `shot-edit.sh`, and
 `shot-save.sh` predate the active capture suite and are also not bound. `dnd.sh`
