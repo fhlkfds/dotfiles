@@ -40,6 +40,7 @@ opened with `SUPER+K`.
 | `SUPER+SHIFT+E` | Files | same as `SUPER+E` |
 | `SUPER+SHIFT+ALT+F` | Files at terminal directory | `files-here.sh` |
 | `SUPER+SHIFT+D` | Disks | `gnome-disks` through `disks` |
+| `SUPER+U` | eject removable drives | `eject-drive.sh` picker; confirms, unmounts, and powers off the drive |
 | `SUPER+CTRL+I` | network status panel | Quickshell IPC |
 | `SUPER+CTRL+W` | Wi-Fi/network manager | existing `kitty -e nmtui` action |
 | `SUPER+CTRL+A` | audio panel | Quickshell IPC |

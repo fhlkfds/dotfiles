@@ -35,6 +35,16 @@ a single `jq` run and caches device classes under
 `${XDG_CACHE_HOME:-~/.cache}/bluetooth-control/`, so the panel's poll stays
 cheap; only connected devices are re-inspected on each poll.
 
+`eject-drive.sh` opens a themed Rofi menu of mounted removable drives (label,
+device, and size), asks for confirmation, unmounts every mounted filesystem on
+the selected drive with `udisksctl`, powers the disk off, and reports the
+result with a desktop notification that bypasses Do Not Disturb. It handles
+partitioned sticks, multi-mountpoint nodes, and LUKS holders.
+`--dry-run --fixture <lsblk-json-file>` prints the planned actions without
+calling `udisksctl` or `notify-send`; `--fixture` implies `--dry-run`, so the
+fixture path can never mutate system state. See
+`tests/eject-drive.test.sh`.
+
 `LayoutToggle.sh` can switch between master and dwindle layouts, but no current
 binding invokes it. The older `Screenshot.sh`, `shot-copy.sh`, `shot-edit.sh`, and
 `shot-save.sh` predate the active capture suite and are also not bound. `dnd.sh`
