@@ -36,7 +36,7 @@ contents into `~`.
 
 ```bash
 stow ai browser cliphist fastfetch hypr hyprlock kitty modes noctalia quickshell \
-     rofi screensaver security swaync windows Wallpapers wofi xdg zsh
+     rofi screensaver security swaync systemd windows Wallpapers wofi xdg zsh
 ```
 
 **Or deploy packages individually:**
