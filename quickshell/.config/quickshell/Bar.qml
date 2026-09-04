@@ -280,6 +280,19 @@ Scope {
           anchorItem: barSummary
           ownerScreen: panel.modelData.name
         }
+
+        DashboardPanel {
+          anchorItem: barSummary
+          ownerScreen: panel.modelData.name
+        }
+
+        MouseArea {
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          acceptedButtons: Qt.LeftButton
+          onClicked: DashboardState.togglePanel(panel.modelData.name)
+        }
       }
 
       Row {

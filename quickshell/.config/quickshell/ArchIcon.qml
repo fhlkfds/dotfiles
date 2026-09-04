@@ -39,8 +39,4 @@ Item {
     onClicked: DashboardState.togglePanel(root.screenName)
   }
 
-  DashboardPanel {
-    anchorItem: root
-    ownerScreen: root.screenName
-  }
 }

@@ -39,41 +39,13 @@ Item {
         unavailableText: "GPU stats unavailable"
       }
 
-      // Uptime / host summary fills the rest of the hero row.
-      Card {
-        title: "SYSTEM"
-        radius: Theme.radiusXL
-        implicitWidth: root.implicitWidth - Theme.heroCardW * 2 - Theme.gapM * 2
-        implicitHeight: Theme.heroCardH
-
-        Column {
-          anchors.left: parent.left
-          anchors.top: parent.top
-          spacing: 1
-
-          Text {
-            text: SysState.fmtUptime(SysState.uptimeSeconds)
-            color: Theme.text
-            font.pixelSize: Theme.fs(26)
-            font.bold: true
-          }
-          Text {
-            text: "uptime"
-            color: Theme.textMuted
-            font.pixelSize: Theme.fs(10)
-          }
-          Item { width: 1; height: Theme.gapM }
-          Text {
-            text: "Arch Linux"
-            color: Theme.textDim
-            font.pixelSize: Theme.fs(12)
-          }
-          Text {
-            text: "liam@Kelper"
-            color: Theme.textMuted
-            font.pixelSize: Theme.fs(11)
-          }
-        }
+      HeroGauge {
+        label: "MEMORY"
+        model: SysState.fmtBytes(SysState.memUsedBytes) + " used"
+        value: SysState.memFraction
+        valueText: Math.round(SysState.memFraction * 100) + "%"
+        unavailable: SysState.memTotalBytes <= 0
+        unavailableText: "Memory unavailable"
       }
     }
 

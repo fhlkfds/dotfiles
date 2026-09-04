@@ -13,7 +13,7 @@ Singleton {
   // on the monitor that was clicked rather than on all of them.
   property string panelScreen: ""
 
-  // "dash" | "media" | "perf" | "weather". Kept across open/close so reopening
+  // "dash" | "media" | "perf" | "workspaces". Kept across open/close so reopening
   // returns to the tab you were last on.
   property string activeTab: "dash"
 
@@ -36,7 +36,7 @@ Singleton {
     { key: "dash",    label: "Dashboard",   icon: String.fromCodePoint(0xf056e), enabled: true },
     { key: "media",   label: "Media",       icon: String.fromCodePoint(0xf075a), enabled: true },
     { key: "perf",    label: "Performance", icon: String.fromCodePoint(0xf04c5), enabled: true },
-    { key: "weather", label: "Weather",     icon: String.fromCodePoint(0xf0595), enabled: true }
+    { key: "workspaces", label: "Workspaces", icon: String.fromCodePoint(0xf0a9f), enabled: true }
   ]
 
   readonly property var enabledTabs: tabs.filter(t => t.enabled)

@@ -26,7 +26,7 @@ PopupWindow {
     switch (DashboardState.activeTab) {
     case "media": return mediaPage
     case "perf": return perfPage
-    case "weather": return weatherPage
+    case "workspaces": return workspacesPage
     default: return dashPage
     }
   }
@@ -123,10 +123,10 @@ PopupWindow {
         // All four stay instantiated so switching tabs preserves their state;
         // only the active one is visible. Each is positioned at its intrinsic
         // size rather than filling the viewport.
-        DashTab    { id: dashPage;    visible: DashboardState.activeTab === "dash" }
-        MediaTab   { id: mediaPage;   visible: DashboardState.activeTab === "media" }
-        PerfTab    { id: perfPage;    visible: DashboardState.activeTab === "perf" }
-        WeatherTab { id: weatherPage; visible: DashboardState.activeTab === "weather" }
+        DashTab       { id: dashPage;       visible: DashboardState.activeTab === "dash" }
+        MediaTab      { id: mediaPage;      visible: DashboardState.activeTab === "media" }
+        PerfTab       { id: perfPage;       visible: DashboardState.activeTab === "perf" }
+        WorkspacesTab { id: workspacesPage; visible: DashboardState.activeTab === "workspaces" }
       }
     }
   }
@@ -135,4 +135,6 @@ PopupWindow {
     if (visible)
       focusScope.forceActiveFocus()
   }
+
+  onClosed: DashboardState.panelVisible = false
 }
