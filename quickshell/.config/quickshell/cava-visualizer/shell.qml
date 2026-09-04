@@ -2,6 +2,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 
 // Standalone cava visualizer: a transparent background-layer panel per
 // monitor drawing 64 bottom-up audio bars. This is a separate named
@@ -92,7 +93,8 @@ ShellRoot {
 
                 screen: modelData
 
-                WlrLayershell.layer: WlrLayershell.Background
+                WlrLayershell.layer: WlrLayer.Background
+                WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
                 anchors {
                     bottom: true
                     left: true
@@ -100,7 +102,6 @@ ShellRoot {
                 }
                 exclusiveZone: -1
                 exclusionMode: ExclusionMode.Ignore
-                keyboardFocus: WlrKeyboardFocus.None
                 color: "transparent"
                 implicitHeight: 120
 

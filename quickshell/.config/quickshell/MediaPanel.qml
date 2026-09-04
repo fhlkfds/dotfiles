@@ -283,6 +283,19 @@ PopupWindow {
                 onMoved: fraction => MediaState.setVolume(fraction)
               }
             }
+
+            Rectangle {
+              width: parent.width
+              height: Theme.fs(56)
+              radius: Theme.radiusCell
+              color: Theme.surface
+
+              CavaBars {
+                anchors.fill: parent
+                anchors.margins: Theme.fs(8)
+                active: panel.visible && MediaState.isPlaying
+              }
+            }
           }
 
           // ================= LYRICS =================

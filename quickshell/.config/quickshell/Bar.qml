@@ -46,6 +46,13 @@ Scope {
   }
 
   IpcHandler {
+    target: "visualizer"
+    function toggle(): void {
+      VisualizerState.toggle()
+    }
+  }
+
+  IpcHandler {
     target: "clipboard"
     function toggle(): void {
       ClipboardState.togglePanel(bar.focusedScreen())
@@ -158,6 +165,25 @@ Scope {
       required property var modelData
       screen: modelData
       ownerScreen: modelData.name
+    }
+  }
+
+  Variants {
+    model: Quickshell.screens
+
+    CavaEdgeVisualizer {
+      required property var modelData
+      output: modelData
+    }
+  }
+
+  Variants {
+    model: Quickshell.screens
+
+    CavaEdgeVisualizer {
+      required property var modelData
+      output: modelData
+      anchorTop: true
     }
   }
 

@@ -6,17 +6,17 @@ import QtQuick
 // Audio spectrum state for the bar visualiser, driven by cava.
 //
 // cava is launched with the shipped config (cava/bar.conf) so it emits one
-// ASCII frame per line: four space-separated integers in 0..100, one per
+// ASCII frame per line: 25 space-separated integers in 0..100, one per
 // bar. Each frame is normalised into `levels` (0..1). `available` is true
 // only once a valid frame has been parsed, so MediaIcon can fall back to
 // its built-in animation whenever cava is missing or failing.
 Singleton {
   id: root
 
-  // Must match the bar count in MediaIcon.qml and cava/bar.conf.
-  readonly property int barCount: 4
+  // Must match cava/bar.conf. MediaIcon keeps using the first four bands.
+  readonly property int barCount: 25
   // Levels normalised to 0..1, one entry per bar.
-  property var levels: [0, 0, 0, 0]
+  property var levels: Array(root.barCount).fill(0)
   // True once cava has produced at least one valid frame.
   property bool available: false
 

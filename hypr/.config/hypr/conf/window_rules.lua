@@ -51,4 +51,4 @@ hl.window_rule({ match = { class = "^(obsidian|Obsidian)$" }, workspace = "3 sil
 hl.window_rule({ match = { class = "^(virt-manager)$" }, workspace = "6 silent" })
 hl.window_rule({ match = { class = "^(org.kde.neochat)$" }, workspace = "7 silent" })
 hl.window_rule({ match = { class = "^(Spotify|spotify)$" }, workspace = "9 silent" })
-hl.window_rule({ match = { class = "^(brave-browser)$" }, workspace = "2 silent" })
+hl.window_rule({ match = { class = "^([Bb]rave-browser|helium|firefox)$" }, workspace = "2 silent" })
