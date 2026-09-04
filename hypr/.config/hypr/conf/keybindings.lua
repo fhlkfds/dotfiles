@@ -45,6 +45,7 @@ exec(mod .. " + CTRL + D", "toggle display panel", "quickshell ipc call display 
 exec(mod .. " + CTRL + M", "toggle media panel", "quickshell ipc call media toggle")
 exec(mod .. " + CTRL + A", "toggle audio panel", "quickshell ipc call audio toggle")
 exec(mod .. " + CTRL + B", "toggle Bluetooth panel", "quickshell ipc call bluetooth toggle")
+exec(mod .. " + SHIFT + B", "power profile menu", cfg.scripts_dir .. "/power-profile.sh menu")
 exec(mod .. " + CTRL + W", "manage Wi-Fi and network", "quickshell ipc call network manage")
 exec(mod .. " + CTRL + SHIFT + SPACE", "theme picker", "quickshell ipc call theme toggle")
 bind(mod .. " + CTRL + N", "night light", function()
