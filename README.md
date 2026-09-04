@@ -45,7 +45,8 @@ stow ai browser cliphist fastfetch hypr hyprlock kitty modes noctalia quickshell
 stow ai          # ~/.local/bin/ai-agent, ~/.config/ai-agent
 stow screensaver # ~/.local/bin/ascii-screensaver, config, runtime modules
 stow modes       # ~/.local/bin/desktop-mode, temporary mode policy/config
-stow security    # ~/.local/bin/yubikey-auth, safe YubiKey PAM setup/addition
+stow security    # ~/.local/bin/yubikey-auth, safe YubiKey PAM setup/addition;
+                 # ~/.config/gnupg-conf gpg/gpg-agent examples
 stow browser     # Chromium extensions, flags, and native messaging hosts
 stow hypr        # ~/.config/hypr
 stow hyprlock    # ~/.config/hyprlock

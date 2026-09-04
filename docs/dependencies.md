@@ -95,7 +95,9 @@ The optional YubiKey Bio PAM path requires `pam-u2f` (including `pamu2fcfg`) and
 `libfido2`. Fingerprints can be enrolled with `fido2-token`, so the current
 templates do not require `yubikey-manager`. They use a host-local
 `/etc/u2f_mappings` file, and password authentication remains available. Stow
-the `security` package to install the guarded `yubikey-auth` helper.
+the `security` package to install the guarded `yubikey-auth` helper. The
+package also ships example `gpg.conf`/`gpg-agent.conf` templates; using the
+SSH-agent path additionally requires `gnupg`.
 
 ### ASCII screensaver
 
