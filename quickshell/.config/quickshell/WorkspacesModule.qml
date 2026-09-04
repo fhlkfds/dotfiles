@@ -17,7 +17,7 @@ Row {
   // Font" cmap; svg entries are bundled brand icons (icons/*.svg).
   readonly property var slots: [
     { id: 1, glyph: "" },                 // fa-terminal
-    { id: 2, glyph: "" },                 // fa-firefox
+    { id: 2, svg: "icons/helium.svg" },
     { id: 3, svg: "icons/obsidian.svg" },
     { id: 4, glyph: "" },                 // custom-neovim
     { id: 5, glyph: "" },                 // fa-gamepad
@@ -62,7 +62,10 @@ Row {
       MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton
-        onClicked: Hyprland.dispatch("workspace " + modelData.id)
+        // Hyprland 0.55+ evaluates dispatches as Lua expressions. Quickshell
+        // wraps this in hl.dispatch(...), so the expression must be an
+        // hl.dsp dispatcher rather than the old "workspace N" text command.
+        onClicked: Hyprland.dispatch("hl.dsp.focus({ workspace = \"" + modelData.id + "\" })")
       }
     }
   }

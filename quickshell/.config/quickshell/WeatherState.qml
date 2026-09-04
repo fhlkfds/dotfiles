@@ -29,6 +29,8 @@ Singleton {
 
   readonly property bool hasData: current !== null
 
+  Component.onCompleted: root.maybeRefresh()
+
   // --- fetching --------------------------------------------------------------
 
   // Called when the dashboard opens; only actually hits the network if the
@@ -68,11 +70,11 @@ Singleton {
     }
   }
 
-  // Background refresh only while the dashboard is open; the cache check keeps
-  // this to one request per 15 minutes.
+  // The bar and dashboard share this state; the cache check keeps this to one
+  // request per 15 minutes.
   Timer {
     interval: 60000
-    running: DashboardState.panelVisible
+    running: true
     repeat: true
     onTriggered: root.maybeRefresh()
   }

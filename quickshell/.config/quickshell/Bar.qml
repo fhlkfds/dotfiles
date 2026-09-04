@@ -227,21 +227,59 @@ Scope {
         WorkspacesModule { id: workspaces; barScale: panel.barScale }
       }
 
-      // Space a centred item may occupy without touching either side group.
-      // Both depend on their own contents only, never on the media widget, so
-      // these cannot form a binding loop with its width.
-      readonly property int leftEdge: leftGroup.x + leftGroup.width + Theme.fs(12 * panel.barScale)
-      readonly property int rightEdge: rightGroup.x - Theme.fs(12 * panel.barScale)
-
-      MediaIcon {
+      Item {
+        id: barSummary
         anchors.centerIn: parent
-        screenName: panel.modelData.name
-        barScale: panel.barScale
-        // A centred item of width w spans [(W-w)/2, (W+w)/2], so it must satisfy
-        // both w <= W - 2*leftEdge and w <= 2*rightEdge - W.
-        maxWidth: Math.max(Theme.fs(60 * panel.barScale),
-                           Math.min(panel.width - 2 * panel.leftEdge,
-                                    2 * panel.rightEdge - panel.width))
+        implicitWidth: summary.implicitWidth
+        implicitHeight: summary.implicitHeight
+
+        Row {
+          id: summary
+          spacing: Theme.fs(8 * panel.barScale)
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: Qt.formatDateTime(ClockState.zonedDate(), "ddd, MMM d")
+            color: Theme.textDim
+            font.family: Theme.uiFamily
+            font.pixelSize: Theme.fs(12 * panel.barScale)
+          }
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: Qt.formatDateTime(ClockState.zonedDate(), "h:mm AP")
+            color: Theme.text
+            font.family: Theme.uiFamily
+            font.bold: true
+            font.pixelSize: Theme.fs(14 * panel.barScale)
+          }
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: WeatherState.hasData
+                  ? WeatherState.codeGlyph(WeatherState.current.code,
+                                           WeatherState.current.isDay) : ""
+            color: Theme.text
+            font.family: Theme.glyphFamily
+            font.pixelSize: Theme.fs(15 * panel.barScale)
+          }
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: WeatherState.hasData
+                  ? WeatherState.fmtTemp(WeatherState.current.temp) : "weather…"
+            color: Theme.textDim
+            font.family: Theme.uiFamily
+            font.pixelSize: Theme.fs(12 * panel.barScale)
+          }
+        }
+
+        // Keep the existing media IPC panel available without showing media
+        // metadata in the bar itself.
+        MediaPanel {
+          anchorItem: barSummary
+          ownerScreen: panel.modelData.name
+        }
       }
 
       Row {
@@ -261,13 +299,17 @@ Scope {
         // monitor panel; notification history remains owned by NotifyState.
         ModeIndicators { screenName: panel.modelData.name; barScale: panel.barScale }
 
-        // The clock expands left on hover to reveal update, display, network,
-        // Bluetooth, audio, and clipboard controls.
-        ClockWidget {
-          id: clock
+        IconButton {
           anchors.verticalCenter: parent.verticalCenter
-          barScale: panel.barScale
-          screenName: panel.modelData.name
+          glyph: String.fromCodePoint(0xf0425) // md-power
+          size: Theme.fs(28 * panel.barScale)
+          glyphSize: Theme.fs(15 * panel.barScale)
+          onClicked: powerMenu.running = true
+        }
+
+        Process {
+          id: powerMenu
+          command: ["bash", Quickshell.env("HOME") + "/.config/hypr/scripts/power-menu.sh"]
         }
       }
     }
