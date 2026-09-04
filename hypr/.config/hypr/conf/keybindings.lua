@@ -35,6 +35,7 @@ exec(mod .. " + C", "universal copy", cfg.scripts_dir .. "/universal-clipboard.s
 exec(mod .. " + X", "universal cut", cfg.scripts_dir .. "/universal-clipboard.sh cut")
 exec(mod .. " + V", "universal paste", cfg.scripts_dir .. "/universal-clipboard.sh paste")
 exec(mod .. " + CTRL + V", "clipboard history", "quickshell ipc call clipboard toggle")
+exec(mod .. " + SHIFT + V", "toggle audio visualizer", "quickshell ipc call visualizer toggle")
 exec(mod .. " + SHIFT + C", "calculator", cfg.scripts_dir .. "/calculator.sh")
 exec(mod .. " + CTRL + Q", "calculator", cfg.scripts_dir .. "/calculator.sh")
 exec(mod .. " + CTRL + period", "transcode media", cfg.scripts_dir .. "/transcode-menu.sh")

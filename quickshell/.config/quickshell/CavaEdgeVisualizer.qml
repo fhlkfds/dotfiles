@@ -9,7 +9,9 @@ PanelWindow {
   screen: output
 
   visible: VisualizerState.visible
-  implicitHeight: Theme.fs(96)
+  // Keep the desktop spectrum present but unobtrusive, like a playback line
+  // stretched along the edge rather than a tall equalizer panel.
+  implicitHeight: Theme.fs(48)
   color: "transparent"
   anchors {
     top: panel.anchorTop
@@ -42,8 +44,8 @@ PanelWindow {
       const h = height
       const baseline = panel.anchorTop ? 0.5 : h - 1.5
       ctx.clearRect(0, 0, w, h)
-      ctx.strokeStyle = Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 1)
-      ctx.lineWidth = 1
+      ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.9)
+      ctx.lineWidth = 2
       ctx.beginPath()
       ctx.moveTo(0, baseline)
       ctx.lineTo(w, baseline)
@@ -52,15 +54,25 @@ PanelWindow {
       if (!CavaState.available || !MediaState.isPlaying || CavaState.levels.length === 0)
         return
 
-      const slot = w / CavaState.levels.length
-      const barWidth = Math.max(1, slot * 0.7)
-      ctx.fillStyle = Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 1)
-      for (let i = 0; i < CavaState.levels.length; i++) {
-        const barHeight = Math.max(1, CavaState.levels[i] * (h - 4))
-        const x = i * slot + (slot - barWidth) / 2
-        ctx.fillRect(x, panel.anchorTop ? baseline : baseline - barHeight,
-                     barWidth, barHeight)
+      ctx.fillStyle = Qt.rgba(1, 1, 1, 0.9)
+      const step = w / (CavaState.levels.length - 1)
+      const yFor = level => panel.anchorTop
+                            ? baseline + Math.max(2, level * (h - 5))
+                            : baseline - Math.max(2, level * (h - 5))
+      ctx.beginPath()
+      ctx.moveTo(0, baseline)
+      ctx.lineTo(0, yFor(CavaState.levels[0]))
+      for (let i = 0; i < CavaState.levels.length - 1; i++) {
+        const x = i * step
+        const nextX = (i + 1) * step
+        ctx.quadraticCurveTo(x, yFor(CavaState.levels[i]),
+                             (x + nextX) / 2,
+                             (yFor(CavaState.levels[i]) + yFor(CavaState.levels[i + 1])) / 2)
       }
+      ctx.lineTo(w, yFor(CavaState.levels[CavaState.levels.length - 1]))
+      ctx.lineTo(w, baseline)
+      ctx.closePath()
+      ctx.fill()
     }
   }
 }
