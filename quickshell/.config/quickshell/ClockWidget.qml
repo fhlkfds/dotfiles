@@ -39,6 +39,7 @@ Item {
 
       UpdatesIcon { barScale: root.barScale }
       DisplayIcon { screenName: root.screenName; barScale: root.barScale }
+      DndIcon { barScale: root.barScale }
       NetworkIcon { screenName: root.screenName; barScale: root.barScale }
       BluetoothIcon { screenName: root.screenName; barScale: root.barScale }
       AudioIcon { screenName: root.screenName; barScale: root.barScale }

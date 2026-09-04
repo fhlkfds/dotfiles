@@ -57,6 +57,7 @@ exec(mod .. " + SHIFT + comma", "dismiss all notifications", "$HOME/.local/bin/n
 package_exec(mod .. " + CTRL + comma", "toggle do not disturb", "modes", "desktop-mode toggle do-not-disturb")
 exec(mod .. " + ALT + comma", "invoke newest notification", "$HOME/.local/bin/notificationctl invoke-latest")
 exec(mod .. " + SHIFT + ALT + comma", "notification history", "$HOME/.local/bin/notificationctl history")
+exec(mod .. " + D", "toggle do not disturb", "$HOME/.local/bin/notificationctl dnd-toggle")
 package_exec(mod .. " + ALT + M", "desktop modes", "modes", "desktop-mode menu")
 package_exec(mod .. " + SHIFT + I", "stay awake", "modes", "desktop-mode toggle stay-awake")
 package_exec(mod .. " + CTRL + Escape", "start ASCII screensaver", "modes", "desktop-mode action screensaver")
