@@ -188,12 +188,11 @@ Hypridle supplies automatic lock/DPMS/suspend timing; see
 
 ## ASCII screensaver
 
-The `screensaver/` package is a presentation-only component. A dedicated
-screensaver scheduler runs a second, narrowly scoped Hypridle process with one
-listener; it starts the terminal coordinator after the configured screensaver
-delay and stops it on resumed input. The primary Hypridle process continues to
-own locking, DPMS, and suspend without sharing configuration or state with the
-screensaver. See [ASCII screensaver](./screensaver.md).
+The `screensaver/` package provides the `ttfx` renderer, per-monitor terminal
+launcher, branding commands, and persistent automatic-off flag. The primary
+Hypridle process launches it after 180 idle seconds without audio playback and
+locks at 300 seconds. Manual force-launch ignores the automatic setting. See
+[ASCII screensaver](./screensaver.md).
 
 ## Terminal and shell
 

@@ -229,7 +229,12 @@ wallpaper. See [Themes](./themes.md).
 | --- | --- |
 | `hypr/.local/bin/notificationctl` | IPC client for dismiss, DND, action, history, and status operations against Quickshell |
 | `modes/.local/bin/desktop-mode` | unified temporary-mode status, transitions, timed activation, diagnostics, and screensaver action |
-| `screensaver/.local/bin/ascii-screensaver` | renderer, monitor coordinator, idle scheduler, diagnostics, and image conversion |
+| `screensaver/.local/bin/ascii-screensaver` | per-monitor launcher with terminal resolution and an event-socket spawn barrier |
+| `screensaver/.local/bin/ascii-screensaver-render` | endless random `ttfx` carousel with keyboard/focus cleanup |
+| `screensaver/.local/bin/toggle-screensaver` | persistent automatic-screensaver off flag and notification |
+| `screensaver/.local/bin/screensaver-branding` | text, image, and reset logo workflows with forced preview |
+| `screensaver/.local/bin/transcode-ascii` | ImageMagick PBM to Unicode braille/block converter |
+| `screensaver/.local/bin/screensaver-lock` | stop renderers and screensaver terminals before Hyprlock |
 | `hypr/.local/bin/webapp` | create/remove browser-style web application launchers |
 | `hypr/.local/bin/webapp-launch` | launch a stored web app with the configured browser profile/options |
 

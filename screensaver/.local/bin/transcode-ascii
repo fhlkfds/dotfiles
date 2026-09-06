@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode=braille
+cols=80
+rows=26
+
+usage() {
+  printf 'usage: %s INPUT OUTPUT [--mode braille|block] [--width COLS] [--height ROWS]\n' "${0##*/}"
+}
+
+input=${1:-}
+output=${2:-}
+[[ -n $input && -n $output ]] || { usage >&2; exit 2; }
+shift 2
+while (($#)); do
+  case "$1" in
+    --mode) mode=${2:-}; shift ;;
+    --width) cols=${2:-}; shift ;;
+    --height) rows=${2:-}; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+  shift
+done
+
+[[ $mode == braille || $mode == block ]] || { printf 'transcode-ascii: invalid mode: %s\n' "$mode" >&2; exit 2; }
+[[ $cols =~ ^[1-9][0-9]*$ && $rows =~ ^[1-9][0-9]*$ ]] || {
+  printf 'transcode-ascii: width and height must be positive integers\n' >&2
+  exit 2
+}
+[[ -r $input ]] || { printf 'transcode-ascii: input is not readable: %s\n' "$input" >&2; exit 1; }
+command -v magick >/dev/null 2>&1 || { printf 'transcode-ascii: ImageMagick 7 is required\n' >&2; exit 1; }
+
+temporary=$(mktemp -d -t transcode-ascii.XXXXXX)
+trap 'rm -rf -- "$temporary"' EXIT
+pbm="$temporary/image.pbm"
+text="$temporary/screensaver.txt"
+
+read -r alpha_min alpha_max < <(magick "$input" -alpha extract -format '%[fx:minima] %[fx:maxima]\n' info:)
+transform=()
+if awk -v min="$alpha_min" -v max="$alpha_max" 'BEGIN { exit !(min < max) }'; then
+  transform=(-alpha extract)
+else
+  mean=$(magick "$input" -colorspace Gray -format '%[fx:mean]\n' info:)
+  transform=(-colorspace Gray)
+  if awk -v mean="$mean" 'BEGIN { exit !(mean > 0.5) }'; then
+    transform+=(-negate)
+  fi
+fi
+
+if [[ $mode == braille ]]; then
+  pixel_width=$((cols * 2))
+  pixel_height=$((rows * 4))
+else
+  pixel_width=$cols
+  pixel_height=$((rows * 2))
+fi
+
+magick "$input" "${transform[@]}" \
+  -bordercolor black -border 1 -trim +repage \
+  -resize "${pixel_width}x${pixel_height}" -threshold 50% -negate \
+  -compress none "pbm:$pbm"
+
+awk -v mode="$mode" '
+  BEGIN { header = 0; count = 0 }
+  /^#/ { next }
+  {
+    for (field = 1; field <= NF; field++) {
+      token = $field
+      if (header == 0) {
+        if (token != "P1") exit 2
+        header = 1
+      } else if (header == 1) {
+        width = token + 0
+        header = 2
+      } else if (header == 2) {
+        height = token + 0
+        header = 3
+      } else {
+        pixels[count++] = token + 0
+      }
+    }
+  }
+  END {
+    if (header != 3 || count < width * height) exit 2
+    cell_height = mode == "braille" ? 4 : 2
+    cell_width = mode == "braille" ? 2 : 1
+    started = 0
+    buffered = ""
+    for (y = 0; y < height; y += cell_height) {
+      line = ""
+      for (x = 0; x < width; x += cell_width) {
+        if (mode == "braille") {
+          bits = pixel(x,y)*1 + pixel(x,y+1)*2 + pixel(x,y+2)*4 + pixel(x+1,y)*8 + \
+                 pixel(x+1,y+1)*16 + pixel(x+1,y+2)*32 + pixel(x,y+3)*64 + pixel(x+1,y+3)*128
+          line = line (bits ? sprintf("%c", 10240 + bits) : " ")
+        } else {
+          top = pixel(x,y)
+          bottom = pixel(x,y+1)
+          line = line (top && bottom ? "█" : top ? "▀" : bottom ? "▄" : " ")
+        }
+      }
+      sub(/[[:space:]]+$/, "", line)
+      if (line != "") {
+        if (started && buffered != "") printf "%s", buffered
+        print line
+        started = 1
+        buffered = ""
+      } else if (started) {
+        buffered = buffered "\n"
+      }
+    }
+  }
+  function pixel(x, y) {
+    if (x < 0 || x >= width || y < 0 || y >= height) return 0
+    return pixels[y * width + x]
+  }
+' "$pbm" >"$text" || {
+  printf 'transcode-ascii: invalid PBM output from ImageMagick\n' >&2
+  exit 1
+}
+
+[[ -s $text ]] || { printf 'transcode-ascii: conversion produced empty output\n' >&2; exit 1; }
+mkdir -p -- "$(dirname -- "$output")"
+cp -- "$text" "$output"

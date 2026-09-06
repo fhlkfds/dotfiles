@@ -26,7 +26,7 @@ Hyprland
 ├── Rofi application launcher
 ├── Hyprpaper wallpaper service
 ├── Hypridle → Hyprlock / DPMS / suspend
-├── ASCII screensaver scheduler → fullscreen terminal renderers
+├── Hypridle ASCII screensaver listener → fullscreen terminal renderers
 ├── desktop-mode daemon → timed night-light/DND/stay-awake reconciliation
 ├── Hyprsunset night light
 ├── Kitty terminal

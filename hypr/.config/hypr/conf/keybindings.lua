@@ -23,7 +23,7 @@ end
 exec(mod .. " + Return", "terminal", cfg.terminal)
 exec(mod .. " + SHIFT + Return", "drop-down terminal", cfg.scripts_dir .. "/Dropterminal.sh kitty")
 bind(mod .. " + Q", "close window", hl.dsp.window.close())
-exec(mod .. " + L", "lock screen", "pidof hyprlock || hyprlock --config ~/.config/hypr/hyprlock.conf")
+exec(mod .. " + L", "lock screen", [[if test -x "$HOME/.local/bin/screensaver-lock"; then "$HOME/.local/bin/screensaver-lock"; else pidof hyprlock || hyprlock --config "$HOME/.config/hypr/hyprlock.conf"; fi]])
 exec(mod .. " + P", "power menu", "bash " .. cfg.scripts_dir .. "/power-menu.sh")
 exec(mod .. " + ALT + P", "monitor profiles", cfg.scripts_dir .. "/monitor-profile-menu.sh")
 exec(mod .. " + ALT + E", "emoji menu", cfg.scripts_dir .. "/RofiEmoji.sh")
@@ -61,7 +61,8 @@ exec(mod .. " + SHIFT + ALT + comma", "notification history", "$HOME/.local/bin/
 exec(mod .. " + D", "toggle do not disturb", "$HOME/.local/bin/notificationctl dnd-toggle")
 package_exec(mod .. " + ALT + M", "desktop modes", "modes", "desktop-mode menu")
 package_exec(mod .. " + SHIFT + I", "stay awake", "modes", "desktop-mode toggle stay-awake")
-package_exec(mod .. " + CTRL + Escape", "start ASCII screensaver", "modes", "desktop-mode action screensaver")
+package_exec(mod .. " + CTRL + Escape", "start ASCII screensaver", "screensaver", "ascii-screensaver force")
+package_exec(mod .. " + CTRL + SHIFT + Escape", "toggle automatic ASCII screensaver", "screensaver", "toggle-screensaver")
 exec(mod .. " + SHIFT + G", "start Gaming VM", [[bash -lc 'virsh -c qemu:///system start Gaming-VM && sleep 15 && looking-glass-client -F -f /dev/shm/looking-glass']])
 
 -- Capture suite.

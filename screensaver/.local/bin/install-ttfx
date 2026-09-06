@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+dry_run=0
+case ${1:-} in
+  '') ;;
+  --dry-run) dry_run=1 ;;
+  *) printf 'usage: %s [--dry-run]\n' "${0##*/}" >&2; exit 2 ;;
+esac
+
+run() {
+  if ((dry_run)); then
+    printf '+ '
+    printf '%q ' "$@"
+    printf '\n'
+  else
+    "$@"
+  fi
+}
+
+if [[ -x $HOME/.local/bin/ttfx ]] &&
+    file "$HOME/.local/bin/ttfx" | grep -Eq 'statically linked|static-pie linked'; then
+  printf 'ttfx is already installed at %s\n' "$HOME/.local/bin/ttfx"
+  exit 0
+fi
+
+package_helper=
+for helper in paru yay; do
+  if command -v "$helper" >/dev/null 2>&1; then
+    package_helper=$helper
+    if "$helper" -Si ttfx >/dev/null 2>&1; then
+      run "$helper" -S --needed ttfx
+      exit 0
+    fi
+    break
+  fi
+done
+
+if ! command -v cargo >/dev/null 2>&1 || ! command -v rustc >/dev/null 2>&1; then
+  printf 'install-ttfx: ttfx is unavailable from package helpers and the Rust toolchain is missing\n' >&2
+  exit 1
+fi
+if ! command -v musl-gcc >/dev/null 2>&1 || \
+    [[ ! -d $(rustc --print target-libdir --target x86_64-unknown-linux-musl 2>/dev/null) ]]; then
+  [[ -n $package_helper ]] || {
+    printf 'install-ttfx: install musl and the Rust musl target before building\n' >&2
+    exit 1
+  }
+  run "$package_helper" -S --needed musl rust-musl
+fi
+run cargo install --locked --root "$HOME/.local" --target x86_64-unknown-linux-musl \
+  --git https://github.com/omacom-io/ttfx ttfx

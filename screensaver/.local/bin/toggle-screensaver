@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+state_root=${XDG_STATE_HOME:-"$HOME/.local/state"}/toggles
+flag="$state_root/screensaver-off"
+dry_run=0
+
+if [[ ${1:-} == --dry-run ]]; then
+  dry_run=1
+  shift
+fi
+
+notify() {
+  command -v notify-send >/dev/null 2>&1 && notify-send 'Screensaver' "$1" || true
+}
+
+case ${1:-toggle} in
+  toggle)
+    if [[ -f $flag ]]; then
+      if ((dry_run)); then
+        printf '+ rm -f %q\n' "$flag"
+      else
+        rm -f -- "$flag"
+        notify 'Automatic screensaver enabled'
+      fi
+      printf 'screensaver: on\n'
+    else
+      if ((dry_run)); then
+        printf '+ mkdir -p %q\n+ touch %q\n' "$state_root" "$flag"
+      else
+        mkdir -p -- "$state_root"
+        touch -- "$flag"
+        notify 'Automatic screensaver disabled'
+      fi
+      printf 'screensaver: off\n'
+    fi
+    ;;
+  on)
+    if ((dry_run)); then
+      printf '+ rm -f %q\n' "$flag"
+    else
+      rm -f -- "$flag"
+      notify 'Automatic screensaver enabled'
+    fi
+    ;;
+  off)
+    if ((dry_run)); then
+      printf '+ mkdir -p %q\n+ touch %q\n' "$state_root" "$flag"
+    else
+      mkdir -p -- "$state_root"
+      touch -- "$flag"
+      notify 'Automatic screensaver disabled'
+    fi
+    ;;
+  status)
+    [[ -f $flag ]] && printf 'screensaver: off\n' || printf 'screensaver: on\n'
+    ;;
+  *) printf 'usage: %s [--dry-run] [toggle|on|off|status]\n' "${0##*/}" >&2; exit 2 ;;
+esac

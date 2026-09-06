@@ -32,7 +32,9 @@ confirm() {
 }
 
 lock_screen() {
-  if command -v hyprlock >/dev/null 2>&1; then
+  if [[ -x $HOME/.local/bin/screensaver-lock ]]; then
+    exec "$HOME/.local/bin/screensaver-lock"
+  elif command -v hyprlock >/dev/null 2>&1; then
     exec hyprlock
   elif command -v swaylock >/dev/null 2>&1; then
     exec swaylock

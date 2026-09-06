@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+dry_run=0
+case ${1:-} in
+  '') ;;
+  --dry-run) dry_run=1 ;;
+  *) printf 'usage: %s [--dry-run]\n' "${0##*/}" >&2; exit 2 ;;
+esac
+
+if ((dry_run)); then
+  printf '%s\n' \
+    'pkill -x ttfx' \
+    'timeout 1s pidwait -x ttfx' \
+    "pkill -f '[i]o.github.fhlkfds.screensaver'" \
+    'pidof hyprlock || hyprlock --config ~/.config/hypr/hyprlock.conf'
+  exit 0
+fi
+
+pkill -x ttfx 2>/dev/null || true
+timeout 1s pidwait -x ttfx 2>/dev/null || true
+pkill -f '[i]o.github.fhlkfds.screensaver' 2>/dev/null || true
+if ! pidof hyprlock >/dev/null 2>&1; then
+  exec hyprlock --config "$HOME/.config/hypr/hyprlock.conf"
+fi

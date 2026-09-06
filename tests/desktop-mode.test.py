@@ -179,17 +179,17 @@ class DesktopModeTests(unittest.TestCase):
         self.assertEqual(log.read_text(encoding="utf-8").splitlines(),
                          ["start", "auto disable", "auto status"])
 
-    def test_independent_timing_report_and_mismatch_warning(self) -> None:
-        screen = self.temp / "screen.toml"
+    def test_hypridle_screensaver_and_lock_timing_report(self) -> None:
         idle = self.temp / "hypridle.conf"
-        screen.write_text("idle_seconds = 300\nlock_handoff_seconds = 660\n", encoding="utf-8")
-        idle.write_text("listener {\n timeout = 700\n on-timeout = loginctl lock-session\n}\n", encoding="utf-8")
-        with mock.patch.dict(os.environ, {"ASCII_SCREENSAVER_CONFIG": str(screen),
-                                          "DESKTOP_MODE_HYPRIDLE_CONFIG": str(idle)}):
+        idle.write_text(
+            "listener {\n timeout = 180\n on-timeout = ascii-screensaver\n}\n"
+            "listener {\n timeout = 300\n on-timeout = loginctl lock-session\n}\n",
+            encoding="utf-8")
+        with mock.patch.dict(os.environ, {"DESKTOP_MODE_HYPRIDLE_CONFIG": str(idle)}):
             report = timing_report()
-        self.assertEqual(report["screensaver_idle_seconds"], 300)
-        self.assertEqual(report["lock_seconds"], 700)
-        self.assertTrue(any("differs" in warning for warning in report["warnings"]))
+        self.assertEqual(report["screensaver_idle_seconds"], 180)
+        self.assertEqual(report["lock_seconds"], 300)
+        self.assertEqual(report["warnings"], [])
 
 
 if __name__ == "__main__":

@@ -43,7 +43,7 @@ stow ai browser cliphist fastfetch hypr hyprlock kitty modes noctalia quickshell
 
 ```bash
 stow ai          # ~/.local/bin/ai-agent, ~/.config/ai-agent
-stow screensaver # ~/.local/bin/ascii-screensaver, config, runtime modules
+stow screensaver # screensaver commands, terminal configs, and editable logo
 stow modes       # ~/.local/bin/desktop-mode, temporary mode policy/config
 stow security    # ~/.local/bin/yubikey-auth, safe YubiKey PAM setup/addition;
                  # ~/.config/gnupg-conf gpg/gpg-agent examples
@@ -65,23 +65,20 @@ stow zsh         # ~/.zshrc, ~/.p10k.zsh (see Shell setup below)
 
 ## ASCII Screensaver
 
-The independent `screensaver` package runs an original animated terminal scene
-on each active Hyprland monitor. It does not lock, inhibit idle, change display
-power, suspend, authenticate, or publish a bar indicator.
+The `screensaver` package runs an original `ttfx` ASCII logo on each active
+Hyprland monitor. Hypridle starts it after three idle minutes when no audio is
+playing, then locks at 300 seconds.
 
 ```bash
-ascii-screensaver start                 # manual fullscreen launch
-ascii-screensaver start --dry-run       # no windows; show monitor assignments
-ascii-screensaver auto enable           # permit automatic idle activation
-ascii-screensaver auto disable          # prevent it and stop a running scene
-ascii-screensaver doctor                # config, timing, and dependency report
+ascii-screensaver force                 # manual fullscreen launch
+ascii-screensaver --dry-run             # print planned monitor spawns
+toggle-screensaver                      # enable/disable automatic launch
+screensaver-branding text               # edit and preview the logo
+screensaver-branding image logo.png     # convert and preview an image
 ```
 
-Automatic activation defaults to 300 seconds. The existing independent lock
-timer remains 660 seconds in `hypr/.config/hypr/hypridle.conf`; deploying this
-package does not rewrite that policy. See [the complete screensaver guide](docs/screensaver.md)
-for configuration, logo conversion, terminal support, troubleshooting, and
-recovery.
+See [the complete screensaver guide](docs/screensaver.md) for terminal support,
+logo conversion, idle behavior, and recovery.
 
 ## Desktop Modes
 

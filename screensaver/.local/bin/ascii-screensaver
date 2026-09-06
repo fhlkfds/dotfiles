@@ -1,15 +1,229 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-script_path=$(readlink -f -- "${BASH_SOURCE[0]}")
-script_dir=$(cd -- "$(dirname -- "$script_path")" && pwd)
-library_dir=${ASCII_SCREENSAVER_LIB:-"$script_dir/../share/ascii-screensaver"}
+class='io.github.fhlkfds.screensaver'
+state_root=${XDG_STATE_HOME:-"$HOME/.local/state"}
+off_flag="$state_root/toggles/screensaver-off"
+config_root=${XDG_CONFIG_HOME:-"$HOME/.config"}
+renderer=${SCREENSAVER_RENDERER:-"$HOME/.local/bin/ascii-screensaver-render"}
+terminal_exec=${XDG_TERMINAL_EXEC:-xdg-terminal-exec}
+hyprctl_command=${HYPRCTL:-hyprctl}
+dry_run=0
+force=0
+launch_mode=manual
 
-if [[ ! -r "$library_dir/ascii_screensaver/__main__.py" ]]; then
-  printf 'ascii-screensaver: runtime not found at %s\n' "$library_dir" >&2
+usage() {
+  printf 'usage: %s [force|start|idle|condition] [--dry-run]\n' "${0##*/}"
+}
+
+# Keep the existing desktop-mode frontend working while Hypridle owns all
+# scheduling. New bindings and menus use `force` and toggle-screensaver.
+if [[ ${1:-} == auto ]]; then
+  case ${2:-status} in
+    enable) exec "${TOGGLE_SCREENSAVER_EXECUTABLE:-$HOME/.local/bin/toggle-screensaver}" on ;;
+    disable) exec "${TOGGLE_SCREENSAVER_EXECUTABLE:-$HOME/.local/bin/toggle-screensaver}" off ;;
+    status)
+      if "${TOGGLE_SCREENSAVER_EXECUTABLE:-$HOME/.local/bin/toggle-screensaver}" status | grep -qx 'screensaver: on'; then
+        printf 'automatic=enabled\n'
+      else
+        printf 'automatic=disabled\n'
+      fi
+      exit 0
+      ;;
+    *) usage >&2; exit 2 ;;
+  esac
+fi
+if [[ ${1:-} == start ]]; then
+  force=1
+  shift
+fi
+
+while (($#)); do
+  case "$1" in
+    force) force=1 ;;
+    idle) launch_mode=idle ;;
+    condition) launch_mode=condition ;;
+    --dry-run) dry_run=1 ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+  shift
+done
+
+audio_is_playing() {
+  command -v pw-dump >/dev/null 2>&1 || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  pw-dump 2>/dev/null | jq -e '
+    any(.[];
+      .type == "PipeWire:Interface:Node" and
+      .info.state == "running" and
+      .info.props["media.class"] == "Stream/Output/Audio"
+    )
+  ' >/dev/null
+}
+
+idle_allowed() {
+  [[ ! -f $off_flag ]] || return 1
+  ! pgrep -x hyprlock >/dev/null 2>&1 || return 1
+  ! pgrep -f "[i]o.github.fhlkfds.screensaver" >/dev/null 2>&1 || return 1
+  ! audio_is_playing
+}
+
+if [[ $launch_mode == condition ]]; then
+  idle_allowed
+  exit
+elif [[ $launch_mode == idle ]] && ! idle_allowed; then
   exit 1
 fi
 
-export PYTHONPATH="$library_dir${PYTHONPATH:+:$PYTHONPATH}"
-export ASCII_SCREENSAVER_EXECUTABLE=${ASCII_SCREENSAVER_EXECUTABLE:-$script_path}
-exec python3 -m ascii_screensaver "$@"
+if pgrep -f "[i]o.github.fhlkfds.screensaver" >/dev/null 2>&1; then
+  exit 0
+fi
+
+if [[ -f $off_flag ]] && ((force == 0)); then
+  exit 1
+fi
+
+notify_unsupported() {
+  local terminal=$1
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send 'Screensaver' "Screensaver not supported in $terminal" || true
+  fi
+  printf 'ascii-screensaver: unsupported terminal: %s\n' "$terminal" >&2
+}
+
+terminal_id() {
+  if [[ -n ${SCREENSAVER_TERMINAL_ID:-} ]]; then
+    printf '%s\n' "$SCREENSAVER_TERMINAL_ID"
+    return
+  fi
+  command -v "$terminal_exec" >/dev/null 2>&1 || {
+    printf 'ascii-screensaver: xdg-terminal-exec is required\n' >&2
+    return 1
+  }
+  "$terminal_exec" --print-id
+}
+
+resolved_id=$(terminal_id)
+resolved_id=${resolved_id%%:*}
+resolved_id=${resolved_id##*/}
+resolved_id=${resolved_id%.desktop}
+resolved_id=${resolved_id,,}
+
+case "$resolved_id" in
+  *alacritty*) terminal=alacritty ;;
+  *foot*) terminal=foot ;;
+  *ghostty*) terminal=ghostty ;;
+  *kitty*) terminal=kitty ;;
+  *) notify_unsupported "$resolved_id"; exit 1 ;;
+esac
+
+terminal_command() {
+  case "$terminal" in
+    alacritty)
+      command=(alacritty "--class=$class" --config-file "$config_root/ascii-screensaver/alacritty.toml" -e "$renderer")
+      ;;
+    ghostty)
+      command=(ghostty "--class=$class" "--config-file=$config_root/ascii-screensaver/ghostty.conf" --font-size=18 -e "$renderer")
+      ;;
+    foot)
+      command=(foot "--app-id=$class" "--config=$config_root/ascii-screensaver/foot.ini" -e "$renderer")
+      ;;
+    kitty)
+      command=(kitty --config "$config_root/ascii-screensaver/kitty.conf" "--class=$class" \
+        --override font_size=18 --override window_padding_width=0 \
+        --override background='#000000' --override background_opacity=1 -e "$renderer")
+      ;;
+  esac
+}
+
+monitor_focus_expression() {
+  local monitor=$1
+  monitor=${monitor//\\/\\\\}
+  monitor=${monitor//\"/\\\"}
+  printf 'hl.dispatch(hl.dsp.focus({ monitor = "%s" }))' "$monitor"
+}
+
+focus_monitor() {
+  "$hyprctl_command" eval "$(monitor_focus_expression "$1")"
+}
+
+if [[ -n ${SCREENSAVER_MONITORS_JSON:-} ]]; then
+  monitors_json=$SCREENSAVER_MONITORS_JSON
+else
+  monitors_json=$($hyprctl_command monitors -j)
+fi
+mapfile -t monitors < <(jq -er '.[] | select(.disabled != true) | .name' <<<"$monitors_json")
+original_monitor=$(jq -r '.[] | select(.focused == true) | .name' <<<"$monitors_json" | head -n1)
+if ((${#monitors[@]} == 0)); then
+  printf 'ascii-screensaver: Hyprland reported no active monitors\n' >&2
+  exit 1
+fi
+
+if ((dry_run)); then
+  printf 'terminal=%s id=%s class=%s\n' "$terminal" "$resolved_id" "$class"
+  for monitor in "${monitors[@]}"; do
+    command=()
+    terminal_command
+    printf 'monitor=%s focus=' "$monitor"
+    printf '%q ' "$hyprctl_command" eval "$(monitor_focus_expression "$monitor")"
+    printf 'spawn='
+    printf '%q ' "${command[@]}"
+    printf '\n'
+  done
+  if [[ -n $original_monitor ]]; then
+    printf 'restore='
+    printf '%q ' "$hyprctl_command" eval "$(monitor_focus_expression "$original_monitor")"
+    printf '\n'
+  fi
+  exit 0
+fi
+
+[[ -x $renderer ]] || {
+  printf 'ascii-screensaver: renderer is not executable: %s\n' "$renderer" >&2
+  exit 1
+}
+command -v socat >/dev/null 2>&1 || {
+  printf 'ascii-screensaver: socat is required\n' >&2
+  exit 1
+}
+command -v "$terminal" >/dev/null 2>&1 || {
+  printf 'ascii-screensaver: resolved terminal is not installed: %s\n' "$terminal" >&2
+  exit 1
+}
+[[ -n ${XDG_RUNTIME_DIR:-} && -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || {
+  printf 'ascii-screensaver: no active Hyprland event socket\n' >&2
+  exit 1
+}
+
+# Open the event stream before the first spawn. Opening it later loses fast
+# openwindow events and can place every asynchronous terminal on one monitor.
+exec {events}< <(socat -U - "UNIX-CONNECT:$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock")
+
+restore_focus() {
+  [[ -z $original_monitor ]] || focus_monitor "$original_monitor" >/dev/null 2>&1 || true
+}
+trap restore_focus EXIT
+
+wait_for_window() {
+  local line deadline=$((SECONDS + 5))
+  while ((SECONDS < deadline)); do
+    if IFS= read -r -t 1 line <&"$events"; then
+      case "$line" in
+        openwindow\>\>*,"$class",*) return 0 ;;
+      esac
+    fi
+  done
+  return 1
+}
+
+for monitor in "${monitors[@]}"; do
+  focus_monitor "$monitor" >/dev/null
+  command=()
+  terminal_command
+  setsid "${command[@]}" >/dev/null 2>&1 &
+  if ! wait_for_window; then
+    printf 'ascii-screensaver: timed out waiting for %s on %s\n' "$terminal" "$monitor" >&2
+    exit 1
+  fi
+done

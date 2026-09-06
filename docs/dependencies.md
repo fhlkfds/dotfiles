@@ -101,11 +101,11 @@ SSH-agent path additionally requires `gnupg`.
 
 ### ASCII screensaver
 
-The screensaver requires Python 3.11+, Hypridle, Hyprland IPC, and at least one
-supported terminal (Kitty, Foot, Ghostty, or Alacritty) for multi-monitor
-fullscreen use. ImageMagick's `magick` command is optional and used only by the
-PNG/SVG conversion subcommand. The renderer and scheduler use no network
-services and install no packages automatically.
+The screensaver requires Bash, `ttfx`, `xdg-terminal-exec`, `socat`, `jq`,
+Hypridle, Hyprland IPC, Hyprlock, and the selected supported terminal (Kitty,
+Foot, Ghostty, or Alacritty). ImageMagick 7 is required only for PNG/SVG logo
+conversion. The included installer tries `paru` or `yay`, then builds `ttfx`
+from source with Cargo when no package exists.
 
 ### Windows VM
 

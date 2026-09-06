@@ -52,3 +52,11 @@ hl.window_rule({ match = { class = "^(virt-manager)$" }, workspace = "6 silent" 
 hl.window_rule({ match = { class = "^(org.kde.neochat)$" }, workspace = "7 silent" })
 hl.window_rule({ match = { class = "^(Spotify|spotify)$" }, workspace = "9 silent" })
 hl.window_rule({ match = { class = "^([Bb]rave-browser|helium|firefox)$" }, workspace = "2 silent" })
+
+hl.window_rule({
+    name = "ascii-screensaver",
+    match = { class = [[^io\.github\.fhlkfds\.screensaver$]] },
+    fullscreen = true,
+    float = true,
+    animation = "slide",
+})

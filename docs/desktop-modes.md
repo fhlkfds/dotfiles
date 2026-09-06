@@ -26,7 +26,8 @@ Deploy source packages only when ready:
 stow modes screensaver hypr quickshell
 ```
 
-A new login starts `desktop-mode daemon` and the screensaver scheduler. Nothing
+A new login starts `desktop-mode daemon`; the primary Hypridle process owns the
+screensaver timeout. Nothing
 in the package installs software, writes system files, reloads Hyprland, or
 restarts services.
 
@@ -52,10 +53,11 @@ desktop-mode menu
 desktop-mode doctor --json
 ```
 
-`desktop-mode action screensaver` (or `ascii-screensaver start`) is the exact
-manual launch command and ignores the automatic toggle. Automatic activation is
-enabled with `desktop-mode enable screensaver-auto`; the separately autostarted
-`ascii-screensaver schedule` process applies the configured idle delay.
+`desktop-mode action screensaver` (or `ascii-screensaver force`) is the manual
+launch command and ignores the automatic toggle. Automatic activation is
+enabled with `desktop-mode enable screensaver-auto`; the primary Hypridle
+configuration applies the 180-second delay and waits for active audio playback
+to stop.
 
 Durations are positive integers followed by `s`, `m`, or `h`. Timers apply only
 to night light, DND, and stay-awake. Defaults expose 15-minute, 30-minute, and
@@ -89,19 +91,18 @@ maximum duration, panel presets, reconciliation interval, and argv arrays for
 commands, and NUL bytes are rejected. `DESKTOP_MODE_CONFIG` and
 `DESKTOP_MODE_RUNTIME_DIR` provide fixture or user-local overrides.
 
-Screensaver inactivity remains in
-`screensaver/.config/ascii-screensaver/config.toml`. The actual security lock
-time remains in `hypr/.config/hypr/hypridle.conf`; changing either never rewrites
-the other.
+Screensaver and lock inactivity are both defined in
+`hypr/.config/hypr/hypridle.conf`. The toggle changes only
+`$XDG_STATE_HOME/toggles/screensaver-off`.
 
 ## Diagnostics and recovery
 
 ```bash
 desktop-mode doctor --json
 desktop-mode status --json
-ascii-screensaver doctor
-ascii-screensaver start --dry-run
-ascii-screensaver schedule --dry-run
+ascii-screensaver --dry-run
+toggle-screensaver status
+screensaver-lock --dry-run
 ```
 
 - `available=false` for DND means Quickshell IPC is not reachable.
@@ -110,7 +111,7 @@ ascii-screensaver schedule --dry-run
   supervised. Start `desktop-mode daemon` once for the current login.
 - `desktop-mode reset --all` disables transient modes and restores automatic
   screensaver activation.
-- `ascii-screensaver stop` closes the scene without touching lock or power state.
+- `screensaver-lock --dry-run` prints the cleanup and lock handoff without changing state.
 - For corrupt runtime state, stop the user daemon and remove only
   `$XDG_RUNTIME_DIR/hyprland-desktop/modes`, then restart it.
 

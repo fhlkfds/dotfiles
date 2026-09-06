@@ -1,0 +1,10 @@
+[window]
+padding = { x = 0, y = 0 }
+dynamic_padding = false
+opacity = 1.0
+
+[font]
+size = 18.0
+
+[colors.primary]
+background = "#000000"

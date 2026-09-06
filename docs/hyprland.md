@@ -81,8 +81,7 @@ functional grouping rather than a guaranteed serial timeline.
 | `hypr-wallpaper-picker restore` | restore wallpaper state and start Hyprpaper |
 | two `wl-paste --watch` processes | capture text and image clipboard changes |
 | `quickshell` | active bar, panels, notifications, clipboard UI, OSD |
-| `hypridle` | lock, display power, and suspend policy |
-| `ascii-screensaver schedule` | presentation-only idle listener; no lock or power actions |
+| `hypridle` | screensaver, lock, display power, and suspend policy |
 | `desktop-mode daemon` | session mode expiry and backend reconciliation |
 | `spotify-notify.sh` | player change notifications |
 | `hypr-monitor-watch.py` | listen for monitor hotplug on socket2, reapply the profile |
@@ -132,7 +131,8 @@ See [Keybindings](./keybindings.md#workspaces) and
 
 | Idle time | Action |
 | --- | --- |
-| 660 seconds | lock the session unless selective stay-awake is active |
+| 180 seconds | launch the ASCII screensaver when enabled, unlocked, and no audio is playing |
+| 300 seconds | lock the session unless selective stay-awake is active |
 | 1,200 seconds | turn displays off with DPMS; restore them on activity |
 | 1,800 seconds | suspend the system through `systemctl` |
 
@@ -140,16 +140,18 @@ Before system sleep it locks the login session; after resume it turns displays
 back on. `inhibit_sleep = 3` is also set. `SUPER+L` provides immediate manual
 locking.
 
-The separate `ascii-screensaver schedule` autostart command creates a runtime
-Hypridle configuration containing only the screensaver timeout and input-resume
-stop action. Its default 300-second delay and user-controlled enabled state are
-documented in [ASCII screensaver](./screensaver.md). It does not source or alter
-the primary policy above.
+The primary Hypridle configuration launches `ascii-screensaver` at 180 seconds
+and locks at 300 seconds. If a PipeWire output stream is running, Hypridle
+rechecks every five seconds and launches after playback stops, provided the
+session is still idle. Locking calls `screensaver-lock`, which stops `ttfx` and
+closes the fullscreen terminals before starting Hyprlock. Automatic launch can
+be disabled without changing Hypridle by creating the screensaver off flag; see
+[ASCII screensaver](./screensaver.md).
 
-Both lock and screensaver listeners use five-second conditional retries while
-stay-awake is active. The condition is not attached to DPMS, suspend, or
-before-sleep locking. Missing or malformed mode configuration permits locking
-rather than weakening the security boundary. See
+The screensaver listener retries while Hyprlock or audio playback is active.
+The lock listener retries while stay-awake is active. Stay-awake is not attached
+to the screensaver, DPMS, suspend, or before-sleep locking. Missing or malformed
+mode configuration permits locking rather than weakening the security boundary. See
 [Desktop modes](./desktop-modes.md).
 
 The active lock wrapper is `hypr/.config/hypr/hyprlock.conf`. It sources generated

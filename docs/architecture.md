@@ -38,8 +38,7 @@ Hyprland `hyprland.start` event
 │   └── desktop-mode panel and observed-state indicators
 ├── wl-paste watchers → clipboard-store.sh → cliphist
 ├── hyprpaper ← wallpaper picker / theme tool
-├── hypridle → conditional idle lock, DPMS, system suspend
-├── ascii-screensaver schedule → dedicated Hypridle → fullscreen renderers
+├── hypridle → ASCII screensaver, conditional lock, DPMS, system suspend
 ├── desktop-mode daemon → timed modes and backend reconciliation
 ├── hyprsunset ← desktop-mode night-light adapter
 ├── spotify-notify.sh ← playerctl
@@ -146,7 +145,7 @@ and capture recording state.
 
 Desktop-mode state is specifically session-only under
 `$XDG_RUNTIME_DIR/hyprland-desktop/modes`; the screensaver's automatic override
-is the intentional persistent exception under `$XDG_STATE_HOME/ascii-screensaver`.
+is the intentional persistent exception at `$XDG_STATE_HOME/toggles/screensaver-off`.
 
 The optional Windows VM additionally keeps its launch lock and ephemeral
 credential environment under `$XDG_RUNTIME_DIR/windows-vm-$UID`. Credentials are
@@ -159,7 +158,7 @@ under `~/.config/windows`.
 | --- | --- | --- |
 | Quickshell | Active | `hl.exec_cmd("quickshell")` |
 | Hyprpaper, Hypridle, Hyprsunset | Active | `conf/autostart.lua` |
-| ASCII screensaver scheduler | Active when package is deployed | `conf/autostart.lua` |
+| ASCII screensaver | On demand and after 180 seconds idle without audio playback | `hypridle.conf` |
 | Desktop-mode daemon | Active when package is deployed | `conf/autostart.lua` |
 | Rofi | Active on demand | `SUPER+A` and helper scripts |
 | Kitty | Active/default terminal | `conf/variables.lua` |

@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+class='io.github.fhlkfds.screensaver'
+logo_file=${SCREENSAVER_LOGO:-"${XDG_CONFIG_HOME:-$HOME/.config}/branding/screensaver.txt"}
+hyprctl_command=${HYPRCTL:-hyprctl}
+cleaned=0
+
+if [[ ${1:-} == --dry-run ]]; then
+  printf 'logo=%s\n' "$logo_file"
+  printf '%s\n' \
+    'hyprctl eval: cursor.invisible=true' \
+    'wait-for-pty-resize: 2s' \
+    'ttfx: random effect carousel' \
+    'exit: keypress or focus loss' \
+    'cleanup: restore cursor and stop renderer terminals'
+  exit 0
+elif (($#)); then
+  printf 'usage: %s [--dry-run]\n' "${0##*/}" >&2
+  exit 2
+fi
+
+cleanup() {
+  local status=${1:-0}
+  ((cleaned == 0)) || exit "$status"
+  cleaned=1
+  trap - INT TERM HUP QUIT EXIT
+  "$hyprctl_command" eval 'hl.config({ cursor = { invisible = false } })' >/dev/null 2>&1 || true
+  pkill -x ttfx 2>/dev/null || true
+  pkill -f '[i]o.github.fhlkfds.screensaver' 2>/dev/null || true
+  exit "$status"
+}
+
+trap 'cleanup 0' INT TERM HUP QUIT
+trap 'cleanup $?' EXIT
+
+command -v ttfx >/dev/null 2>&1 || {
+  printf 'ascii-screensaver-render: ttfx is required\n' >&2
+  exit 1
+}
+[[ -r $logo_file ]] || {
+  printf 'ascii-screensaver-render: logo is not readable: %s\n' "$logo_file" >&2
+  exit 1
+}
+
+printf '\033]11;rgb:00/00/00\007'
+"$hyprctl_command" eval 'hl.config({ cursor = { invisible = true } })' >/dev/null
+
+# Fullscreen terminals commonly begin at 80x24. ttfx measures only once, so
+# give the pty up to two seconds to receive its compositor-sized dimensions.
+deadline=$((SECONDS + 2))
+while [[ $(stty size 2>/dev/null || printf '24 80') == '24 80' ]] && ((SECONDS < deadline)); do
+  sleep 0.02
+done
+
+tty_path=$(tty)
+tty_name=${tty_path#/dev/}
+in_focus() {
+  "$hyprctl_command" activewindow -j 2>/dev/null | jq -e --arg class "$class" '.class == $class' >/dev/null
+}
+
+while true; do
+  ttfx -i "$logo_file" \
+    --frame-rate 120 --canvas-width 0 --canvas-height 0 --reuse-canvas \
+    --anchor-canvas c --anchor-text c --random-effect --no-eol --no-restore-cursor &
+  effect_pid=$!
+  while pgrep -t "$tty_name" -x ttfx >/dev/null 2>&1; do
+    # `read` timing out is expected and must not trip errexit.
+    if read -rsn1 -t 1 || ! in_focus; then
+      cleanup 0
+    fi
+  done
+  wait "$effect_pid" 2>/dev/null || true
+done

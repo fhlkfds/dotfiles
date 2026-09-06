@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+logo=${SCREENSAVER_LOGO:-"${XDG_CONFIG_HOME:-$HOME/.config}/branding/screensaver.txt"}
+default_logo=${SCREENSAVER_DEFAULT_LOGO:-"$script_dir/../share/ascii-screensaver/default-logo.txt"}
+launcher=${SCREENSAVER_LAUNCHER:-"$script_dir/ascii-screensaver"}
+converter=${SCREENSAVER_CONVERTER:-"$script_dir/transcode-ascii"}
+dry_run=0
+
+if [[ ${1:-} == --dry-run ]]; then
+  dry_run=1
+  shift
+fi
+
+usage() {
+  printf 'usage: %s text | image FILE [--mode braille|block] [--width N] [--height N] | reset\n' "${0##*/}"
+}
+
+preview() {
+  if ((dry_run)); then
+    printf '+ %q force\n' "$launcher"
+  else
+    "$launcher" force
+  fi
+}
+
+case ${1:-} in
+  text)
+    if ((dry_run)); then
+      printf '+ edit %q\n' "$logo"
+    else
+      mkdir -p -- "$(dirname -- "$logo")"
+      [[ -e $logo ]] || cp -- "$default_logo" "$logo"
+      read -r -a editor_command <<<"${VISUAL:-${EDITOR:-nvim}}"
+      "${editor_command[@]}" "$logo"
+    fi
+    preview
+    ;;
+  image)
+    [[ -n ${2:-} ]] || { usage >&2; exit 2; }
+    source_image=$2
+    shift 2
+    if ((dry_run)); then
+      printf '+ %q %q %q ' "$converter" "$source_image" "$logo"
+      printf '%q ' "$@"
+      printf '\n'
+    else
+      "$converter" "$source_image" "$logo" "$@"
+    fi
+    preview
+    ;;
+  reset)
+    if ((dry_run)); then
+      printf '+ cp %q %q\n' "$default_logo" "$logo"
+    else
+      mkdir -p -- "$(dirname -- "$logo")"
+      cp -- "$default_logo" "$logo"
+    fi
+    preview
+    ;;
+  *) usage >&2; exit 2 ;;
+esac

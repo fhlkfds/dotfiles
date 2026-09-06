@@ -139,39 +139,29 @@ def load_config(path: Path | None = None) -> Config:
 
 def timing_report() -> dict[str, Any]:
     config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    screen_path = Path(os.environ.get(
-        "ASCII_SCREENSAVER_CONFIG", config_home / "ascii-screensaver/config.toml"))
     idle_path = Path(os.environ.get(
         "DESKTOP_MODE_HYPRIDLE_CONFIG", config_home / "hypr/hypridle.conf"))
     report: dict[str, Any] = {
-        "screensaver_config": str(screen_path), "screensaver_idle_seconds": None,
+        "screensaver_idle_seconds": None,
         "lock_handoff_seconds": None, "hypridle_config": str(idle_path),
         "lock_seconds": None, "warnings": [],
     }
     try:
-        with screen_path.open("rb") as stream:
-            screen = tomllib.load(stream)
-        for key in ("idle_seconds", "lock_handoff_seconds"):
-            value = screen.get(key)
-            if isinstance(value, int) and not isinstance(value, bool):
-                report["screensaver_idle_seconds" if key == "idle_seconds" else key] = value
-    except (OSError, tomllib.TOMLDecodeError) as error:
-        report["warnings"].append(f"screensaver timing unavailable: {error}")
-    try:
         text = idle_path.read_text(encoding="utf-8")
         for block in LISTENER_RE.findall(text):
+            match = re.search(r"timeout\s*=\s*([0-9]+)", block)
+            if not match:
+                continue
+            if "ascii-screensaver" in block:
+                report["screensaver_idle_seconds"] = int(match.group(1))
             if re.search(r"on-timeout\s*=.*loginctl\s+lock-session", block):
-                match = re.search(r"timeout\s*=\s*([0-9]+)", block)
-                if match:
-                    report["lock_seconds"] = int(match.group(1))
-                    break
+                report["lock_seconds"] = int(match.group(1))
+        if report["screensaver_idle_seconds"] is None:
+            report["warnings"].append("idle screensaver listener was not found")
         if report["lock_seconds"] is None:
             report["warnings"].append("idle lock listener was not found")
     except (OSError, UnicodeError) as error:
-        report["warnings"].append(f"lock timing unavailable: {error}")
-    if (report["lock_handoff_seconds"] is not None and report["lock_seconds"] is not None
-            and report["lock_handoff_seconds"] != report["lock_seconds"]):
-        report["warnings"].append("screensaver lock_handoff_seconds differs from the Hypridle lock timeout")
+        report["warnings"].append(f"idle timing unavailable: {error}")
     return report
 
 

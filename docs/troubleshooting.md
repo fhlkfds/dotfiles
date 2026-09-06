@@ -45,16 +45,15 @@ current architecture.
 
 ## Screensaver does not cover the requested monitor
 
-Run `ascii-screensaver start --dry-run` and confirm that every active output has
-one assignment. Monitor names must exactly match `hyprctl -j monitors`. The
-coordinator focuses the exact app-address, moves it with `movewindow mon:NAME`,
-then applies true fullscreen. Use `ascii-screensaver stop` to clear an interrupted
-session; it does not touch lock or power policy.
+Run `ascii-screensaver --dry-run` and confirm that every active output has one
+planned spawn. The launcher focuses each monitor before spawning and waits for
+that terminal's `openwindow` event before continuing. Check that `socat` can
+open Hyprland's `.socket2.sock` and that the window class is
+`io.github.fhlkfds.screensaver`.
 
-If the scene immediately closes without input, verify the installed files match
-this repository: pointer tracking is deliberately armed after window placement
-to ignore compositor-generated startup motion while keyboard exit is active
-immediately.
+If the scene immediately closes without input, inspect
+`hyprctl activewindow -j`: focus must remain on the screensaver class. Pointer
+movement does not dismiss it.
 
 Notification state is under
 `$XDG_STATE_HOME/hyprland-desktop/notifications` or

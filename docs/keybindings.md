@@ -110,6 +110,7 @@ The implementation and optional features are described in
 | `SUPER+ALT+M` | open desktop modes panel |
 | `SUPER+SHIFT+I` | toggle selective stay-awake |
 | `SUPER+CTRL+Escape` | start the ASCII screensaver immediately |
+| `SUPER+CTRL+SHIFT+Escape` | toggle automatic ASCII screensaver launch |
 | `SUPER+CTRL+,` | toggle Quickshell Do Not Disturb |
 
 ## Workspaces
