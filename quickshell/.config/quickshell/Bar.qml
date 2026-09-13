@@ -6,7 +6,6 @@ import QtQuick
 Scope {
   id: bar
   property bool barVisible: true
-  property bool barTransparent: false
   property bool barAtBottom: false
 
   // Panels opened from a keybind rather than a click target the focused
@@ -245,12 +244,11 @@ Scope {
 
       Rectangle {
         anchors.fill: parent
-        color: bar.barTransparent ? "transparent" : Theme.bg
+        color: Theme.bg
       }
 
-      // Empty bar space toggles transparency on double click. Dragging it
-      // down/up moves the bar between screen edges without stealing clicks
-      // from any widget layered above this area.
+      // Dragging empty bar space down/up moves the bar between screen edges
+      // without stealing clicks from any widget layered above this area.
       MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton
@@ -263,7 +261,6 @@ Scope {
           else if (distance < -Theme.fs(12))
             bar.barAtBottom = false
         }
-        onDoubleClicked: bar.barTransparent = !bar.barTransparent
       }
 
       Row {
@@ -290,6 +287,13 @@ Scope {
           font.family: Theme.uiFamily
           font.bold: true
           font.pixelSize: Theme.fs(14 * panel.barScale)
+        }
+
+        // Keep clock clicks from reaching the empty-bar drag control below.
+        MouseArea {
+          id: clockClickGuard
+          anchors.fill: clockLabel
+          acceptedButtons: Qt.LeftButton
         }
 
         Row {
@@ -332,7 +336,6 @@ Scope {
           }
         }
 
-        // Clicking the centered clock keeps the dashboard behavior.
         MediaPanel {
           anchorItem: clockLabel
           ownerScreen: panel.modelData.name
@@ -343,13 +346,6 @@ Scope {
           ownerScreen: panel.modelData.name
         }
 
-        MouseArea {
-          anchors.fill: clockLabel
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          acceptedButtons: Qt.LeftButton
-          onClicked: DashboardState.togglePanel(panel.modelData.name)
-        }
       }
 
       Row {
