@@ -2,6 +2,16 @@
 
 set -u
 
+# Every caller of this script -- the Quickshell widget, lmenu, a shell prompt --
+# ends up querying the AUR, and none of them can see how recently another one
+# did. The cache is the only place that knows, so the request floor lives here
+# rather than in any single caller. ARCH_UPDATES_TTL=0 disables it for tests.
+cache_dir=${ARCH_UPDATES_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/arch-updates}
+cache_ttl=${ARCH_UPDATES_TTL:-600}
+cache_payload=$cache_dir/count.json
+cache_stamp=$cache_dir/last-attempt
+cache_status=$cache_dir/last-status
+
 count_lines() {
   local line count=0
 
@@ -71,7 +81,49 @@ aur_helper() {
   fi
 }
 
-print_count() {
+now_epoch() {
+  printf '%(%s)T' -1
+}
+
+# Records that an attempt happened even when it fails, so a run that is being
+# throttled or is hanging cannot be retried in a tight loop.
+mark_attempt() {
+  local status=$1
+
+  ((cache_ttl > 0)) || return 0
+  mkdir -p "$cache_dir" 2>/dev/null || return 0
+  now_epoch > "$cache_stamp" 2>/dev/null || true
+  printf '%d' "$status" > "$cache_status" 2>/dev/null || true
+}
+
+store_payload() {
+  local payload=$1 tmp
+
+  ((cache_ttl > 0)) || return 0
+  mkdir -p "$cache_dir" 2>/dev/null || return 0
+  tmp=$cache_dir/.count.$$
+  printf '%s\n' "$payload" > "$tmp" 2>/dev/null && mv -f "$tmp" "$cache_payload" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+}
+
+# Returns 0 and prints the cached JSON when the last attempt is still inside the
+# TTL and succeeded, 2 when it is inside the TTL but failed (so the caller keeps
+# showing its last known count), and 1 when the cache is cold or expired.
+serve_cached() {
+  local last status
+
+  ((cache_ttl > 0)) || return 1
+  [[ -r $cache_stamp ]] || return 1
+  last=$(<"$cache_stamp") 2>/dev/null || return 1
+  [[ $last =~ ^[0-9]+$ ]] || return 1
+  (( $(now_epoch) - last < cache_ttl )) || return 1
+
+  status=0
+  [[ -r $cache_status ]] && status=$(<"$cache_status")
+  [[ $status == 0 && -s $cache_payload ]] || return 2
+  printf '%s\n' "$(<"$cache_payload")"
+}
+
+compute_count() {
   local helper repo_output aur_output='' repo aur
 
   if ! repo_output=$(repo_updates); then
@@ -91,6 +143,26 @@ print_count() {
     "$(package_names_json "$repo_output")" "$(package_names_json "$aur_output")"
 }
 
+print_count() {
+  local cached payload status
+
+  cached=$(serve_cached)
+  case $? in
+    0) printf '%s\n' "$cached"; return 0 ;;
+    2) printf '{"error":"throttled after a failed check"}\n' >&2; return 1 ;;
+  esac
+
+  mark_attempt 1
+  payload=$(compute_count)
+  status=$?
+  if ((status != 0)); then
+    return "$status"
+  fi
+  mark_attempt 0
+  store_payload "$payload"
+  printf '%s\n' "$payload"
+}
+
 run_update() {
   local helper
 
@@ -104,6 +176,13 @@ run_update() {
   fi
 
   kitty --hold --title "System Update" bash -lc 'exec "$1" -Syu' _ "$helper"
+  # The upgrade just queried the AUR itself and invalidated the counts. Drop the
+  # stale payload but keep the attempt recent, so the next check waits out the
+  # TTL instead of querying again immediately.
+  if ((cache_ttl > 0)); then
+    rm -f "$cache_payload" 2>/dev/null || true
+    mark_attempt 1
+  fi
 }
 
 case ${1:-count} in

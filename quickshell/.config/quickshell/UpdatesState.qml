@@ -8,6 +8,10 @@ Singleton {
 
   readonly property string script: Quickshell.env("HOME") + "/.config/hypr/scripts/arch-updates"
   readonly property int refreshInterval: 90 * 60 * 1000
+  // Hard floor between two checks, independent of the poll cadence. refresh()
+  // is reachable from the timer, from startup and from an update run, so the
+  // interval on its own has never been what bounds the AUR request rate.
+  readonly property int minRefreshGap: 10 * 60 * 1000
   readonly property bool checking: countProc.running
   property int repoCount: 0
   property int aurCount: 0
@@ -18,10 +22,16 @@ Singleton {
   // True while the displayed counts come from an earlier successful check
   // because the most recent one could not reach the mirrors.
   property bool stale: false
+  // Epoch ms of the last check that actually started; 0 before the first one.
+  property double lastAttempt: 0
 
   function refresh() {
-    if (!countProc.running && !updateProc.running)
-      countProc.running = true
+    if (countProc.running || updateProc.running)
+      return
+    if (root.lastAttempt > 0 && Date.now() - root.lastAttempt < root.minRefreshGap)
+      return
+    root.lastAttempt = Date.now()
+    countProc.running = true
   }
 
   function update() {
@@ -97,7 +107,14 @@ Singleton {
     interval: root.refreshInterval
     running: true
     repeat: true
-    triggeredOnStart: true
+    // Must stay false. restart() is called from both onExited handlers, and a
+    // triggeredOnStart timer fires the moment it is started, which turned every
+    // finished check into the start of the next one and hammered the AUR.
+    triggeredOnStart: false
     onTriggered: root.refresh()
   }
+
+  // triggeredOnStart used to cover the check at shell startup; do it directly
+  // now that restarting the timer must not fire it.
+  Component.onCompleted: root.refresh()
 }

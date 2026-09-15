@@ -18,4 +18,18 @@ grep -Fq 'onClicked: UpdatesState.update()' "$widget" ||
 ! grep -Fq 'enabled: !UpdatesState.checking && !UpdatesState.updating' "$widget" ||
   fail 'update checks disable the updater click target'
 
+state="$repo_root/quickshell/.config/quickshell/UpdatesState.qml"
+
+# pollTimer.restart() is called from both onExited handlers. With
+# triggeredOnStart the restart fired the timer immediately, so every finished
+# check started the next one and the AUR was queried until it returned 429.
+! grep -Eq '^\s*triggeredOnStart:\s*true' "$state" ||
+  fail 'poll timer fires on start, so restarting it re-runs the check immediately'
+
+grep -Fq 'Component.onCompleted: root.refresh()' "$state" ||
+  fail 'nothing checks for updates at shell startup'
+
+grep -Fq 'minRefreshGap' "$state" ||
+  fail 'refresh() has no minimum gap between AUR checks'
+
 printf 'updates widget: ok\n'

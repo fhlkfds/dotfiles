@@ -6,6 +6,10 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
 
+# The result cache is exercised on its own below; the counting assertions want a
+# fresh check every time.
+export ARCH_UPDATES_TTL=0
+
 printf '#!/bin/sh\nprintf "core 1 -> 2\\nextra 1 -> 2\\n"\n' > "$fixture/checkupdates"
 printf '#!/bin/sh\nprintf "aur-one 1 -> 2\\n"\n' > "$fixture/yay"
 chmod +x "$fixture/checkupdates" "$fixture/yay"
@@ -52,3 +56,55 @@ ARCH_UPDATES_TEST_LOG="$fixture/update.log" PATH="$fixture" \
   "$repo_root/hypr/.config/hypr/scripts/arch-updates" update
 grep -Fx 'exec "$1" -Syu' "$fixture/update.log" >/dev/null
 grep -Fx "$fixture/paru" "$fixture/update.log" >/dev/null
+
+# The cache is what stops several callers (the bar, lmenu, a prompt) from each
+# querying the AUR. A repeat call inside the TTL must not reach the helper.
+cache=$(mktemp -d)
+trap 'rm -rf "$fixture" "$cache"' EXIT
+calls="$cache/calls"
+: > "$calls"
+printf '#!/bin/sh\nprintf "checkupdates\\n" >> "%s"\nprintf "core 1 -> 2\\n"\n' "$calls" > "$fixture/checkupdates"
+printf '#!/bin/sh\nprintf "yay\\n" >> "%s"\nprintf "aur-one 1 -> 2\\n"\n' "$calls" > "$fixture/yay"
+rm -f "$fixture/paru"
+chmod +x "$fixture/checkupdates" "$fixture/yay"
+
+run_cached() {
+  ARCH_UPDATES_TTL=600 ARCH_UPDATES_CACHE_DIR="$cache/store" PATH="$fixture:$PATH" \
+    "$repo_root/hypr/.config/hypr/scripts/arch-updates"
+}
+
+first=$(run_cached)
+[[ $first == '{"repo":1,"aur":1,"total":2,"repoPackages":["core"],"aurPackages":["aur-one"]}' ]]
+[[ $(grep -c '^yay$' "$calls") == 1 ]]
+
+second=$(run_cached)
+[[ $second == "$first" ]]
+if [[ $(grep -c '^yay$' "$calls") != 1 ]]; then
+  printf 'FAIL: cached call still queried the AUR\n' >&2
+  exit 1
+fi
+
+# An expired entry must fall through to a real check again.
+printf '0' > "$cache/store/last-attempt"
+third=$(run_cached)
+[[ $third == "$first" ]]
+[[ $(grep -c '^yay$' "$calls") == 2 ]]
+
+# After a failure the cooldown reports an error rather than serving the last
+# good payload, so the widget keeps showing its own stale count.
+rm -rf "$cache/store"
+: > "$calls"
+printf '#!/bin/sh\nprintf "yay\\n" >> "%s"\nprintf "status 429: Rate limit reached\\n" >&2\nexit 1\n' "$calls" > "$fixture/yay"
+chmod +x "$fixture/yay"
+if run_cached >/dev/null 2>&1; then
+  printf 'FAIL: rate-limited check reported success\n' >&2
+  exit 1
+fi
+if run_cached >/dev/null 2>&1; then
+  printf 'FAIL: throttled retry reported success\n' >&2
+  exit 1
+fi
+if [[ $(grep -c '^yay$' "$calls") != 1 ]]; then
+  printf 'FAIL: retry inside the cooldown queried the AUR again\n' >&2
+  exit 1
+fi
