@@ -151,7 +151,7 @@ exec(mod .. " + CTRL + ALT + W", "stop Windows VM", "$HOME/.local/bin/windows-vm
 exec(mod .. " + SHIFT + ALT + W", "default browser private window", cfg.scripts_dir .. "/default-browser-private")
 exec(mod .. " + S", "spotify", "spotify")
 exec(mod .. " + O", "obsidian", "obsidian")
-exec(mod .. " + R", "voice dictation", "hyprvoice toggle")
+exec(mod .. " + R", "voice dictation", cfg.scripts_dir .. "/voice-dictation toggle")
 bind(mod .. " + F", "toggle window floating / tiling", hl.dsp.window.float({ action = "toggle" }))
 exec(mod .. " + SHIFT + L", "cycle window layout", window_layout .. " cycle")
 exec(mod .. " + SHIFT + H", "hermes", "hermes")

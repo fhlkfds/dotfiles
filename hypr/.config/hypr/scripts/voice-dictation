@@ -6,6 +6,12 @@ set -euo pipefail
 config=${VOICE_DICTATION_CONFIG:-"${XDG_CONFIG_HOME:-$HOME/.config}/hypr/voice-dictation.json"}
 hyprvoice_config=${HYPRVOICE_CONFIG:-"${XDG_CONFIG_HOME:-$HOME/.config}/hyprvoice/config.toml"}
 hyprvoice_bin=${HYPRVOICE:-hyprvoice}
+notify_send=${NOTIFY_SEND:-notify-send}
+gdbus=${GDBUS:-gdbus}
+
+resolved_source=
+resolved_label=
+used_fallback=false
 
 die() { printf 'voice-dictation: %s\n' "$*" >&2; exit 1; }
 valid_name() { [[ $1 =~ ^[[:alnum:]_.:-]+$ ]]; }
@@ -43,18 +49,37 @@ resolve_default_output_source() {
   local device_id
   device_id=$(wpctl inspect @DEFAULT_AUDIO_SINK@ 2>/dev/null |
     sed -n 's/^[[:space:]]*\* device.id = "\([^"]*\)"/\1/p' | head -n1)
-  [[ $device_id =~ ^[0-9]+$ ]] || die 'could not identify the default audio output device'
+  [[ $device_id =~ ^[0-9]+$ ]] || return 1
   sources_json | jq -r --arg id "$device_id" \
     '.[] | select((.deviceId | tostring) == $id) | .name' | head -n1
 }
 
+resolve_default_source() {
+  wpctl inspect @DEFAULT_AUDIO_SOURCE@ 2>/dev/null |
+    sed -n 's/^[[:space:]]*\* node.name = "\([^"]*\)"/\1/p' | head -n1
+}
+
+source_label() {
+  local source=$1 label
+  label=$(sources_json | jq -r --arg source "$source" \
+    '.[] | select(.name == $source) | .label' | head -n1)
+  printf '%s\n' "${label:-$source}"
+}
+
 resolve_source() {
   local selected_mode source
+  used_fallback=false
   selected_mode=$(mode)
   case $selected_mode in
     default-output)
-      source=$(resolve_default_output_source)
-      [[ -n $source ]] || die 'the default audio output has no matching microphone'
+      source=$(resolve_default_output_source || true)
+      if [[ -z $source ]]; then
+        source=$(resolve_default_source)
+        valid_name "$source" || die 'could not identify the default audio input device'
+        sources_json | jq -e --arg source "$source" \
+          '.[] | select(.name == $source)' >/dev/null || die 'the default audio input is unavailable'
+        used_fallback=true
+      fi
       ;;
     source)
       source=$(selected_source || true)
@@ -64,7 +89,19 @@ resolve_source() {
       ;;
     *) die 'the configured input mode is invalid' ;;
   esac
-  printf '%s\n' "$source"
+  resolved_source=$source
+  resolved_label=$(source_label "$source")
+}
+
+notify_fallback() {
+  local label=$1 title='Voice dictation' body
+  body="Using $label microphone"
+  "$notify_send" -a 'Voice dictation' -r 9931 -t 2500 "$title" "$body" >/dev/null 2>&1 && return
+  "$gdbus" call --session \
+    --dest org.freedesktop.Notifications \
+    --object-path /org/freedesktop/Notifications \
+    --method org.freedesktop.Notifications.Notify \
+    'Voice dictation' 9931 '' "$title" "$body" '[]' '{}' 2500 >/dev/null 2>&1 || true
 }
 
 sync_hyprvoice_config() {
@@ -78,6 +115,7 @@ import sys
 path = Path(sys.argv[1])
 device = sys.argv[2]
 text = path.read_text()
+original = text
 section = re.compile(r"(?ms)^\[recording\]\s*$\n(.*?)(?=^\[|\Z)")
 match = section.search(text)
 if match:
@@ -103,6 +141,8 @@ else:
     if text and not text.endswith("\n"):
         text += "\n"
     text += "\n[recording]\n" + line
+if text == original:
+    raise SystemExit(0)
 tmp = path.with_suffix(path.suffix + ".tmp")
 tmp.write_text(text)
 tmp.replace(path)
@@ -127,14 +167,16 @@ choose() {
 }
 
 toggle() {
-  local source=$1 dry_run=$2
+  local source=$1 dry_run=$2 fallback=$3 label=$4
   if [[ $dry_run == true ]]; then
     printf 'action=would-toggle device=%s\n' "$source"
+    [[ $fallback == false ]] || printf 'notification=Using %s microphone\n' "$label"
     return
   fi
   command -v "$hyprvoice_bin" >/dev/null 2>&1 ||
     die 'Hyprvoice is not installed; install hyprvoice-bin and run hyprvoice onboarding'
   sync_hyprvoice_config "$source"
+  [[ $fallback == false ]] || notify_fallback "$label"
   exec "$hyprvoice_bin" toggle
 }
 
@@ -146,17 +188,17 @@ usage() {
 case ${1:-} in
   toggle)
     [[ -z ${3:-} && ( -z ${2:-} || ${2:-} == --dry-run ) ]] || usage
-    source=$(resolve_source)
+    resolve_source
     if [[ ${2:-} == --dry-run ]]; then
-      toggle "$source" true
+      toggle "$resolved_source" true "$used_fallback" "$resolved_label"
     else
-      toggle "$source" false
+      toggle "$resolved_source" false "$used_fallback" "$resolved_label"
     fi
     ;;
-  resolve-source) [[ $# -eq 1 ]] || usage; resolve_source ;;
+  resolve-source) [[ $# -eq 1 ]] || usage; resolve_source; printf '%s\n' "$resolved_source" ;;
   use-default-output) [[ $# -eq 1 ]] || usage; save_selection default-output ;;
   use-source) [[ $# -eq 2 ]] || usage; valid_name "$2" || die 'invalid microphone name'; save_selection source "$2" ;;
   choose) [[ $# -eq 1 ]] || usage; choose ;;
-  status) printf 'mode=%s\n' "$(mode)"; resolve_source | sed 's/^/device=/' ;;
+  status) printf 'mode=%s\n' "$(mode)"; resolve_source; printf 'device=%s\n' "$resolved_source" ;;
   *) usage ;;
 esac
