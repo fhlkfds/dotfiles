@@ -39,6 +39,13 @@ hypr/.config/hypr/workspaces.lua
 hypr/.config/hypr/monitors.conf
 hypr/.config/hypr/workspaces.conf
 
+# ── Dictation microphone selection ────────────────────────────────────────────
+# scripts/voice-dictation writes the chosen PipeWire source here whenever you
+# pick one, and the node name it stores is specific to one machine's hardware.
+# A fresh clone leaves this absent, which the script reads as "follow the
+# default audio output"; `voice-dictation choose` materialises it.
+hypr/.config/hypr/voice-dictation.json
+
 # ── Oh My Zsh ─────────────────────────────────────────────────────────────────
 # Installed by the user, not vendored here: its own .gitignore excludes custom/,
 # so a submodule could never carry the powerlevel10k theme or the fzf-tab plugin

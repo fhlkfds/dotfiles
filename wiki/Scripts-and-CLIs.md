@@ -105,6 +105,7 @@ Under `hypr/.config/hypr/scripts/`.
 | `close-all-windows.sh` | `CTRL+ALT+Delete` | closes every address from `hyprctl clients` |
 | `btop-float.sh` | `SUPER+CTRL+T` | floating btop |
 | `default-browser-private` | `SUPER+SHIFT+ALT+W` | resolves the XDG default browser and runs its declared private-window action |
+| `voice-dictation` | `SUPER+R`, lmenu → Voice dictation | picks the dictation microphone, syncs it into Hyprvoice only when it changed, then toggles Hyprvoice |
 | `spotify-notify.sh` | autostart | track-change notifications |
 | `clipboard-store.sh` | `wl-paste --watch` | filters secrets and excluded apps, then stores in cliphist |
 | `clipboard-wipe.sh` | manual | clears clipboard and history |

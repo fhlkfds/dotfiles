@@ -16,6 +16,7 @@ These scripts are below `hypr/.config/hypr/scripts/`.
 | `power-profile.sh` | `SUPER+SHIFT+B` | lists, reports, sets, cycles, or intelligently toggles `powerprofilesctl` profiles; the bound action opens a Rofi picker | `power-profiles-daemon`; optional Rofi and notifications |
 | `files-here.sh` | `SUPER+SHIFT+ALT+F` | discovers a focused terminal's current directory and opens Nautilus there | terminal APIs, `hyprctl`, Nautilus |
 | `night-light.sh` | `SUPER+CTRL+N` | toggles Hyprsunset between 1000 K and 6500 K; delegates to `desktop-mode` when installed and otherwise controls Hyprsunset directly | `hyprctl`, `hyprsunset`; optional `desktop-mode` |
+| `voice-dictation` | `SUPER+R`; `SUPER+SHIFT+A` → Voice dictation → Choose microphone… | resolves the dictation microphone, writes it into Hyprvoice's `[recording]` section only when it changed, then toggles Hyprvoice | `hyprvoice`, `pw-dump`, `wpctl`, `jq`, `python3`; optional Rofi and notifications |
 | `spotify-notify.sh` | autostart | watches Spotify metadata and sends track-change notifications | `playerctl`, `curl`, notification command |
 | `clipboard-store.sh` | `wl-paste --watch` | filters sensitive MIME/app metadata, then stores text/images in cliphist | `wl-paste`, `hyprctl`, `jq`, `cliphist` |
 | `clipboard-wipe.sh` | manual | clears clipboard/history data | `wl-copy`, `cliphist` |

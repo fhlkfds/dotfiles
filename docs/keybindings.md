@@ -40,7 +40,7 @@ opened with `SUPER+K`.
 | `SUPER+SHIFT+ALT+W` | private browser window | XDG default browser's declared private action |
 | `SUPER+S` | Spotify | `spotify` |
 | `SUPER+O` | Obsidian | `obsidian` |
-| `SUPER+R` | voice dictation | `hyprvoice toggle` |
+| `SUPER+R` | voice dictation | `voice-dictation toggle`, which resolves the microphone and then calls `hyprvoice toggle` |
 | `SUPER+SHIFT+H` | Hermes | `hermes` |
 | `SUPER+E` | Files | `nautilus` through `file_manager` |
 | `SUPER+SHIFT+E` | Files | same as `SUPER+E` |

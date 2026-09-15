@@ -59,7 +59,7 @@ naming the package instead. The `SUPER+I` coding-agent binding and the four
 | `SUPER+S` | Spotify | `spotify` |
 | `SUPER+O` | Obsidian | `obsidian` |
 | `SUPER+SHIFT+H` | Hermes | `hermes` |
-| `SUPER+R` | voice dictation | `hyprvoice toggle` |
+| `SUPER+R` | voice dictation | `voice-dictation toggle`, which resolves the microphone and then calls `hyprvoice toggle` |
 | `SUPER+CTRL+S` | LocalSend | `localsend`; its window is floated and centred by a rule |
 
 `SUPER+W` calls `helium-browser` literally. The `browser` variable in
