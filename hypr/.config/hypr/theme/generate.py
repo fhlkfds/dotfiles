@@ -97,7 +97,6 @@ def targets(prefix: Path, theme: tl.Theme) -> list[tl.Artifact]:
         tl.Artifact("hyprlock-colors.conf", prefix / "hyprlock/colors.conf"),
         tl.Artifact("swaync-style.css", prefix / "swaync/style.css"),
         tl.Artifact("wofi-style.css", prefix / "wofi/style.css"),
-        tl.Artifact("noctalia-colors.json", prefix / "noctalia/colors.json"),
         tl.Artifact("greeter-theme.css", prefix / "greeter/greeter.css"),
         tl.Artifact("regreet-greeter.toml", prefix / "greeter/regreet.toml"),
         tl.Artifact(
@@ -461,33 +460,6 @@ def link_optional_themes(
     return messages
 
 
-def sync_noctalia(prefix: Path, theme: tl.Theme) -> None:
-    """Register the generated colours as a Noctalia user scheme named after the
-    theme. The previous generator hardcoded "Windows-7" here for every theme,
-    so switching never actually moved Noctalia off that scheme."""
-    settings = prefix / "noctalia/settings.json"
-    colors = prefix / "noctalia/colors.json"
-    if not colors.is_file():
-        return
-    scheme = theme.slug
-    scheme_dir = prefix / "noctalia/colorschemes" / scheme
-    scheme_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(colors, scheme_dir / f"{scheme}.json")
-    if not settings.is_file():
-        return
-    try:
-        data = json.loads(settings.read_text())
-    except json.JSONDecodeError:
-        return  # not ours to repair
-    cs = data.setdefault("colorSchemes", {})
-    cs["predefinedScheme"] = scheme
-    cs["useWallpaperColors"] = False
-    cs["darkMode"] = theme.is_dark
-    tmp = settings.parent / ".settings.json.new"
-    tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
-    os.replace(tmp, settings)
-
-
 def sync_fastfetch(prefix: Path, theme: tl.Theme) -> None:
     """fastfetch takes a named colour, not hex, so map the accent to the nearest
     of the eight it understands."""
@@ -732,7 +704,6 @@ def cmd_set(args: argparse.Namespace) -> int:
 
         tl.install(mandatory_staged)
         link_rofi(prefix, theme.slug)
-        sync_noctalia(prefix, theme)
         sync_fastfetch(prefix, theme)
 
         installed_optional: set[str] = set()

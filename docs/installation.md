@@ -247,7 +247,7 @@ git -C ~/.oh-my-zsh/custom/plugins/fzf-tab checkout --detach "$FZF_TAB_PIN"
 Alternative or retained desktop components may be deployed separately:
 
 ```bash
-stow swaync wofi noctalia
+stow swaync wofi
 ```
 
 The wallpaper package is unusual. It contains `theme/` and image files
@@ -324,7 +324,6 @@ The following are not portable without review:
 | `/home/liam` native-host executable paths | Browser manifests and browser flags |
 | DP/eDP connector names and exact resolutions | Monitor profiles |
 | Personal VPN and GAM paths | `zsh/.zshrc` |
-| User-specific location, display, and network state | retained `noctalia/` settings |
 
 No credentials or private keys are required by the active desktop configuration.
 The repository does contain personal path and local-state assumptions, so review

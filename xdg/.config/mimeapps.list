@@ -10,7 +10,7 @@ application/x-pka=CiscoPacketTracer-9.0.0.desktop
 application/x-pkt=CiscoPacketTracer-9.0.0.desktop
 application/x-pkz=CiscoPacketTracer-9.0.0.desktop
 application/x-pksz=CiscoPacketTracer-9.0.0.desktop
-x-scheme-handler/t3code=t3code-url-handler.desktop
+x-scheme-handler/t3code=com.t3tools.T3Code.desktop
 x-scheme-handler/claude-cli=claude-code-url-handler.desktop
 
 # --- File manager -----------------------------------------------------------

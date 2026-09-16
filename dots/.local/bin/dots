@@ -216,9 +216,19 @@ else
   done
 fi
 
+# A package selected from the commit diff can have been deleted by that very
+# diff (or by an uncommitted removal): HEAD still lists the directory, but it is
+# no longer on disk, and `stow --restow` on it aborts the whole run with
+#   ERROR: The stow directory does not contain package <name>
+# A removed package's links are dangling, so the correct action is to unstow it.
+package_removed() { [[ ! -d "$repo/$1" ]]; }
+
 printf 'Actions:\n'
 for package in "${packages[@]}"; do
-  if uses_no_folding "$package"; then
+  if package_removed "$package"; then
+    printf '  - stow --delete --target %q %q (package removed from repository)\n' \
+      "$HOME" "$package"
+  elif uses_no_folding "$package"; then
     printf '  - stow --restow --no-folding --target %q %q\n' "$HOME" "$package"
   elif [[ $package == wallpaper ]]; then
     printf '  - stow --restow --target %q %q\n' "$HOME/Pictures/Wallpapers" "$package"
@@ -287,6 +297,15 @@ for package in "${packages[@]}"; do
 done
 
 for package in "${packages[@]}"; do
+  if package_removed "$package"; then
+    printf 'Unstowing %s (removed from repository)...\n' "$package"
+    # Best effort: with the package gone, stow cannot know which links were
+    # its, so nothing may be removed. That is not a reason to fail the run.
+    (cd "$repo" && stow --delete --target "$HOME" "$package") 2>/dev/null ||
+      printf 'Notice: %s had no links left to remove.\n' "$package"
+    continue
+  fi
+
   printf 'Restowing %s...\n' "$package"
   declare -a stow_args=(--restow)
   if uses_no_folding "$package"; then

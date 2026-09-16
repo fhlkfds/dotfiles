@@ -72,7 +72,7 @@ stow zsh fastfetch ai
 Retained alternatives, only if you intend to switch to them:
 
 ```bash
-stow swaync wofi noctalia
+stow swaync wofi
 ```
 
 Wallpapers are the one package that does not target `$HOME`. Its files sit at the
@@ -204,7 +204,6 @@ These are not portable without review:
 | `/home/liam` native-host paths | browser manifests and browser flag files |
 | DP/eDP connector names and exact modes | monitor profiles |
 | Personal VPN and GAM paths | `zsh/.zshrc` |
-| Location, display, and network state | retained `noctalia/` settings |
 
 No credentials or private keys are required by the active desktop. The repository
 does carry personal path assumptions, so review it before publishing a fork.

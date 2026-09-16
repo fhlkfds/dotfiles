@@ -1,0 +1,32 @@
+# Stow's default ignore list is REPLACED by this file, so the standard VCS and
+# editor patterns are repeated below; only the last stanza is ours.
+RCS
+.+,v
+CVS
+\.\#.+
+\.cvsignore
+\.svn
+_darcs
+\.hg
+\.git
+\.gitignore
+\.gitmodules
+.+~
+\#.*\#
+^/README.*
+^/LICENSE.*
+^/COPYING
+
+# ── Generated monitor/workspace state ─────────────────────────────────────────
+# scripts/auto-monitor-profile.sh and nwg-displays write these as real files
+# directly into ~/.config/hypr on every output change, so they must never be
+# stow symlinks. They are gitignored, but a stray copy left in the package (or
+# regenerated here by a script run with HYPR_DIR pointed at the repo) would
+# still make `dots update` abort with:
+#   cannot stow .../monitors.lua over existing target since neither a link nor
+#   a directory and --adopt not specified
+# Ignoring them here means the conflict cannot come back.
+^/\.config/hypr/monitors\.lua$
+^/\.config/hypr/workspaces\.lua$
+^/\.config/hypr/monitors\.conf$
+^/\.config/hypr/workspaces\.conf$

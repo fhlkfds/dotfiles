@@ -54,7 +54,7 @@ printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "$ARCH_UPDATES_TEST_LOG"\n' > "$fixtur
 chmod +x "$fixture/kitty"
 ARCH_UPDATES_TEST_LOG="$fixture/update.log" PATH="$fixture" \
   "$repo_root/hypr/.config/hypr/scripts/arch-updates" update
-grep -Fx 'exec "$1" -Syu' "$fixture/update.log" >/dev/null
+grep -F '"$1" -Syyu;' "$fixture/update.log" >/dev/null
 grep -Fx "$fixture/paru" "$fixture/update.log" >/dev/null
 
 # The cache is what stops several callers (the bar, lmenu, a prompt) from each

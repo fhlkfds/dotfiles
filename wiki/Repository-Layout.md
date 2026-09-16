@@ -32,7 +32,6 @@ nothing in the live session reaches it.
 | `wallpaper` | `~/Pictures/Wallpapers` (custom target) | optional | Tracked wallpaper assets, including per-theme images |
 | `swaync` | `~/.config/swaync` | retained | Rollback notification backend; its autostart line is commented out |
 | `wofi` | `~/.config/wofi` | retained | Alternative launcher; not bound, not started |
-| `noctalia` | `~/.config/noctalia` | retained | Alternative shell settings and plugin data; startup commented out |
 
 ## Not packages
 
@@ -89,7 +88,6 @@ and rebuilt on demand, so a fresh clone will not have it:
 | `hyprlock/.config/hyprlock/colors.conf` and `layouts/colors.conf` | `theme/templates/hyprlock-colors.conf` |
 | `swaync/.config/swaync/style.css` | `theme/templates/swaync-style.css` |
 | `wofi/.config/wofi/style.css` | `theme/templates/wofi-style.css` |
-| `noctalia/.config/noctalia/colors.json`, `colorschemes/` | `theme/templates/noctalia-colors.json` |
 | `greeter/.config/greeter/greeter.css`, `regreet.toml` | `theme/templates/greeter-theme.css`, `regreet-greeter.toml` |
 | `neovim/.config/nvim/colors/<slug>.lua`, `current.lua` | `theme/templates/neovim-theme.lua` |
 | `btop/.config/btop/themes/<slug>.theme`, `current.theme` | `theme/templates/btop-theme.tpl` |

@@ -1,0 +1,31 @@
+2026-09-14T14:36:11.060092Z  INFO herdr::logging: herdr starting event="app.startup" subsystem="client" outcome="started" pid=765008
+2026-09-14T14:36:11.060139Z  INFO herdr::client: connecting to server path=/home/liam/.config/herdr/herdr-client.sock
+2026-09-14T14:36:11.268800Z  INFO herdr::client::handshake: endpoint handshake succeeded generation=1 server_version=0.9.0
+2026-09-14T19:46:19.000044Z  INFO herdr::client: client terminal unavailable; detaching err=I/O error (os error 5)
+2026-09-14T19:46:19.007549Z  INFO herdr::logging: herdr exiting event="app.shutdown" subsystem="client" outcome="completed" pid=765008
+2026-09-14T20:02:35.236238Z  INFO herdr::logging: herdr starting event="app.startup" subsystem="client" outcome="started" pid=42273
+2026-09-14T20:02:35.236398Z  INFO herdr::client: connecting to server path=/home/liam/.config/herdr/herdr-client.sock
+2026-09-14T20:02:35.348450Z  INFO herdr::client::handshake: endpoint handshake succeeded generation=1 server_version=0.9.0
+2026-09-14T20:26:29.569753Z  INFO herdr::logging: herdr exiting event="app.shutdown" subsystem="client" outcome="completed" pid=42273
+2026-09-14T21:16:58.971062Z  INFO herdr::logging: herdr starting event="app.startup" subsystem="client" outcome="started" pid=7399
+2026-09-14T21:16:58.971187Z  INFO herdr::client: connecting to server path=/home/liam/.config/herdr/herdr-client.sock
+2026-09-14T21:16:59.135549Z  INFO herdr::client::handshake: endpoint handshake succeeded generation=1 server_version=0.9.0
+2026-09-14T22:47:45.348590Z  INFO herdr::client: client terminal unavailable; detaching err=I/O error (os error 5)
+2026-09-14T22:47:45.364884Z  INFO herdr::logging: herdr exiting event="app.shutdown" subsystem="client" outcome="completed" pid=7399
+2026-09-15T12:23:15.503735Z  INFO herdr::logging: herdr starting event="app.startup" subsystem="client" outcome="started" pid=13512
+2026-09-15T12:23:15.503851Z  INFO herdr::client: connecting to server path=/home/liam/.config/herdr/herdr-client.sock
+2026-09-15T12:23:15.664307Z  INFO herdr::client::handshake: endpoint handshake succeeded generation=1 server_version=0.9.0
+2026-09-15T20:42:06.978521Z  INFO herdr::client: client terminal unavailable; detaching err=I/O error (os error 5)
+2026-09-15T20:42:06.990614Z  INFO herdr::logging: herdr exiting event="app.shutdown" subsystem="client" outcome="completed" pid=13512
+2026-09-16T12:24:02.496653Z  INFO herdr::logging: herdr starting event="app.startup" subsystem="client" outcome="started" pid=22014
+2026-09-16T12:24:02.496807Z  INFO herdr::client: connecting to server path=/home/liam/.config/herdr/herdr-client.sock
+2026-09-16T12:24:02.657708Z  INFO herdr::client::handshake: endpoint handshake succeeded generation=1 server_version=0.9.0
+2026-09-16T15:07:43.247679Z  INFO herdr::logging: herdr exiting event="app.shutdown" subsystem="client" outcome="completed" pid=22014
+2026-09-16T15:14:15.330034Z  INFO herdr::logging: herdr starting event="app.startup" subsystem="client" outcome="started" pid=35622
+2026-09-16T15:14:15.330103Z  INFO herdr::client: connecting to server path=/home/liam/.config/herdr/herdr-client.sock
+2026-09-16T15:14:15.423424Z  INFO herdr::client::handshake: endpoint handshake succeeded generation=1 server_version=0.9.0
+2026-09-16T15:36:52.343299Z  INFO herdr::client: client terminal unavailable; detaching err=I/O error (os error 5)
+2026-09-16T15:36:52.352482Z  INFO herdr::logging: herdr exiting event="app.shutdown" subsystem="client" outcome="completed" pid=35622
+2026-09-16T15:38:27.185637Z  INFO herdr::logging: herdr starting event="app.startup" subsystem="client" outcome="started" pid=7857
+2026-09-16T15:38:27.185803Z  INFO herdr::client: connecting to server path=/home/liam/.config/herdr/herdr-client.sock
+2026-09-16T15:38:27.299583Z  INFO herdr::client::handshake: endpoint handshake succeeded generation=1 server_version=0.9.0

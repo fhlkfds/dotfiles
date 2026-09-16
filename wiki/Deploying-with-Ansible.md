@@ -236,7 +236,7 @@ which is what lets step 5 be an assertion rather than a hope. A correct folded
 directory link from an older Stow run is also accepted.
 
 The 22 packages: `ai browser cliphist fastfetch greeter hypr hyprlock kitty menu
-modes noctalia quickshell rofi screensaver security swaync systemd wallpaper
+modes quickshell rofi screensaver security swaync systemd wallpaper
 windows wofi xdg zsh`.
 
 `docs`, `tests`, and `system` are excluded on purpose: `system` holds root-owned

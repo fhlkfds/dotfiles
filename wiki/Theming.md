@@ -51,7 +51,6 @@ Fifteen templates live in `hypr/.config/hypr/theme/templates/`:
 | `zsh-theme.zsh` | `~/.config/zsh/current-theme.zsh` |
 | `swaync-style.css` | `swaync/.config/swaync/style.css` |
 | `wofi-style.css` | `wofi/.config/wofi/style.css` |
-| `noctalia-colors.json` | `noctalia/.config/noctalia/colors.json` and scheme data |
 | `greeter-theme.css` | `greeter/.config/greeter/greeter.css` |
 | `regreet-greeter.toml` | `greeter/.config/greeter/regreet.toml` |
 | `neovim-theme.lua` | `neovim/.config/nvim/colors/<slug>.lua` and `current.lua` |

@@ -98,11 +98,20 @@ KVM_DESCS=(
 # ── Live state ──────────────────────────────────────────────────────────────
 LIVE_JSON=""
 
+# `monitors all` rather than `monitors`: the latter omits disabled outputs, so
+# a lid-closed eDP-1 reads as unplugged. Unplugged connectors are absent from
+# both lists, which is what the presence checks below actually want to know.
 refresh_live() {
-  LIVE_JSON="$("$HYPRCTL" -j monitors 2>/dev/null)" || return 1
-  [[ -n "$LIVE_JSON" ]] || return 1
+  LIVE_JSON="$("$HYPRCTL" -j monitors all 2>/dev/null)"
   # A malformed payload must not be mistaken for "no monitors".
-  jq -e 'type == "array"' >/dev/null 2>&1 <<<"$LIVE_JSON" || return 1
+  if [[ -z "$LIVE_JSON" ]] || ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"$LIVE_JSON"; then
+    # `all` is the correct query; losing it entirely is worse than losing sight
+    # of disabled outputs, so fall back rather than give up on the layout.
+    log 'warning: "hyprctl -j monitors all" unusable, falling back to "monitors"'
+    LIVE_JSON="$("$HYPRCTL" -j monitors 2>/dev/null)" || return 1
+    [[ -n "$LIVE_JSON" ]] || return 1
+    jq -e 'type == "array"' >/dev/null 2>&1 <<<"$LIVE_JSON" || return 1
+  fi
   return 0
 }
 
@@ -120,6 +129,12 @@ load_simulated_live() {
 }
 
 live_descs() { jq -r '.[].description // empty' <<<"$LIVE_JSON" | sort; }
+# Is a profile key present *and* switched on? Resolution answers presence only.
+is_enabled() {
+  jq -e --arg k "$1" \
+    'any(.[]; (.name == $k or ("desc:" + .description) == $k) and (.disabled != true))' \
+    >/dev/null 2>&1 <<<"$LIVE_JSON"
+}
 live_names() { jq -r '.[].name // empty' <<<"$LIVE_JSON" | sort; }
 
 has_desc() { grep -Fxq "$1" <<<"$(live_descs)"; }
@@ -212,6 +227,8 @@ lid_override() {
   fi
 }
 
+# $2 == "raw" skips the lid override: "is this hardware plugged in?" must not
+# be answered by "the lid is shut, so we want it off".
 desired_layout() {
   local file="$PROFILE_DIR/$1.monitors.lua"
   [[ -r "$file" ]] || return 1
@@ -234,7 +251,7 @@ desired_layout() {
       }
       print o "|" m "|" p "|" s "|" t "|" d
     }
-  ' "$file" | lid_override
+  ' "$file" | { [[ "${2:-}" == raw ]] && cat || lid_override; }
 }
 
 # Actual state of one profile key, in the same canonical shape.
@@ -265,7 +282,7 @@ layout_matches() {
     [[ -n "$key" ]] || continue
 
     if [[ "$disabled" == true ]]; then
-      if [[ -n "$(resolve_output "$key")" ]]; then
+      if is_enabled "$key"; then
         [[ "$quiet" == 0 ]] && printf '  %-46s want=disabled  got=enabled\n' "$key"
         ok=1
       elif [[ "$quiet" == 0 ]]; then
@@ -298,7 +315,7 @@ profile_missing_outputs() {
   while IFS='|' read -r key mode pos scale transform disabled; do
     [[ -n "$key" && "$disabled" == false ]] || continue
     [[ -n "$(resolve_output "$key")" ]] || printf '%s\n' "$key"
-  done < <(desired_layout "$profile")
+  done < <(desired_layout "$profile" raw)
 }
 
 profile_has_connected_output() {
@@ -306,8 +323,20 @@ profile_has_connected_output() {
   while IFS='|' read -r key mode pos scale transform disabled; do
     [[ -n "$key" && "$disabled" == false ]] || continue
     [[ -n "$(resolve_output "$key")" ]] && return 0
-  done < <(desired_layout "$profile")
+  done < <(desired_layout "$profile" raw)
   return 1
+}
+
+# True when the profile, after the lid override, wants every output off. That
+# is a legitimate desired state (undocked with the lid shut) but it cannot be
+# the *final* state of a running session, so the applier lights the panel.
+layout_leaves_nothing_enabled() {
+  local key rest
+  while IFS='|' read -r key rest; do
+    [[ -n "$key" ]] || continue
+    [[ "${rest##*|}" == true ]] || return 1
+  done < <(desired_layout "$1")
+  return 0
 }
 
 # The generated active files must actually come from this profile. Geometry
@@ -346,8 +375,9 @@ move_existing_workspaces() {
     key="${target_by_workspace[$id]:-}"
     [[ -n "$key" ]] || continue
     target="$(resolve_output "$key")"
-    # Never dispatch a move to a monitor that is not actually present.
+    # Never dispatch a move to a monitor that is not present and enabled.
     [[ -n "$target" ]] || continue
+    is_enabled "$target" || continue
     [[ "$monitor" != "$target" ]] || continue
     "$HYPRCTL" dispatch \
       "hl.dsp.workspace.move({ workspace = $id, monitor = \"$target\" })" >/dev/null
@@ -421,6 +451,19 @@ apply_profile() {
     refresh_live || true
   fi
 
+  # Insurance against a black session: whatever the profile and the lid say,
+  # a live session must have something to draw on. Undocking with the lid shut
+  # used to land here with every output off.
+  if ! jq -e 'any(.[]; .disabled != true)' >/dev/null 2>&1 <<<"$LIVE_JSON"; then
+    log "no enabled output remains: re-enabling $INTERNAL_OUTPUT as a fallback"
+    "$HYPRCTL" -q eval \
+      "hl.monitor({ output = \"$INTERNAL_OUTPUT\", mode = \"preferred\", position = \"auto\", scale = 1.0 })" \
+      >/dev/null 2>&1
+    refresh_live || true
+    "$HYPRCTL" notify -1 5000 "rgb(ebcb8b)" \
+      "No external display left: $INTERNAL_OUTPUT re-enabled" >/dev/null 2>&1
+  fi
+
   move_existing_workspaces
 
   if [[ "$profile" == desktop ]]; then
@@ -484,6 +527,8 @@ main() {
   if [[ "$DRY_RUN" == 1 ]]; then
     printf 'profile=%s\n' "$profile"
     [[ -z "$missing" ]] || printf 'warning=outputs not connected: %s\n' "${missing//$'\n'/, }"
+    layout_leaves_nothing_enabled "$profile" &&
+      printf 'fallback=every output wanted off; would re-enable %s\n' "$INTERNAL_OUTPUT"
     printf '%s\n' '=== monitors.lua ==='
     cat "$PROFILE_DIR/$profile.monitors.lua"
     printf '%s\n' '=== workspaces.lua ==='

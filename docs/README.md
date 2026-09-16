@@ -62,7 +62,6 @@ root-owned `/etc` templates deployed by `yubikey-auth`, never symlinked into
 | `kitty/` | Terminal configuration and generated theme include |
 | `zsh/`, `fastfetch/`, `ai/` | Shell, prompt/startup display, AI CLI launcher |
 | `cliphist/` | Clipboard-history limits |
-| `noctalia/` | Retained Noctalia settings and plugin data |
 | `xdg/` | MIME defaults and a Kitty/Neovim desktop entry |
 | `wallpaper/` | Tracked wallpaper assets; stow into `~/Pictures/Wallpapers` |
 | `tests/` | Browser native-tool fixture tests |

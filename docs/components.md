@@ -306,15 +306,6 @@ consumer outside the package, `power-menu.sh`, now lives at
 
 The rest is recoverable from Git history if it is ever wanted back.
 
-## Noctalia: retained configuration
-
-`noctalia/.config/noctalia/` contains settings and plugin data, but its Quickshell
-startup line is commented. It includes user-specific monitor, location, and local
-network state. Enabled plugin configuration includes calendar/clock, clipboard,
-keybind, update, media-wallpaper, screen-toolkit, timer, and system-info features;
-the assistant and DNS-switcher entries are disabled. Do not treat these settings
-as part of the active shell without intentionally switching shells.
-
 ## XDG defaults
 
 `xdg/.config/mimeapps.list` assigns Helium as the default HTTP/HTML handler,

@@ -68,8 +68,18 @@ run_case open
 # ── Applier lid override (dry-run, no compositor touched) ───────────────────
 simulated="$(printf '[%s,%s]\n' "$internal" "$kvm_set")"
 
+# A private config dir with the kvm profile staged as the active files. The
+# repo does not carry monitors.lua/workspaces.lua -- they are generated machine
+# state -- so the applier's idempotence check needs them materialised here.
+applier_conf="$test_root/hypr"
+mkdir -p "$applier_conf"
+cp -r "$hypr_root/monitor_profiles" "$applier_conf/monitor_profiles"
+cp "$applier_conf/monitor_profiles/kvm.monitors.lua" "$applier_conf/monitors.lua"
+cp "$applier_conf/monitor_profiles/kvm.workspaces.lua" "$applier_conf/workspaces.lua"
+: >"$applier_conf/hyprland.lua"
+
 # Lid open: the live layout matches the kvm profile, nothing to apply.
-out="$(SIMULATED_MONITORS="$simulated" HYPR_DIR="$hypr_root" \
+out="$(SIMULATED_MONITORS="$simulated" HYPR_DIR="$applier_conf" \
   HYPR_LID_STATE="$test_root/no-such-lid-state" \
   bash "$applier" --dry-run 2>/dev/null)" || fail 'applier dry-run (lid open) failed'
 grep -q 'profile=kvm' <<<"$out" || fail "lid open: expected kvm profile, got: $out"
@@ -78,7 +88,7 @@ grep -q 'result=already-correct' <<<"$out" ||
 
 # Lid closed: the same layout must now be wrong -- the panel is wanted off.
 printf 'state:      closed\n' >"$test_root/lid-state"
-out="$(SIMULATED_MONITORS="$simulated" HYPR_DIR="$hypr_root" \
+out="$(SIMULATED_MONITORS="$simulated" HYPR_DIR="$applier_conf" \
   HYPR_LID_STATE="$test_root/lid-state" \
   bash "$applier" --dry-run 2>/dev/null)" || fail 'applier dry-run (lid closed) failed'
 grep -q 'want=disabled' <<<"$out" ||

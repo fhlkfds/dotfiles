@@ -17,6 +17,8 @@ hl.on("hyprland.start", function()
     start("hermes", { workspace = "6 silent" })
     start("obsidian", { workspace = "3 silent" })
     start("t3code", { workspace = "4 silent" })
-    start("kitty", { workspace = "1 silent" })
+    -- Workspace 1 comes up in herdr; quitting it drops back to a shell rather
+    -- than closing the window, so the workspace always has a terminal.
+    start("kitty zsh -c 'herdr; exec zsh'", { workspace = "1 silent" })
     start("udiskie --automount --notify --no-tray")
 end)

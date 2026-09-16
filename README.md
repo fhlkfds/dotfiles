@@ -39,7 +39,7 @@ contents into `~`.
 **Deploy the standard packages at once:**
 
 ```bash
-stow ai browser cliphist fastfetch greeter hypr hyprlock kitty modes noctalia \
+stow ai browser cliphist fastfetch greeter hypr hyprlock kitty modes \
      menu quickshell rofi screensaver security ssh swaync systemd tmux windows \
      wallpaper wofi xdg zsh
 ```
@@ -62,7 +62,6 @@ stow rofi        # ~/.config/rofi
 stow wofi        # ~/.config/wofi
 stow swaync      # ~/.config/swaync
 stow fastfetch   # ~/.config/fastfetch
-stow noctalia    # ~/.config/noctalia
 stow menu        # ~/.config/lmenu, ~/.local/bin/lmenu
 stow quickshell  # ~/.config/quickshell
 stow windows     # Windows VM helper, Compose template, and application entry
@@ -756,7 +755,6 @@ OSD commands; it never downloads media or changes the live clipboard.
 | `wofi` | [Wofi](https://hg.sr.ht/~scoopta/wofi) | Wayland-native app launcher with themed colors |
 | `swaync` | [SwayNC](https://github.com/ErikReider/SwayNotificationCenter) | Optional rollback notification backend |
 | `fastfetch` | [Fastfetch](https://github.com/fastfetch-cli/fastfetch) | System info with themed key colors |
-| `noctalia` | Noctalia | Custom plugin system with themed color scheme |
 | `zsh` | Zsh | Shell config — `.zshrc` and `.p10k.zsh`; Oh My Zsh itself is installed separately |
 | `ssh` | autossh | Reconnecting SSH launcher and opt-in client keepalive fragment |
 | `tmux` | tmux | Persistent remote-session defaults |

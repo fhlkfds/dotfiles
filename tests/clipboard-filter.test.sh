@@ -123,20 +123,6 @@ fi
 grep -Eq '^max-items[[:space:]]+200$' "$repo_root/cliphist/.config/cliphist/config" ||
   fail 'cliphist history is not capped at 200 items'
 
-python3 -c '
-import json
-import sys
-
-with open(sys.argv[1], encoding="utf-8") as source:
-    launcher = json.load(source)["appLauncher"]
-store = "/home/liam/.config/hypr/scripts/clipboard-store.sh"
-assert launcher["enableClipboardHistory"] is True
-assert launcher["enableClipPreview"] is True
-assert launcher["enableClipboardChips"] is True
-assert launcher["clipboardWatchTextCommand"] == f"wl-paste --type text --watch {store}"
-assert launcher["clipboardWatchImageCommand"] == f"wl-paste --type image --watch {store}"
-' "$repo_root/noctalia/.config/noctalia/settings.json" ||
-  fail 'Noctalia clipboard watchers do not use the filtered store path'
 
 for autostart in \
   "$repo_root/hypr/.config/hypr/conf/autostart.lua" \

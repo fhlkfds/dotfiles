@@ -175,7 +175,7 @@ run_update() {
     return 0
   fi
 
-  kitty --hold --title "System Update" bash -lc 'exec "$1" -Syu' _ "$helper"
+  kitty --title "System Update" bash -lc '"$1" -Syyu; status=$?; printf "\nUpdate finished. Press Enter to close."; read -r; exit "$status"' _ "$helper"
   # The upgrade just queried the AUR itself and invalidated the counts. Drop the
   # stale payload but keep the attempt recent, so the next check waits out the
   # TTL instead of querying again immediately.
