@@ -71,9 +71,12 @@ Scope {
     check("sorting does not mutate its input", unsorted[0].name === "zeta pad")
 
     // --- incremental model sync ---------------------------------------------
-    s.syncModel(sorted)
-    check("sync populates the model", s.model.count === 4)
-    check("sync preserves order", s.model.get(0).address === "AA:BB:CC:DD:EE:03")
+    //
+    // syncInto is exercised directly on one model: it is the diffing engine,
+    // and syncModel below is only the zone split layered on top of it.
+    s.syncInto(s.paired, sorted)
+    check("sync populates the model", s.paired.count === 4)
+    check("sync preserves order", s.paired.get(0).address === "AA:BB:CC:DD:EE:03")
 
     // A poll where only one battery moved must leave every other row alone.
     const bumped = sorted.map(d => ({
@@ -81,10 +84,10 @@ Scope {
       connected: d.connected, trusted: d.trusted, icon: d.icon,
       battery: d.address === "AA:BB:CC:DD:EE:01" ? 42 : d.battery
     }))
-    s.syncModel(bumped)
+    s.syncInto(s.paired, bumped)
     check("sync updates a changed role in place",
-          s.model.count === 4 && s.model.get(1).battery === 42)
-    check("sync leaves untouched rows untouched", s.model.get(0).battery === -1)
+          s.paired.count === 4 && s.paired.get(1).battery === 42)
+    check("sync leaves untouched rows untouched", s.paired.get(0).battery === -1)
 
     // Reorder: the mouse disconnects and drops into the paired group.
     const reordered = s.sortDevices(bumped.map(d => ({
@@ -92,40 +95,51 @@ Scope {
       connected: d.address === "AA:BB:CC:DD:EE:01" ? false : d.connected,
       trusted: d.trusted, icon: d.icon, battery: d.battery
     })))
-    s.syncModel(reordered)
-    check("sync reorders rather than rebuilding", s.model.count === 4)
+    s.syncInto(s.paired, reordered)
+    check("sync reorders rather than rebuilding", s.paired.count === 4)
     check("a disconnected device drops below the connected group",
-          s.model.get(0).address === "AA:BB:CC:DD:EE:03"
-          && s.model.get(1).address === "AA:BB:CC:DD:EE:01"
-          && s.model.get(1).connected === false)
+          s.paired.get(0).address === "AA:BB:CC:DD:EE:03"
+          && s.paired.get(1).address === "AA:BB:CC:DD:EE:01"
+          && s.paired.get(1).connected === false)
 
     // Removal.
-    s.syncModel(reordered.slice(0, 2))
-    check("sync removes rows that left the poll", s.model.count === 2)
+    s.syncInto(s.paired, reordered.slice(0, 2))
+    check("sync removes rows that left the poll", s.paired.count === 2)
 
-    // --- selection -----------------------------------------------------------
-    s.devices = reordered
-    s.selectedAddress = "AA:BB:CC:DD:EE:01"
-    check("selection resolves an address to a row", s.selectedIndex === 1)
-    check("selection exposes the selected device",
-          s.selected && s.selected.address === "AA:BB:CC:DD:EE:01")
-    s.moveSelection(1)
-    check("down moves one row", s.selectedIndex === 2)
-    s.moveSelection(-9)
-    check("selection clamps at the top", s.selectedIndex === 0)
-    s.moveSelection(99)
-    check("selection clamps at the bottom", s.selectedIndex === 3)
-    s.selectEdge(false)
-    check("Home selects the first row", s.selectedIndex === 0)
-    s.selectEdge(true)
-    check("End selects the last row", s.selectedIndex === 3)
+    // --- zone split ----------------------------------------------------------
+    //
+    // The panel renders three zones, so a poll is split into three models and
+    // a device lands in exactly one of them: connected, paired-and-idle, or
+    // merely discovered.
+    s.syncModel(reordered)
+    check("connected devices land in the hero zone",
+          s.connected.count === 1
+          && s.connected.get(0).address === "AA:BB:CC:DD:EE:03")
+    check("paired but idle devices land in the device list", s.paired.count === 2)
+    check("unpaired devices land in discovery",
+          s.discovered.count === 1
+          && s.discovered.get(0).address === "AA:BB:CC:DD:EE:04")
+    check("a paired device never appears in discovery", s.discoveredCount === 1)
 
-    // Selection survives a reorder because it is held by address, not index.
-    s.selectedAddress = "AA:BB:CC:DD:EE:04"
-    const before = s.selectedIndex
-    s.devices = s.sortDevices(reordered.slice().reverse())
-    check("selection follows the device across a reorder",
-          s.selected && s.selected.address === "AA:BB:CC:DD:EE:04" && before >= 0)
+    // Connecting the mouse moves it out of the paired zone and into the hero.
+    const connectedMouse = s.sortDevices(reordered.map(d => ({
+      address: d.address, name: d.name, paired: d.paired,
+      connected: d.address === "AA:BB:CC:DD:EE:01" ? true : d.connected,
+      trusted: d.trusted, icon: d.icon, battery: d.battery
+    })))
+    s.syncModel(connectedMouse)
+    check("a device that connects moves into the hero zone",
+          s.connected.count === 2 && s.paired.count === 1)
+    s.syncModel(reordered)
+    check("a device that disconnects moves back into the device list",
+          s.connected.count === 1 && s.paired.count === 2)
+
+    // --- action labels -------------------------------------------------------
+    check("a queued action reads as a progress label",
+          s.actionLabel("connect") === "Connecting"
+          && s.actionLabel("forget") === "Removing")
+    check("an unknown action falls back to its own name",
+          s.actionLabel("nonsense") === "nonsense")
 
     // --- primary action ------------------------------------------------------
     check("a connected device disconnects",
@@ -156,6 +170,20 @@ Scope {
           s.glyphForDevice({ icon: "nonsense" }) === s.glyphOn)
     check("a missing device falls back to the bluetooth glyph",
           s.glyphForDevice(null) === s.glyphOn)
+
+    // --- error routing -------------------------------------------------------
+    //
+    // A failed connect belongs on the row that failed; adapter and poll
+    // failures belong in the header banner. The panel tells them apart by
+    // errorAddress, so enqueueing anything must clear the previous failure.
+    s.lastError = "Could not connect"
+    s.errorAddress = "AA:BB:CC:DD:EE:01"
+    check("a device failure is attributed to its device",
+          s.errorAddress === "AA:BB:CC:DD:EE:01")
+    s.enqueue("trust", "AA:BB:CC:DD:EE:01")
+    check("a new action clears the previous failure",
+          s.lastError === "" && s.errorAddress === "")
+    s.clearPending("AA:BB:CC:DD:EE:01")
 
     console.log(smoke.failures === 0
       ? "ok: BluetoothState logic"

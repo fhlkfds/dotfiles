@@ -7,6 +7,9 @@ shell_dir="$repo_root/quickshell/.config/quickshell"
 panel="$shell_dir/BluetoothPanel.qml"
 state="$shell_dir/BluetoothState.qml"
 smoke="$shell_dir/BluetoothSmoke.qml"
+hero="$shell_dir/BluetoothHeroCard.qml"
+row="$shell_dir/BluetoothDeviceRow.qml"
+battery="$shell_dir/BluetoothBattery.qml"
 test_root=$(mktemp -d -t bluetooth-control-test.XXXXXX)
 trap 'rm -rf -- "$test_root"' EXIT
 
@@ -246,20 +249,43 @@ set -e
 
 # --- panel expectations -------------------------------------------------------
 
-assert_contains "$panel" 'deviceRow.battery'
-assert_contains "$panel" '" — " + deviceRow.battery + "%"'
-# Every colour must come from the theme; no literal hex in the panel.
-if grep -nE '"#[0-9a-fA-F]{3,8}"' "$panel" "$state"; then
+# Battery is a number plus a bar, shared by the hero card and the device rows.
+assert_contains "$battery" 'root.level + "%"'
+assert_contains "$hero" 'BluetoothBattery'
+assert_contains "$row" 'BluetoothBattery'
+# Every colour must come from the theme; no literal hex anywhere in the menu.
+if grep -nE '"#[0-9a-fA-F]{3,8}"' "$panel" "$state" "$hero" "$row" "$battery"; then
   fail 'a colour is hardcoded instead of coming from Theme'
 fi
-# Keyboard navigation.
+# The menu is pointer-driven: Escape is the only key it handles, and it no
+# longer advertises a shortcut strip or carries keyboard selection.
+assert_contains "$panel" 'Keys.onEscapePressed'
 for binding in Keys.onUpPressed Keys.onDownPressed Keys.onReturnPressed \
-               Keys.onEscapePressed Qt.Key_Home Qt.Key_End Qt.Key_Delete; do
-  assert_contains "$panel" "$binding"
+               Qt.Key_Home Qt.Key_End Qt.Key_Delete; do
+  ! grep -Fq -- "$binding" "$panel" \
+    || fail "the panel still handles $binding after going pointer-only"
 done
-# The list must be fed by the incrementally-synced model, not a raw array.
-assert_contains "$panel" 'model: BluetoothState.model'
-assert_contains "$state" 'ListModel { id: deviceModel }'
+for symbol in selectedAddress selectedIndex moveSelection selectEdge; do
+  ! grep -Fq -- "$symbol" "$state" \
+    || fail "$symbol survives in the state layer after going pointer-only"
+done
+! grep -Fq 'select   ⏎ connect' "$panel" || fail 'the key hint strip is still drawn'
+# The whole row is the connect target, so no per-row action pill remains.
+! grep -Fq 'primaryAction(deviceRow.device)' "$panel" || fail 'a per-row action pill remains'
+assert_contains "$row" 'onClicked: BluetoothState.activateDevice(root.device)'
+# Forget asks first, in place.
+assert_contains "$row" 'confirmingForget'
+assert_contains "$row" '"Forget " + root.name + "?"'
+# Expanding discovery is what starts a scan.
+assert_contains "$state" 'function setDiscoveryExpanded(expanded)'
+assert_contains "$panel" 'BluetoothState.setDiscoveryExpanded(true)'
+# Each zone is fed by its own incrementally-synced model, not a raw array.
+for zone in 'BluetoothState.connected' 'BluetoothState.paired' 'BluetoothState.discovered'; do
+  assert_contains "$panel" "model: $zone"
+done
+assert_contains "$state" 'ListModel { id: connectedModel }'
+assert_contains "$state" 'ListModel { id: pairedModel }'
+assert_contains "$state" 'ListModel { id: discoveredModel }'
 
 # --- QML logic smoke ----------------------------------------------------------
 

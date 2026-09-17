@@ -57,11 +57,12 @@ set, so adding or removing a widget means updating that list.
 
 ## Bar interactions
 
-- **Empty bar space**: double-click toggles transparency. Dragging down or up by
-  more than 12 scaled px moves the bar between the top and bottom screen edges.
+- **Empty bar space**: inert. The bar is pinned to the top edge and cannot be
+  moved.
 - **Display**: opens the display panel; the wheel adjusts DDC/CI brightness.
 - **Network**: opens the themed NetworkManager panel.
-- **Bluetooth**: full device management, keyboard navigable.
+- **Bluetooth**: connected devices as hero cards, paired devices below, discovery
+  folded behind a scan button. Pointer-driven; Escape closes.
 - **Audio**: panel on left or middle click, mute on right click, 3% wheel steps.
 - **Clipboard**: opens the cliphist browser.
 - **Recording indicator**: only present while recording; clicking stops it.
@@ -147,7 +148,7 @@ dropdown.
 | Network | `NetworkState/Icon/Panel.qml` |
 | Audio and media | `AudioState/Icon/Panel.qml`, `AudioPanelContent.qml`, `VolumeSlider.qml`, `MediaState/Icon/Panel.qml`, `MediaPreviewCard.qml`, `LyricsState.qml`, `LyricsView.qml` |
 | Visualiser | `CavaState.qml`, `CavaBars.qml`, `CavaEdgeVisualizer.qml`, `VisualizerState.qml` |
-| Bluetooth | `BluetoothState/Icon/Panel.qml` |
+| Bluetooth | `BluetoothState/Icon/Panel/HeroCard/DeviceRow/Battery.qml` |
 | Display | `DisplayState/Icon/Panel.qml` |
 | Clipboard | `ClipboardState/Icon/Panel.qml` |
 | Notifications | `notifications/` (see [Notifications](Notifications.md)), `NotifyState.qml`, `NotifyIcon.qml`, `DndIcon.qml` |

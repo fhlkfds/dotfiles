@@ -58,8 +58,9 @@ format when `~/.t3` exists. The stable `dotfiles-desktop` id is selected through
 `t3 theme set` when that CLI is available; otherwise select the generated theme
 once in Settings > Appearance and its file watcher will repaint it on later
 switches.
-Neovim, btop, and Obsidian are optional. Deploy them with `stow --no-folding
-neovim btop obsidian` before running `theme set`; `--no-folding` keeps app state
+btop deploys automatically via `dots`. Neovim and Obsidian are opt-in: deploy
+them with `stow --no-folding neovim obsidian` before running `theme set`;
+`--no-folding` keeps app state
 out of the checkout. If an output directory is absent, the generator reports
 `skipped (not deployed)` and continues. This repository does not currently track
 a `btop.conf`, so set `color_theme = "current"` once in your own config. Neovim

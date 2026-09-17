@@ -444,3 +444,67 @@
 2026-09-16T15:55:09.036045Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w1" tab_id="w1:t5"
 2026-09-16T15:55:09.036161Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w1" tab_id="w1:t5"
 2026-09-16T15:55:14.038398Z  INFO herdr::logging: session saved event="persist.save" subsystem="persist" outcome="ok" path=/home/liam/.config/herdr/session.json workspaces=2
+2026-09-17T12:21:35.083309Z  INFO herdr::api::server: api server listening path=/home/liam/.config/herdr/herdr.sock
+2026-09-17T12:21:35.087262Z  INFO herdr::logging: spawning pane terminal event="pane.spawn.start" subsystem="pane" outcome="started" pane_id=1 rows=24 cols=80 scrollback_limit_bytes=10000000
+2026-09-17T12:21:35.090362Z  INFO herdr::logging: pane child spawned event="pane.spawned" subsystem="pane" outcome="ok" pane_id=1 pid=2150
+2026-09-17T12:21:35.090864Z  INFO herdr::logging: spawning pane terminal event="pane.spawn.start" subsystem="pane" outcome="started" pane_id=2 rows=24 cols=80 scrollback_limit_bytes=10000000
+2026-09-17T12:21:35.091896Z  INFO herdr::logging: pane child spawned event="pane.spawned" subsystem="pane" outcome="ok" pane_id=2 pid=2156
+2026-09-17T12:21:35.092251Z  INFO herdr::logging: spawning pane terminal event="pane.spawn.start" subsystem="pane" outcome="started" pane_id=3 rows=24 cols=80 scrollback_limit_bytes=10000000
+2026-09-17T12:21:35.093613Z  INFO herdr::logging: pane child spawned event="pane.spawned" subsystem="pane" outcome="ok" pane_id=3 pid=2159
+2026-09-17T12:21:35.094106Z  INFO herdr::logging: spawning pane terminal event="pane.spawn.start" subsystem="pane" outcome="started" pane_id=4 rows=24 cols=80 scrollback_limit_bytes=10000000
+2026-09-17T12:21:35.095671Z  INFO herdr::logging: pane child spawned event="pane.spawned" subsystem="pane" outcome="ok" pane_id=4 pid=2164
+2026-09-17T12:21:35.096248Z  INFO herdr::logging: spawning pane terminal event="pane.spawn.start" subsystem="pane" outcome="started" pane_id=5 rows=24 cols=80 scrollback_limit_bytes=10000000
+2026-09-17T12:21:35.097653Z  INFO herdr::logging: pane child spawned event="pane.spawned" subsystem="pane" outcome="ok" pane_id=5 pid=2171
+2026-09-17T12:21:35.098073Z  INFO herdr::logging: session restore evaluated event="persist.restore" subsystem="persist" outcome="ok" workspaces=2
+2026-09-17T12:21:35.098110Z  INFO herdr::app: using pane scrollback configuration pane_scrollback_limit_bytes=10000000
+2026-09-17T12:21:35.276445Z  INFO herdr::logging: checking for updates event="update.check.start" subsystem="update" outcome="started"
+2026-09-17T12:21:35.277639Z  INFO herdr::server::headless::bootstrap: restored session already has workspaces; ignoring startup cwd cwd=/home/liam
+2026-09-17T12:21:35.277937Z  INFO herdr::server::headless: client protocol socket listening path=/home/liam/.config/herdr/herdr-client.sock
+2026-09-17T12:21:35.278024Z  INFO herdr::server::headless::bootstrap: herdr server started api_socket=/home/liam/.config/herdr/herdr.sock client_socket=/home/liam/.config/herdr/herdr-client.sock
+2026-09-17T12:21:35.278227Z  INFO herdr::logging: herdr starting event="app.startup" subsystem="server" outcome="started" pid=2130
+2026-09-17T12:21:35.533348Z  INFO herdr::server::headless: client connected client_id=2 cols=217 rows=71 cell_width_px=9 cell_height_px=20 surface_active=true render_encoding=SemanticFrame
+2026-09-17T12:21:38.304917Z  WARN herdr::detect::manifest_update: agent detection manifest update failed: failed to fetch https://herdr.dev/agent-detection/index.toml
+2026-09-17T12:21:42.692420Z  INFO herdr::logging: update available event="update.available" subsystem="update" outcome="ok" version="0.9.1"
+2026-09-17T12:21:42.692469Z  INFO herdr::update: new stable build available at https://github.com/herdrdev/herdr/releases/download/v0.9.1/herdr-linux-x86_64
+2026-09-17T12:21:42.693476Z  INFO herdr::update: auto-update check: 0.9.1 available, waiting for explicit install
+2026-09-17T12:24:21.771628Z  INFO herdr::server::headless: client detached client_id=2
+2026-09-17T12:26:50.290148Z  INFO herdr::api::server: api server listening path=/home/liam/.config/herdr/herdr.sock
+2026-09-17T12:26:50.298652Z  INFO herdr::logging: spawning pane terminal event="pane.spawn.start" subsystem="pane" outcome="started" pane_id=1 rows=24 cols=80 scrollback_limit_bytes=10000000
+2026-09-17T12:26:50.304848Z  INFO herdr::logging: pane child spawned event="pane.spawned" subsystem="pane" outcome="ok" pane_id=1 pid=4223
+2026-09-17T12:26:50.305916Z  INFO herdr::logging: spawning pane terminal event="pane.spawn.start" subsystem="pane" outcome="started" pane_id=2 rows=24 cols=80 scrollback_limit_bytes=10000000
+2026-09-17T12:26:50.312901Z  INFO herdr::logging: pane child spawned event="pane.spawned" subsystem="pane" outcome="ok" pane_id=2 pid=4227
+2026-09-17T12:26:50.314523Z  INFO herdr::logging: spawning pane terminal event="pane.spawn.start" subsystem="pane" outcome="started" pane_id=3 rows=24 cols=80 scrollback_limit_bytes=10000000
+2026-09-17T12:26:50.317908Z  INFO herdr::logging: pane child spawned event="pane.spawned" subsystem="pane" outcome="ok" pane_id=3 pid=4230
+2026-09-17T12:26:50.318936Z  INFO herdr::logging: spawning pane terminal event="pane.spawn.start" subsystem="pane" outcome="started" pane_id=4 rows=24 cols=80 scrollback_limit_bytes=10000000
+2026-09-17T12:26:50.323238Z  INFO herdr::logging: pane child spawned event="pane.spawned" subsystem="pane" outcome="ok" pane_id=4 pid=4237
+2026-09-17T12:26:50.324565Z  INFO herdr::logging: spawning pane terminal event="pane.spawn.start" subsystem="pane" outcome="started" pane_id=5 rows=24 cols=80 scrollback_limit_bytes=10000000
+2026-09-17T12:26:50.329076Z  INFO herdr::logging: pane child spawned event="pane.spawned" subsystem="pane" outcome="ok" pane_id=5 pid=4251
+2026-09-17T12:26:50.329930Z  INFO herdr::logging: session restore evaluated event="persist.restore" subsystem="persist" outcome="ok" workspaces=2
+2026-09-17T12:26:50.330027Z  INFO herdr::app: using pane scrollback configuration pane_scrollback_limit_bytes=10000000
+2026-09-17T12:26:50.860631Z  INFO herdr::logging: checking for updates event="update.check.start" subsystem="update" outcome="started"
+2026-09-17T12:26:50.868402Z  INFO herdr::server::headless::bootstrap: restored session already has workspaces; ignoring startup cwd cwd=/home/liam
+2026-09-17T12:26:50.869129Z  INFO herdr::server::headless: client protocol socket listening path=/home/liam/.config/herdr/herdr-client.sock
+2026-09-17T12:26:50.869317Z  INFO herdr::server::headless::bootstrap: herdr server started api_socket=/home/liam/.config/herdr/herdr.sock client_socket=/home/liam/.config/herdr/herdr-client.sock
+2026-09-17T12:26:50.869661Z  INFO herdr::logging: herdr starting event="app.startup" subsystem="server" outcome="started" pid=4188
+2026-09-17T12:26:51.066850Z  WARN herdr::detect::manifest_update: skipping unknown remote manifest agent agent="letta"
+2026-09-17T12:26:51.078815Z  INFO herdr::logging: update available event="update.available" subsystem="update" outcome="ok" version="0.9.1"
+2026-09-17T12:26:51.078919Z  INFO herdr::update: new stable build available at https://github.com/herdrdev/herdr/releases/download/v0.9.1/herdr-linux-x86_64
+2026-09-17T12:26:51.081432Z  INFO herdr::update: auto-update check: 0.9.1 available, waiting for explicit install
+2026-09-17T12:26:51.093937Z  INFO herdr::server::headless: client connected client_id=2 cols=180 rows=49 cell_width_px=9 cell_height_px=20 surface_active=true render_encoding=SemanticFrame
+2026-09-17T12:56:51.028537Z  WARN herdr::detect::manifest_update: skipping unknown remote manifest agent agent="letta"
+2026-09-17T13:26:51.050174Z  WARN herdr::detect::manifest_update: skipping unknown remote manifest agent agent="letta"
+2026-09-17T13:48:26.726607Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w1" tab_id="w1:t2"
+2026-09-17T13:48:26.726698Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w1" tab_id="w1:t2"
+2026-09-17T13:48:31.730536Z  INFO herdr::logging: session saved event="persist.save" subsystem="persist" outcome="ok" path=/home/liam/.config/herdr/session.json workspaces=2
+2026-09-17T13:56:51.129985Z  WARN herdr::detect::manifest_update: skipping unknown remote manifest agent agent="letta"
+2026-09-17T14:17:02.518386Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w1" tab_id="w1:t1"
+2026-09-17T14:17:02.518538Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w1" tab_id="w1:t1"
+2026-09-17T14:17:07.520370Z  INFO herdr::logging: session saved event="persist.save" subsystem="persist" outcome="ok" path=/home/liam/.config/herdr/session.json workspaces=2
+2026-09-17T14:19:57.145918Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w1" tab_id="w1:t2"
+2026-09-17T14:19:57.146024Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w1" tab_id="w1:t2"
+2026-09-17T14:20:00.353382Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w1" tab_id="w1:t1"
+2026-09-17T14:20:00.353480Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w1" tab_id="w1:t1"
+2026-09-17T14:20:05.356466Z  INFO herdr::logging: session saved event="persist.save" subsystem="persist" outcome="ok" path=/home/liam/.config/herdr/session.json workspaces=2
+2026-09-17T14:26:51.024781Z  WARN herdr::detect::manifest_update: skipping unknown remote manifest agent agent="letta"
+2026-09-17T14:56:51.008252Z  WARN herdr::detect::manifest_update: skipping unknown remote manifest agent agent="letta"
+2026-09-17T15:26:51.101191Z  WARN herdr::detect::manifest_update: skipping unknown remote manifest agent agent="letta"

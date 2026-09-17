@@ -135,6 +135,7 @@ the autostart line's requested workspace and its window rule if it has one.
 | Change | How it takes effect |
 | --- | --- |
 | Hyprland config | `hyprctl reload` in the live session |
+| Quickshell QML that changed shape | `hypr/scripts/shell-reload.sh`, or `dots deploy` with the quickshell package |
 | `hl.env` / `PATH` changes in `hyprland.lua` | next login only — `hyprctl reload` will not do it |
 | Quickshell QML | hot-reloaded by its file watcher; restart only if that fails |
 | theme palette | `theme validate <slug>`, then `theme set <slug>` |

@@ -110,6 +110,7 @@ Under `hypr/.config/hypr/scripts/`.
 | `clipboard-store.sh` | `wl-paste --watch` | filters secrets and excluded apps, then stores in cliphist |
 | `clipboard-wipe.sh` | manual | clears clipboard and history |
 | `run-if-deployed.sh` | used by bindings | see [below](#the-deployment-guard) |
+| `shell-reload.sh` | manual, `dots deploy` | reloads Hyprland, then stops both Quickshell instances and relaunches them with `--daemonize` |
 | `bluetooth-control` | Quickshell | JSON adapter/device state and validated control commands |
 | `network-control` | Quickshell | `nmcli` wrapper: Wi-Fi, DNS, IPv4, QR |
 | `arch-updates` | Quickshell | `count` (JSON) and `update` (Kitty window) |

@@ -69,7 +69,8 @@ Obsidian requires a manual symlink from each vault's
 `.obsidian/snippets/generated-theme.css` to the generated file, followed by
 enabling the snippet in that vault's Appearance settings.
 
-Deploy these optional packages with `stow --no-folding neovim btop obsidian`.
+btop deploys automatically via `dots`. Deploy the remaining opt-in packages
+with `stow --no-folding neovim obsidian`.
 This keeps application-created state outside the checkout; a package-level
 `.gitignore` does not by itself stop Stow from folding a missing target tree.
 

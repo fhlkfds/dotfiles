@@ -6,7 +6,6 @@ import QtQuick
 Scope {
   id: bar
   property bool barVisible: true
-  property bool barAtBottom: false
 
   // Panels opened from a keybind rather than a click target the focused
   // monitor, so they land where the user is looking.
@@ -255,9 +254,9 @@ Scope {
       screen: modelData
       visible: bar.barVisible
 
+      // The bar is pinned to the top edge; there is no way to move it.
       anchors {
-        top: !bar.barAtBottom
-        bottom: bar.barAtBottom
+        top: true
         left: true
         right: true
       }
@@ -276,20 +275,11 @@ Scope {
         color: Theme.bg
       }
 
-      // Dragging empty bar space down/up moves the bar between screen edges
-      // without stealing clicks from any widget layered above this area.
+      // Empty bar space swallows clicks so drags and stray clicks cannot
+      // reach anything below the bar.
       MouseArea {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton
-        property real pressedY: 0
-        onPressed: mouse => pressedY = mouse.y
-        onReleased: mouse => {
-          const distance = mouse.y - pressedY
-          if (distance > Theme.fs(12))
-            bar.barAtBottom = true
-          else if (distance < -Theme.fs(12))
-            bar.barAtBottom = false
-        }
+        acceptedButtons: Qt.AllButtons
       }
 
       Row {

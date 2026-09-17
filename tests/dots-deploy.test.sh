@@ -21,12 +21,20 @@ git -C "$fixture_repo" init -q
 git -C "$fixture_repo" config user.name 'Dots Test'
 git -C "$fixture_repo" config user.email dots@example.invalid
 mkdir -p "$fixture_repo/alpha/.config/alpha" \
-  "$fixture_repo/hypr/.config/hypr" "$fixture_repo/neovim/.config/nvim" \
+  "$fixture_repo/hypr/.config/hypr" "$fixture_repo/hypr/.config/hypr/scripts" \
+  "$fixture_repo/quickshell/.config/quickshell" \
+  "$fixture_repo/neovim/.config/nvim" \
   "$fixture_repo/wallpaper/theme" "$fixture_repo/dots/.local/bin" "$fixture_repo/docs" \
   "$fixture_repo/tests" "$fixture_repo/system/greetd" \
   "$fixture_repo/system/pam.d"
 printf 'one\n' > "$fixture_repo/alpha/.config/alpha/config"
 printf 'one\n' > "$fixture_repo/hypr/.config/hypr/config"
+printf 'one\n' > "$fixture_repo/quickshell/.config/quickshell/shell.qml"
+cat > "$fixture_repo/hypr/.config/hypr/scripts/shell-reload.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'shell-reload\n' >> "$DOTS_TEST_CALLS"
+STUB
+chmod +x "$fixture_repo/hypr/.config/hypr/scripts/shell-reload.sh"
 printf 'one\n' > "$fixture_repo/neovim/.config/nvim/init.lua"
 printf 'one\n' > "$fixture_repo/wallpaper/theme/wallpaper"
 printf 'docs\n' > "$fixture_repo/docs/guide"
@@ -167,6 +175,36 @@ git -C "$fixture_repo" commit -qm hypr
 : > "$calls"
 DOTS_TEST_PGREP_RC=0 run_dots >/dev/null
 grep -Fx 'hyprctl arg=reload' "$calls" >/dev/null || fail 'live Hyprland was not reloaded'
+
+# Deploying quickshell into a live session restarts the shell, which also
+# reloads Hyprland, so the bare hyprctl reload must not run as well.
+printf '%s\n' "$(git -C "$fixture_repo" rev-parse HEAD)" > "$fixture_state"
+printf 'two\n' >> "$fixture_repo/quickshell/.config/quickshell/shell.qml"
+printf 'three\n' >> "$fixture_repo/hypr/.config/hypr/config"
+git -C "$fixture_repo" add .
+git -C "$fixture_repo" commit -qm quickshell
+: > "$calls"
+DOTS_TEST_PGREP_RC=0 run_dots >/dev/null
+grep -Fx 'shell-reload' "$calls" >/dev/null || fail 'Quickshell was not restarted'
+! grep -Fx 'hyprctl arg=reload' "$calls" >/dev/null ||
+  fail 'Hyprland was reloaded twice alongside the shell restart'
+
+# Without a live session, neither the compositor nor the shell is touched.
+printf '%s\n' "$(git -C "$fixture_repo" rev-parse HEAD)" > "$fixture_state"
+printf 'three\n' >> "$fixture_repo/quickshell/.config/quickshell/shell.qml"
+git -C "$fixture_repo" add .
+git -C "$fixture_repo" commit -qm quickshell-again
+: > "$calls"
+run_dots >/dev/null
+! grep -Fx 'shell-reload' "$calls" >/dev/null ||
+  fail 'the shell was restarted without a live session'
+
+# The plan names the restart before it happens.
+printf '%s\n' "$(git -C "$fixture_repo" rev-parse HEAD~1)" > "$fixture_state"
+output=$(run_dots --dry-run)
+[[ $output == *'restart Quickshell if a session is live'* ]] ||
+  fail 'the plan does not mention the Quickshell restart'
+printf '%s\n' "$(git -C "$fixture_repo" rev-parse HEAD)" > "$fixture_state"
 
 # `update` fast-forwards from the configured upstream, then deploys exactly the
 # package changed by that incoming commit.

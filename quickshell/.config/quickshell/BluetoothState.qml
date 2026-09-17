@@ -7,9 +7,11 @@ import QtQuick
 //
 // The backend is polled continuously — including while the panel is closed —
 // so opening the menu never shows an empty or stale list. Poll results are
-// diffed into `deviceModel`, a ListModel, so a poll that changes nothing
-// touches no delegates and a poll that changes one battery reading repaints
-// one row rather than rebuilding the whole list.
+// split into the panel's three zones (connected / paired / discovered) and
+// diffed into a ListModel per zone, so a poll that changes nothing touches no
+// delegates and a poll that changes one battery reading repaints one row
+// rather than rebuilding the whole list. A device that connects leaves one
+// zone's model and enters another's, which is the move the panel animates.
 Singleton {
   id: root
 
@@ -21,11 +23,15 @@ Singleton {
   property bool available: false
   property bool powered: false
   property bool scanning: false
-  // Sorted device array. Ordering and keyboard selection are driven from here;
-  // `deviceModel` below is the incrementally-synced view the ListView renders.
+  // Sorted device array. Ordering is driven from here; the zone models below
+  // are the incrementally-synced views the panel renders.
   property var devices: []
   property string lastError: ""
   property bool actionErrorActive: false
+  // Address the last failing action belonged to, or "" for adapter-wide and
+  // status-poll failures. The panel routes an error to the row that caused it
+  // and keeps the header banner for everything else.
+  property string errorAddress: ""
 
   // Keep the backend below the already-linked Hyprland config tree so adding
   // this widget does not require a separate ~/.local/bin Stow link.
@@ -81,45 +87,6 @@ Singleton {
     return root.glyphOn
   }
 
-  // --- selection -------------------------------------------------------------
-  //
-  // Selection is held by address rather than by row, so a device connecting
-  // (and therefore sorting to the top) does not move the highlight to a
-  // different device under the user's hands.
-
-  property string selectedAddress: ""
-
-  readonly property int selectedIndex: {
-    for (let i = 0; i < root.devices.length; i++)
-      if (root.devices[i].address === root.selectedAddress)
-        return i
-    return -1
-  }
-
-  readonly property var selected:
-    (selectedIndex >= 0 && selectedIndex < devices.length)
-      ? devices[selectedIndex] : null
-
-  function moveSelection(delta) {
-    const n = root.devices.length
-    if (n === 0) {
-      root.selectedAddress = ""
-      return
-    }
-    const current = root.selectedIndex
-    const next = current < 0
-      ? (delta > 0 ? 0 : n - 1)
-      : Math.max(0, Math.min(n - 1, current + delta))
-    root.selectedAddress = root.devices[next].address
-  }
-
-  function selectEdge(last) {
-    const n = root.devices.length
-    if (n === 0)
-      return
-    root.selectedAddress = root.devices[last ? n - 1 : 0].address
-  }
-
   // --- pending actions -------------------------------------------------------
   //
   // Actions are queued rather than gated behind one global `busy` flag, so a
@@ -160,6 +127,7 @@ Singleton {
     }])
     root.lastError = ""
     root.actionErrorActive = false
+    root.errorAddress = ""
     root.pump()
   }
 
@@ -192,8 +160,31 @@ Singleton {
   // Scanning runs outside the action queue: it is long-lived by design and
   // must not block connect/disconnect while it is in progress. Discovered
   // devices appear through the ordinary poll, so results stream in live.
-  readonly property int scanSeconds: 20
+  //
+  // The window is deliberately short: expanding the panel's discovery section
+  // starts a scan, and a panel left open should not hold the radio in
+  // discovery forever. When it lapses the section stays open and its button
+  // offers another scan.
+  readonly property int scanSeconds: 30
   property bool scanRequested: false
+
+  readonly property bool scanActive: root.scanRequested || root.scanning
+
+  // Owned here rather than in the panel so the expanded/collapsed state (and
+  // the scan it drives) survives the popup closing and reopening.
+  property bool discoveryExpanded: false
+
+  function setDiscoveryExpanded(expanded) {
+    if (root.discoveryExpanded === expanded)
+      return
+    root.discoveryExpanded = expanded
+    // Expanding a discovery section has exactly one meaning, so it scans
+    // without a second click; collapsing it puts the radio back down.
+    if (expanded)
+      root.startScan()
+    else
+      root.stopScan()
+  }
 
   function startScan() {
     if (scanProc.running)
@@ -265,6 +256,22 @@ Singleton {
       root.pairDevice(device)
   }
 
+  // Human label for a queued action, shown while it is pending. Lives here
+  // rather than in the panel because the hero card and the device rows both
+  // render it.
+  function actionLabel(action) {
+    switch (action) {
+      case "connect": return "Connecting"
+      case "disconnect": return "Disconnecting"
+      case "pair": return "Pairing"
+      case "trust": return "Trusting"
+      case "untrust": return "Untrusting"
+      case "forget": return "Removing"
+      case "power": return "Switching"
+      default: return action
+    }
+  }
+
   // --- panel -----------------------------------------------------------------
 
   function togglePanel(screenName) {
@@ -288,10 +295,19 @@ Singleton {
 
   // --- model sync ------------------------------------------------------------
 
-  // Rendered by the panel's ListView. Kept in step with `devices` by address so
-  // a poll updates only the roles that actually changed.
-  ListModel { id: deviceModel }
-  readonly property alias model: deviceModel
+  // One model per panel zone, kept in step with `devices` by address so a poll
+  // updates only the roles that actually changed. Splitting here rather than
+  // filtering in QML is what makes a connect look like a device moving from
+  // the paired zone into the hero: the row leaves one model and enters another.
+  ListModel { id: connectedModel }
+  ListModel { id: pairedModel }
+  ListModel { id: discoveredModel }
+
+  readonly property alias connected: connectedModel
+  readonly property alias paired: pairedModel
+  readonly property alias discovered: discoveredModel
+
+  readonly property int discoveredCount: discoveredModel.count
 
   // Connected first, then paired, then merely discovered; alphabetical inside
   // each group so rows do not shuffle between polls.
@@ -328,7 +344,16 @@ Singleton {
     }
   }
 
+  // Splits a sorted poll into the three zones and syncs each. Devices already
+  // paired never appear in discovery, so an idle scan cannot duplicate rows.
   function syncModel(list) {
+    root.syncInto(connectedModel, list.filter(device => device.connected))
+    root.syncInto(pairedModel,
+      list.filter(device => device.paired && !device.connected))
+    root.syncInto(discoveredModel, list.filter(device => !device.paired))
+  }
+
+  function syncInto(deviceModel, list) {
     for (let i = 0; i < list.length; i++) {
       const entry = list[i]
       let found = -1
@@ -379,6 +404,7 @@ Singleton {
         root.devices = []
         root.syncModel([])
         root.lastError = statusErr.text.trim() || "Could not read Bluetooth status"
+        root.errorAddress = ""
         return
       }
       if (statusOut.text === root.lastStatusRaw)
@@ -393,10 +419,10 @@ Singleton {
           (Array.isArray(state.devices) ? state.devices : []).map(root.normalise))
         root.devices = list
         root.syncModel(list)
-        if (root.selectedAddress !== "" && root.selectedIndex < 0)
-          root.selectedAddress = list.length > 0 ? list[0].address : ""
-        if (!root.actionErrorActive)
+        if (!root.actionErrorActive) {
           root.lastError = state.error || ""
+          root.errorAddress = ""
+        }
       } catch (error) {
         root.lastStatusRaw = ""
         root.available = false
@@ -405,6 +431,7 @@ Singleton {
         root.devices = []
         root.syncModel([])
         root.lastError = "Bluetooth returned invalid status"
+        root.errorAddress = ""
       }
     }
   }
@@ -421,8 +448,10 @@ Singleton {
       root.activeAddress = ""
       root.clearPending(key)
       root.actionErrorActive = code !== 0
-      if (code !== 0)
+      if (code !== 0) {
+        root.errorAddress = key
         root.lastError = actionErr.text.trim() || ("Bluetooth " + action + " failed")
+      }
       // Force a re-parse: the action changed state the poll must pick up.
       root.lastStatusRaw = ""
       root.refresh()

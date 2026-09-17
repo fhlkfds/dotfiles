@@ -94,7 +94,7 @@ an explicit package/configuration if they should become repository-controlled.
 
 The optional `neovim/`, `btop/`, and `obsidian/` packages provide deployment
 directories for generated application themes. Deploy them with `stow
---no-folding neovim btop obsidian`, then run `theme set <slug>`. Neovim can load
+--no-folding neovim obsidian`, then run `theme set <slug>`. Neovim can load
 the stable alias with `:colorscheme current`,
 and btop can use `color_theme = "current"` in an untracked `btop.conf`.
 

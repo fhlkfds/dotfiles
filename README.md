@@ -105,11 +105,13 @@ plain SSH connection is already open, reattach its session with
 is replaced with underscores (for example, `server.example.com` becomes
 `server_example_com`). The remote host also needs `tmux` installed.
 
-The generated app-theme packages are optional. Deploy them without directory
-folding so application-created files stay outside the Git checkout:
+`btop` and `wallpaper` deploy automatically with `dots deploy`/`dots update`,
+which passes `--no-folding` for them. `neovim` and `obsidian` stay opt-in
+because they write into trees this repository does not own; deploy them without
+directory folding so application-created files stay outside the Git checkout:
 
 ```bash
-stow --no-folding neovim btop obsidian
+stow --no-folding neovim obsidian
 ```
 
 Their package-level `.gitignore` files keep accidental app state untracked, but
@@ -197,11 +199,12 @@ The command validates mappings, creates timestamped `/etc` backups, installs
 sudo first, and waits for explicit confirmation after key/password testing
 before installing Hyprlock PAM. See [installation and recovery](docs/installation.md#yubikey-authentication).
 
-**Wallpapers** (optional — see the layout note in
-[installation](docs/installation.md#optional-packages) before deploying):
+**Wallpapers** deploy automatically with `dots deploy`/`dots update`. To stow
+them by hand (see the layout note in
+[installation](docs/installation.md#optional-packages) first):
 
 ```bash
-stow --target="$HOME/Pictures/Wallpapers" wallpaper
+stow --no-folding --target="$HOME/Pictures/Wallpapers" wallpaper
 ```
 
 **Remove a package:**

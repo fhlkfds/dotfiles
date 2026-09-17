@@ -22,7 +22,7 @@ wallhaven_dns_blocked() {
 
 list_wallpapers() {
     local json
-    json="$(find "$wallpaper_dir" -type f \( -iname '*.jpg' -o -iname '*.png' \) \
+    json="$(find -L "$wallpaper_dir" -type f \( -iname '*.jpg' -o -iname '*.png' \) \
         -print0 2>/dev/null | sort -z -f | jq -Rs '
           split("\u0000") | map(select(length > 0)) |
           {items: map({

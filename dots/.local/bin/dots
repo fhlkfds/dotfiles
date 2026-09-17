@@ -22,7 +22,7 @@ Deploy changed GNU Stow packages from ~/dotfiles.
   --yes      Confirm overwriting system files when used with --system
   --all      Restow every package, including packages requiring manual Stow options
   --no-folding-pkg PACKAGE
-             Explicitly deploy neovim, btop, obsidian, or wallpaper safely
+             Explicitly deploy neovim or obsidian safely
 
 update pulls the configured upstream with --ff-only, then deploys packages
 changed by the new commit. --dry-run reports the current deployment plan and
@@ -104,22 +104,32 @@ head_sha=$(git -C "$repo" rev-parse --verify HEAD^{commit}) ||
 
 is_excluded() {
   case $1 in
-    docs|wiki|tests|system|dotfiles|neovim|btop|obsidian|wallpaper) return 0 ;;
+    docs|wiki|tests|system|dotfiles|neovim|obsidian) return 0 ;;
     *) return 1 ;;
   esac
 }
 
 is_manual_package() {
   case $1 in
-    neovim|btop|obsidian|wallpaper) return 0 ;;
+    neovim|obsidian) return 0 ;;
     *) return 1 ;;
   esac
 }
 
 uses_no_folding() {
   case $1 in
-    neovim|btop|obsidian) return 0 ;;
+    neovim|btop|obsidian|wallpaper) return 0 ;;
     *) return 1 ;;
+  esac
+}
+
+# Where a package deploys. Kept separate from uses_no_folding: wallpaper needs
+# both a non-$HOME target and no folding, and the old if/elif chain could only
+# express one of the two.
+stow_target() {
+  case $1 in
+    wallpaper) printf '%s\n' "$HOME/Pictures/Wallpapers" ;;
+    *) printf '%s\n' "$HOME" ;;
   esac
 }
 
@@ -141,7 +151,7 @@ done < <(git -C "$repo" ls-tree -z -d --name-only HEAD)
 declare -A requested_manual=()
 for package in "${requested_manual_packages[@]}"; do
   is_manual_package "$package" ||
-    fail "--no-folding-pkg only accepts neovim, btop, obsidian, or wallpaper (got '$package')"
+    fail "--no-folding-pkg only accepts neovim or obsidian (got '$package')"
   [[ -n ${is_package["$package"]+present} ]] ||
     fail "package not found in repository: $package"
   requested_manual["$package"]=1
@@ -227,19 +237,26 @@ printf 'Actions:\n'
 for package in "${packages[@]}"; do
   if package_removed "$package"; then
     printf '  - stow --delete --target %q %q (package removed from repository)\n' \
-      "$HOME" "$package"
+      "$(stow_target "$package")" "$package"
   elif uses_no_folding "$package"; then
-    printf '  - stow --restow --no-folding --target %q %q\n' "$HOME" "$package"
-  elif [[ $package == wallpaper ]]; then
-    printf '  - stow --restow --target %q %q\n' "$HOME/Pictures/Wallpapers" "$package"
+    printf '  - stow --restow --no-folding --target %q %q\n' \
+      "$(stow_target "$package")" "$package"
   else
-    printf '  - stow --restow --target %q %q\n' "$HOME" "$package"
+    printf '  - stow --restow --target %q %q\n' "$(stow_target "$package")" "$package"
   fi
 done
 if [[ -n ${is_package[hypr]+present} ]]; then
   for package in "${packages[@]}"; do
     if [[ $package == hypr ]]; then
       printf '  - reload Hyprland if a session is live\n'
+      break
+    fi
+  done
+fi
+if [[ -n ${is_package[quickshell]+present} ]]; then
+  for package in "${packages[@]}"; do
+    if [[ $package == quickshell ]]; then
+      printf '  - reload Hyprland and restart Quickshell if a session is live\n'
       break
     fi
   done
@@ -282,17 +299,29 @@ if [[ $deploy_system == true ]]; then
     fail "missing system template: $repo/system/greetd/config.toml"
 fi
 
+# A QML edit only reaches the running desktop if the shell process is
+# replaced, so deploying quickshell restarts it. The reload script drives
+# Hyprland too, which makes the plain hypr reload below redundant when both
+# packages were deployed together.
 reload_hypr=false
+restart_shell=false
+shell_reload_script="$repo/hypr/.config/hypr/scripts/shell-reload.sh"
 for package in "${packages[@]}"; do
-  if [[ $package == hypr ]]; then
-    command -v pgrep >/dev/null 2>&1 ||
-      fail "pgrep is required to check for a live Hyprland session"
-    if pgrep -x Hyprland >/dev/null 2>&1; then
-      command -v hyprctl >/dev/null 2>&1 ||
-        fail "Hyprland is live but hyprctl is unavailable"
-      reload_hypr=true
-    fi
-    break
+  case $package in
+    hypr|quickshell) ;;
+    *) continue ;;
+  esac
+  command -v pgrep >/dev/null 2>&1 ||
+    fail "pgrep is required to check for a live Hyprland session"
+  pgrep -x Hyprland >/dev/null 2>&1 || continue
+  command -v hyprctl >/dev/null 2>&1 ||
+    fail "Hyprland is live but hyprctl is unavailable"
+  if [[ $package == quickshell ]]; then
+    [[ -x $shell_reload_script ]] ||
+      fail "missing or non-executable reload script: $shell_reload_script"
+    restart_shell=true
+  else
+    reload_hypr=true
   fi
 done
 
@@ -301,7 +330,7 @@ for package in "${packages[@]}"; do
     printf 'Unstowing %s (removed from repository)...\n' "$package"
     # Best effort: with the package gone, stow cannot know which links were
     # its, so nothing may be removed. That is not a reason to fail the run.
-    (cd "$repo" && stow --delete --target "$HOME" "$package") 2>/dev/null ||
+    (cd "$repo" && stow --delete --target "$(stow_target "$package")" "$package") 2>/dev/null ||
       printf 'Notice: %s had no links left to remove.\n' "$package"
     continue
   fi
@@ -309,12 +338,9 @@ for package in "${packages[@]}"; do
   printf 'Restowing %s...\n' "$package"
   declare -a stow_args=(--restow)
   if uses_no_folding "$package"; then
-    stow_args+=(--no-folding --target "$HOME")
-  elif [[ $package == wallpaper ]]; then
-    stow_args+=(--target "$HOME/Pictures/Wallpapers")
-  else
-    stow_args+=(--target "$HOME")
+    stow_args+=(--no-folding)
   fi
+  stow_args+=(--target "$(stow_target "$package")")
   stow_args+=("$package")
   if ! (cd "$repo" && stow "${stow_args[@]}"); then
     fail "stow failed for '$package'; resolve the reported conflict and retry (files were not adopted or overwritten)"
@@ -365,7 +391,10 @@ if [[ $deploy_system == true ]]; then
   done
 fi
 
-if [[ $reload_hypr == true ]]; then
+if [[ $restart_shell == true ]]; then
+  printf 'Reloading Hyprland and restarting Quickshell...\n'
+  "$shell_reload_script" || fail "shell-reload.sh failed"
+elif [[ $reload_hypr == true ]]; then
   printf 'Reloading Hyprland...\n'
   hyprctl reload || fail "hyprctl reload failed"
 fi
