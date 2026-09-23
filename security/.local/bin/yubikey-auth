@@ -30,8 +30,9 @@ SUDO=${YUBIKEY_AUTH_SUDO:-$(command -v sudo >/dev/null 2>&1 && echo sudo || echo
 usage() {
   cat <<EOF
 Usage:
-  $PROGRAM setup [OPTIONS]   register the first key and deploy PAM safely
+  $PROGRAM setup [OPTIONS]   register the first key or enable Hyprlock later
   $PROGRAM add [OPTIONS]     append another key to the existing user mapping
+  $PROGRAM remove [--dry-run] revoke the last registered key from this host
   $PROGRAM status            show dependencies, token, mapping, and PAM state
 
 Options:
@@ -55,6 +56,7 @@ key. Anyone at the machine could unlock it while the key is plugged in.
 Examples:
   $PROGRAM setup
   $PROGRAM add --device /dev/hidraw1 --mode pin
+  $PROGRAM remove
   $PROGRAM setup --with-hyprlock --mode bio --enroll-fingerprint
 EOF
 }
@@ -186,6 +188,36 @@ install_file() {
   run_root install -o root -g root -m "$mode" "$source" "$target"
 }
 
+complete_setup() {
+  printf '\nTest every escalation path in another terminal before continuing:\n'
+  printf '  1. sudo -k; sudo -v       # press Enter, then touch the key\n'
+  printf '  2. doas -L; doas true     # press Enter, then touch the key\n'
+  printf '  3. repeat both with the account password, with the key inserted\n\n'
+
+  if [[ $WITH_HYPRLOCK == false ]]; then
+    printf 'Setup complete. Hyprlock still asks for the account password.\n'
+    printf 'Add the key there with: %s setup --with-hyprlock\n' "$PROGRAM"
+    return
+  fi
+
+  if [[ $MODE == touch ]]; then
+    printf 'Warning: a touch-only key on the lock screen means anyone at this\n'
+    printf 'machine can unlock it with a tap while the key is plugged in.\n\n'
+  fi
+
+  if [[ $CONFIRM_SUDO_TESTED == false ]]; then
+    [[ -t 0 ]] || fail "interactive confirmation unavailable; rerun with --confirm-sudo-tested after testing sudo"
+    read -r -p "Type INSTALL HYPRLOCK after both tests pass: " confirmation
+    [[ $confirmation == "INSTALL HYPRLOCK" ]] \
+      || fail "Hyprlock PAM was not changed"
+  fi
+
+  backup_file "$HYPRLOCK_PAM" "$stamp"
+  install_file "$TEMPLATE_DIR/hyprlock" "$HYPRLOCK_PAM" 0644
+  printf 'installed: %s\n' "$HYPRLOCK_PAM"
+  printf 'Setup complete. At Hyprlock, press Enter before using the key.\n'
+}
+
 show_status() {
   local failed=0
   for command_name in "$FIDO2_TOKEN" "$PAMU2FCFG" "$SUDO"; do
@@ -254,7 +286,7 @@ show_status() {
 
 while (($#)); do
   case $1 in
-    setup|add|status)
+    setup|add|remove|status)
       [[ -z $ACTION ]] || fail "only one action may be specified"
       ACTION=$1
       shift
@@ -289,6 +321,57 @@ if [[ $ACTION == status ]]; then
   exit
 fi
 
+if [[ $ACTION == remove ]]; then
+  [[ -z $DEVICE && $MODE == auto && $ENROLL_FINGERPRINT == false && $CONFIRM_SUDO_TESTED == false ]] \
+    || fail "remove only accepts --dry-run"
+  require_cmd "$SUDO"
+  [[ -e $MAPPING_FILE ]] || fail "no mapping exists: $MAPPING_FILE"
+
+  work_dir=$(mktemp -d -p "${TMPDIR:-/tmp}" yubikey-auth.XXXXXX)
+  chmod 700 "$work_dir"
+  trap 'rm -rf -- "$work_dir"' EXIT
+  run_root cat -- "$MAPPING_FILE" > "$work_dir/current-mapping"
+  mapping_is_valid "$work_dir/current-mapping" \
+    || fail "mapping is invalid; remove a key manually after inspecting $MAPPING_FILE"
+
+  current_mapping=$(<"$work_dir/current-mapping")
+  remaining_mapping=${current_mapping%:*}
+  if [[ $remaining_mapping != "$AUTH_USER" ]]; then
+    printf '%s\n' "$remaining_mapping" > "$work_dir/remaining-mapping"
+    mapping_is_valid "$work_dir/remaining-mapping" || fail "remaining mapping failed validation"
+  fi
+
+  if [[ $DRY_RUN == true ]]; then
+    printf 'would revoke: last registered key for %s\n' "$AUTH_USER"
+    if [[ $remaining_mapping == "$AUTH_USER" ]]; then
+      printf 'would remove: %s (no keys would remain)\n' "$MAPPING_FILE"
+    else
+      printf 'would update: %s\n' "$MAPPING_FILE"
+    fi
+    exit 0
+  fi
+
+  printf 'This revokes the last registered key for %s on this host.\n' "$AUTH_USER"
+  read -r -p 'Type REMOVE LAST KEY to confirm: ' confirmation || fail "removal cancelled"
+  [[ $confirmation == 'REMOVE LAST KEY' ]] || fail "removal cancelled"
+  run_root cat -- "$MAPPING_FILE" > "$work_dir/latest-mapping" \
+    || fail "mapping changed during confirmation; retry"
+  cmp -s -- "$work_dir/current-mapping" "$work_dir/latest-mapping" \
+    || fail "mapping changed during confirmation; retry"
+
+  stamp=$(date +%Y%m%d-%H%M%S)
+  backup_file "$MAPPING_FILE" "$stamp"
+  if [[ $remaining_mapping == "$AUTH_USER" ]]; then
+    run_root rm -- "$MAPPING_FILE"
+    printf 'removed: %s (no registered keys remain)\n' "$MAPPING_FILE"
+  else
+    # Same mode the setup path installs; see the note there.
+    install_file "$work_dir/remaining-mapping" "$MAPPING_FILE" 0644
+    printf 'updated: %s (last registered key removed)\n' "$MAPPING_FILE"
+  fi
+  exit 0
+fi
+
 require_cmd "$FIDO2_TOKEN"
 require_cmd "$PAMU2FCFG"
 require_cmd "$SUDO"
@@ -298,6 +381,7 @@ require_cmd "$SUDO"
 
 detect_device
 probe_device || fail "could not read the capabilities of $DEVICE"
+requested_mode=$MODE
 resolve_mode
 # Report the missing sensor before the mode mismatch: with --mode auto the
 # mismatch is a consequence of the missing sensor, and naming the hardware is
@@ -319,7 +403,11 @@ fi
 
 if [[ $DRY_RUN == true ]]; then
   [[ $ENROLL_FINGERPRINT == true ]] && printf 'would enroll: fingerprint\n'
-  printf 'would update: %s\n' "$MAPPING_FILE"
+  if [[ $ACTION == setup && $WITH_HYPRLOCK == true && -e $MAPPING_FILE ]]; then
+    printf 'would check existing mapping: %s\n' "$MAPPING_FILE"
+  else
+    printf 'would update: %s\n' "$MAPPING_FILE"
+  fi
   if [[ $ACTION == setup ]]; then
     printf 'would deploy: %s\nwould deploy: %s\n' "$SUDO_PAM" "$DOAS_PAM"
     if [[ $WITH_HYPRLOCK == true ]]; then
@@ -334,6 +422,28 @@ fi
 work_dir=$(mktemp -d -p "${TMPDIR:-/tmp}" yubikey-auth.XXXXXX)
 chmod 700 "$work_dir"
 trap 'rm -rf -- "$work_dir"' EXIT
+
+if [[ $ACTION == setup && $WITH_HYPRLOCK == true && -e $MAPPING_FILE ]]; then
+  run_root cat -- "$MAPPING_FILE" > "$work_dir/current-mapping"
+  if mapping_is_valid "$work_dir/current-mapping"; then
+    [[ $requested_mode == auto && $ENROLL_FINGERPRINT == false ]] \
+      || fail "an existing mapping cannot be re-registered; omit --mode and --enroll-fingerprint"
+    printf 'Using the existing mapping: %s\n' "$MAPPING_FILE"
+    stamp=$(date +%Y%m%d-%H%M%S)
+    if ! cmp -s -- "$TEMPLATE_DIR/sudo" "$SUDO_PAM"; then
+      backup_file "$SUDO_PAM" "$stamp"
+      install_file "$TEMPLATE_DIR/sudo" "$SUDO_PAM" 0644
+      printf 'installed: %s\n' "$SUDO_PAM"
+    fi
+    if ! cmp -s -- "$TEMPLATE_DIR/doas" "$DOAS_PAM"; then
+      backup_file "$DOAS_PAM" "$stamp"
+      install_file "$TEMPLATE_DIR/doas" "$DOAS_PAM" 0644
+      printf 'installed: %s\n' "$DOAS_PAM"
+    fi
+    complete_setup
+    exit 0
+  fi
+fi
 
 if [[ $ENROLL_FINGERPRINT == true ]]; then
   printf 'Enroll a fingerprint on %s; enter its FIDO PIN only at the local prompt.\n' "$DEVICE"
@@ -362,8 +472,8 @@ if [[ $ACTION == setup ]]; then
       && fail "a valid mapping already exists; use '$PROGRAM add'"
   fi
 
-  printf 'Register the key now, and touch it when it blinks.\n'
-  printf 'Enter a FIDO PIN only at the local prompt, if the key asks for one.\n'
+  printf 'If prompted, enter the PIN already set on the key at the local prompt.\n'
+  printf 'Then touch %s when it blinks to finish registration.\n' "$DEVICE"
   "$PAMU2FCFG" -u "$AUTH_USER" "${registration_args[@]}" > "$combined_mapping"
   mapping_is_valid "$combined_mapping" || fail "generated mapping failed validation"
 else
@@ -372,8 +482,8 @@ else
   mapping_is_valid "$work_dir/current-mapping" \
     || fail "existing mapping is invalid; repair it with '$PROGRAM setup'"
 
-  printf 'Register the additional key now, and touch it when it blinks.\n'
-  printf 'Enter a FIDO PIN only at the local prompt, if the key asks for one.\n'
+  printf 'If prompted, enter the PIN already set on the key at the local prompt.\n'
+  printf 'Then touch %s when it blinks to finish registration.\n' "$DEVICE"
   "$PAMU2FCFG" -n "${registration_args[@]}" > "$new_credential"
   credential_is_valid "$new_credential" || fail "generated credential failed validation"
   {
@@ -387,7 +497,12 @@ fi
 
 stamp=$(date +%Y%m%d-%H%M%S)
 backup_file "$MAPPING_FILE" "$stamp"
-install_file "$combined_mapping" "$MAPPING_FILE" 0600
+# World-readable on purpose. The mapping holds public keys and key handles,
+# which are not secrets, and hyprlock runs its whole PAM stack as the
+# unprivileged user: at 0600 pam_u2f cannot open the file, so the lock screen
+# falls through to the password stack with nothing in the log but a pam_unix
+# failure. sudo and doas read it as root either way.
+install_file "$combined_mapping" "$MAPPING_FILE" 0644
 printf 'installed: %s\n' "$MAPPING_FILE"
 
 if [[ $ACTION == add ]]; then
@@ -404,30 +519,4 @@ printf 'installed: %s\n' "$SUDO_PAM"
 backup_file "$DOAS_PAM" "$stamp"
 install_file "$TEMPLATE_DIR/doas" "$DOAS_PAM" 0644
 printf 'installed: %s\n' "$DOAS_PAM"
-printf '\nTest every escalation path in another terminal before continuing:\n'
-printf '  1. sudo -k; sudo -v       # use the key\n'
-printf '  2. doas -L; doas true     # use the key\n'
-printf '  3. unplug it and repeat both  # use the password\n\n'
-
-if [[ $WITH_HYPRLOCK == false ]]; then
-  printf 'Setup complete. Hyprlock still asks for the account password.\n'
-  printf 'Add the key there with: %s setup --with-hyprlock\n' "$PROGRAM"
-  exit 0
-fi
-
-if [[ $MODE == touch ]]; then
-  printf 'Warning: a touch-only key on the lock screen means anyone at this\n'
-  printf 'machine can unlock it with a tap while the key is plugged in.\n\n'
-fi
-
-if [[ $CONFIRM_SUDO_TESTED == false ]]; then
-  [[ -t 0 ]] || fail "interactive confirmation unavailable; rerun with --confirm-sudo-tested after testing sudo"
-  read -r -p "Type INSTALL HYPRLOCK after both tests pass: " confirmation
-  [[ $confirmation == "INSTALL HYPRLOCK" ]] \
-    || fail "Hyprlock PAM was not changed"
-fi
-
-backup_file "$HYPRLOCK_PAM" "$stamp"
-install_file "$TEMPLATE_DIR/hyprlock" "$HYPRLOCK_PAM" 0644
-printf 'installed: %s\n' "$HYPRLOCK_PAM"
-printf 'Setup complete. At Hyprlock, press Enter before using the key.\n'
+complete_setup
