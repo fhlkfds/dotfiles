@@ -29,15 +29,52 @@ from `quickshell/.config/quickshell/cava-visualizer/`.
 
 ## Bar layout
 
-One top-layer bar per screen. Content scales with `barScale`, capped at 1.25×,
-which is what makes the tallest chrome (the 26 design-px workspace cell) sit at
-33 px inside a 45 px bar.
+One top-layer bar per screen. The bar strip itself is transparent and paints
+nothing: everything you see is an **island** — a black stadium-shaped capsule
+(`BarIsland.qml`) floating over the wallpaper, holding a group of **modules**.
+The strip still reserves its full height, so windows tile below it and never
+slide underneath a capsule.
+
+Content scales with `barScale` (`Theme.barScaleFor`), capped at 1.25×, which is
+what makes the tallest chrome (the 26 design-px workspace cell) sit at 33 px
+inside a 40 px island. The reserved height is that island plus a 5 px gap above
+and below.
+
+Narrow bars scale *down*. A rotated 1920x1080 output gives a 1080 px bar, and at
+full scale the three island groups (~394 + ~364 + ~337 px) need ~1130 px with
+margins and separators — they do not fit, and the capsules collide. The scale
+curve is what keeps them apart; the old floor of 1.0 gave the bar no way to
+shrink into a rotated monitor. If scaling down is still not enough, the clock
+shifts off true centre (`centerGroup.collisionShift`) so the capsules touch
+instead of overlapping. On every landscape monitor that shift is zero.
+
+Islands are spread to the two edges rather than clustered: workspaces hard left,
+the clock centred, the tray and power hard right.
+
+| Island | Holds |
+| --- | --- |
+| `leftIsland` | `WorkspacesModule` |
+| `centerIsland` | the indicator row, the clock, keyboard and weather |
+| `trayIsland` | the eight status and launcher icons |
+| `powerIsland` | the power button, alone, circular |
+
+An island is sized to its content, so it shrinks when a module hides itself —
+the battery on a desktop, the VM icon when the container is down. Its colour is
+`Theme.bgDeep`, not a hardcoded black, so a light palette still gets a legible
+bar. Its radius is deliberately *not* `Theme.hyprRounding`: the capsule is the
+design, and a theme setting rounding to 4 would flatten it back into a slab.
+
+`powerIsland` is separate on purpose. Power is the only destructive control on
+the bar, so it does not share a capsule with the icon a mis-aimed click would
+otherwise be one pixel away from.
 
 **Left** — `WorkspacesModule`: fixed cells for workspaces 1–10. Clicking one
 switches to it.
 
 **Centre** — the clock is the anchor, and both side groups grow away from it, so
-changing either side never nudges the time.
+changing either side never nudges the time. `centerIsland` is drawn *from* those
+two rows rather than wrapping them, because a content-sized capsule would centre
+itself instead and drag the time sideways whenever a mode pill appeared.
 
 | Position | Widget |
 | --- | --- |
@@ -53,7 +90,10 @@ The `MediaPanel` anchors to the clock, but is opened from `MediaIcon` or the
 that runs `scripts/power-menu.sh`.
 
 `tests/omakub-bar-layout.test.sh` asserts the bar still mounts this component
-set, so adding or removing a widget means updating that list.
+set, so adding or removing a widget means updating that list. It also asserts
+the island structure: that the strip stays transparent, that the four islands
+exist, that power stays out of the tray capsule, and that the reserved height
+still clears the island on both sides.
 
 ## Bar interactions
 
