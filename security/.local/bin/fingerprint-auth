@@ -1,0 +1,362 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Host fingerprint-reader sign-in, for machines with a real sensor (the Goodix
+# reader in a Framework 13 power button, for example).
+#
+# This is deliberately NOT pam_fprintd. Hyprlock speaks to fprintd itself and
+# runs the scan in parallel with password entry; a `sufficient pam_fprintd.so`
+# line in /etc/pam.d/hyprlock blocks the prompt until the swipe times out, which
+# freezes the lockscreen for anyone who wanted to type their password. So the
+# only wiring performed here is Hyprlock's own `auth:fingerprint:enabled`.
+#
+# Not to be confused with `yubikey-auth --enroll-fingerprint`, which enrolls a
+# fingerprint onto a YubiKey Bio token. Different sensor, different subsystem.
+
+PROGRAM=${0##*/}
+ACTION=
+FINGER=right-index-finger
+DRY_RUN=false
+WIRE_HYPRLOCK=true
+
+AUTH_USER=${FINGERPRINT_AUTH_USER:-${SUDO_USER:-${USER:-$(id -un)}}}
+
+script_path=$(readlink -f -- "${BASH_SOURCE[0]}")
+script_dir=$(cd -- "$(dirname -- "$script_path")" && pwd)
+repo_root=$(cd -- "$script_dir/../../.." && pwd)
+
+FPRINTD_ENROLL=${FINGERPRINT_AUTH_FPRINTD_ENROLL:-fprintd-enroll}
+FPRINTD_LIST=${FINGERPRINT_AUTH_FPRINTD_LIST:-fprintd-list}
+FPRINTD_DELETE=${FINGERPRINT_AUTH_FPRINTD_DELETE:-fprintd-delete}
+FPRINTD_VERIFY=${FINGERPRINT_AUTH_FPRINTD_VERIFY:-fprintd-verify}
+USB_ROOT=${FINGERPRINT_AUTH_USB_ROOT:-/sys/bus/usb/devices}
+HYPRLOCK_CONF=${FINGERPRINT_AUTH_HYPRLOCK_CONF:-$repo_root/hypr/.config/hypr/hyprlock.conf}
+INSTALL_HINT=${FINGERPRINT_AUTH_INSTALL_HINT:-sudo pacman -S --needed fprintd}
+
+VALID_FINGERS=(
+  left-thumb left-index-finger left-middle-finger left-ring-finger left-little-finger
+  right-thumb right-index-finger right-middle-finger right-ring-finger right-little-finger
+)
+
+# USB vendor IDs that ship fingerprint sensors. 27c6 (Goodix) is the Framework
+# 13 reader; the rest cover the readers libfprint commonly supports.
+usb_vendor_name() {
+  case $1 in
+    27c6) printf 'Goodix' ;;
+    06cb) printf 'Synaptics' ;;
+    138a) printf 'Validity' ;;
+    04f3) printf 'Elan' ;;
+    08ff) printf 'AuthenTec' ;;
+    1c7a) printf 'LighTuning/Egis' ;;
+    2808) printf 'Focal-systems' ;;
+    05ba) printf 'DigitalPersona' ;;
+    147e) printf 'Upek' ;;
+    1491) printf 'Futronic' ;;
+    *) return 1 ;;
+  esac
+}
+
+usage() {
+  cat <<EOF
+Usage:
+  $PROGRAM status             report reader, dependencies, enrolled fingers, wiring
+  $PROGRAM setup [OPTIONS]    detect the reader, enroll a finger, wire Hyprlock
+  $PROGRAM enroll [OPTIONS]   enroll one more finger
+  $PROGRAM verify             test an enrolled finger against the reader
+  $PROGRAM delete             remove every enrolled fingerprint for the user
+
+Options:
+  --finger NAME               which finger to enroll (default: $FINGER)
+  --no-hyprlock               enroll only; leave Hyprlock configuration alone
+  --dry-run                   report actions without touching prints or config
+  -h, --help                  show this help
+
+Fingers:
+  ${VALID_FINGERS[*]}
+
+Examples:
+  $PROGRAM status
+  $PROGRAM setup
+  $PROGRAM enroll --finger left-index-finger
+  $PROGRAM setup --dry-run
+EOF
+}
+
+fail() {
+  printf '%s: %s\n' "$PROGRAM" "$*" >&2
+  exit 1
+}
+
+note() { printf '%s\n' "$*"; }
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# ---------------------------------------------------------------- detection ---
+
+# Scan sysfs rather than shelling out to lsusb, which is not installed on a
+# default Arch desktop and would turn "no reader" into "command not found".
+reader_vendor=''
+reader_product=''
+reader_name=''
+detect_reader_usb() {
+  reader_vendor=''; reader_product=''; reader_name=''
+  [[ -d $USB_ROOT ]] || return 1
+
+  local dev vendor product name label
+  for dev in "$USB_ROOT"/*/; do
+    [[ -r $dev/idVendor ]] || continue
+    vendor=$(<"$dev/idVendor") || continue
+    label=$(usb_vendor_name "$vendor") || continue
+    product=unknown
+    [[ -r $dev/idProduct ]] && product=$(<"$dev/idProduct")
+    name=
+    [[ -r $dev/product ]] && name=$(<"$dev/product")
+    reader_vendor=$vendor
+    reader_product=$product
+    reader_name=${name:-$label fingerprint reader}
+    return 0
+  done
+  return 1
+}
+
+# fprintd is authoritative when it is installed: it knows which of those USB IDs
+# libfprint actually drives.
+fprintd_sees_device() {
+  have "$FPRINTD_LIST" || return 2
+  local out
+  out=$("$FPRINTD_LIST" "$AUTH_USER" 2>&1) || true
+  if grep -qi 'no devices available\|impossible to enumerate' <<<"$out"; then
+    return 1
+  fi
+  return 0
+}
+
+enrolled_fingers() {
+  have "$FPRINTD_LIST" || return 1
+  local out
+  out=$("$FPRINTD_LIST" "$AUTH_USER" 2>&1) || return 1
+  grep -oE '\- #[0-9]+: [a-z-]+' <<<"$out" | sed 's/.*: //' || true
+}
+
+# ------------------------------------------------------------------ hyprlock ---
+
+hyprlock_state() {
+  [[ -r $HYPRLOCK_CONF ]] || { printf 'missing\n'; return; }
+  if grep -qE '^[[:space:]]*fingerprint:enabled[[:space:]]*=[[:space:]]*true' "$HYPRLOCK_CONF"; then
+    printf 'enabled\n'
+  elif grep -qE '^[[:space:]]*fingerprint:enabled[[:space:]]*=' "$HYPRLOCK_CONF"; then
+    printf 'disabled\n'
+  else
+    printf 'absent\n'
+  fi
+}
+
+enable_hyprlock_fingerprint() {
+  local state
+  state=$(hyprlock_state)
+  case $state in
+    enabled) note "Hyprlock fingerprint unlock: already enabled"; return 0 ;;
+    missing) note "Hyprlock config not found at $HYPRLOCK_CONF; skipping"; return 0 ;;
+    absent)
+      note "No 'fingerprint:enabled' key in $HYPRLOCK_CONF; add it to the auth block by hand"
+      return 0
+      ;;
+  esac
+
+  if [[ $DRY_RUN == true ]]; then
+    note "would enable: fingerprint:enabled in $HYPRLOCK_CONF"
+    return 0
+  fi
+
+  local tmp
+  tmp=$(mktemp) || fail "could not create a temporary file"
+  sed -E 's/^([[:space:]]*fingerprint:enabled[[:space:]]*=[[:space:]]*)false/\1true/' \
+    "$HYPRLOCK_CONF" > "$tmp" || { rm -f -- "$tmp"; fail "could not rewrite $HYPRLOCK_CONF"; }
+  grep -qE '^[[:space:]]*fingerprint:enabled[[:space:]]*=[[:space:]]*true' "$tmp" \
+    || { rm -f -- "$tmp"; fail "refusing to install an edit that did not enable fingerprint"; }
+  cat "$tmp" > "$HYPRLOCK_CONF" || { rm -f -- "$tmp"; fail "could not write $HYPRLOCK_CONF"; }
+  rm -f -- "$tmp"
+  note "Enabled Hyprlock fingerprint unlock in $HYPRLOCK_CONF"
+  note "Re-stow the hypr package (or run 'dots deploy') and relock to pick it up."
+}
+
+# -------------------------------------------------------------- diagnostics ---
+
+# Fails closed with an explanation, never a stack of unbound-variable noise.
+require_reader() {
+  local seen=0
+  fprintd_sees_device || seen=$?
+  if (( seen == 0 )); then
+    return 0
+  fi
+  if (( seen == 1 )); then
+    if detect_reader_usb; then
+      fail "fprintd reports no usable device, but USB $reader_vendor:$reader_product ($reader_name) looks like a reader.
+  libfprint may not support it yet, or fprintd.service may be masked. Check:
+    systemctl status fprintd.service
+    fprintd-list $AUTH_USER"
+    fi
+    fail "no fingerprint reader found on this machine.
+  This desktop configuration is shared across hosts; fingerprint sign-in only
+  applies to laptops with a sensor. Nothing was changed."
+  fi
+
+  # fprintd absent entirely.
+  if detect_reader_usb; then
+    fail "found USB $reader_vendor:$reader_product ($reader_name), but fprintd is not installed.
+  Install it, then re-run '$PROGRAM setup':
+    $INSTALL_HINT"
+  fi
+  fail "fprintd is not installed and no fingerprint reader was detected on USB.
+  If this machine has a sensor, install fprintd first:
+    $INSTALL_HINT"
+}
+
+show_status() {
+  printf 'user: %s\n' "$AUTH_USER"
+
+  local tool
+  for tool in "$FPRINTD_ENROLL" "$FPRINTD_LIST" "$FPRINTD_VERIFY" "$FPRINTD_DELETE"; do
+    if have "$tool"; then
+      printf 'tool %s: present\n' "$tool"
+    else
+      printf 'tool %s: MISSING (%s)\n' "$tool" "$INSTALL_HINT"
+    fi
+  done
+
+  if detect_reader_usb; then
+    printf 'usb reader: %s:%s (%s)\n' "$reader_vendor" "$reader_product" "$reader_name"
+  else
+    printf 'usb reader: none detected\n'
+  fi
+
+  local seen=0
+  fprintd_sees_device || seen=$?
+  case $seen in
+    0) printf 'fprintd device: available\n' ;;
+    1) printf 'fprintd device: none available\n' ;;
+    *) printf 'fprintd device: unknown (fprintd not installed)\n' ;;
+  esac
+
+  local fingers
+  fingers=$(enrolled_fingers) || fingers=
+  if [[ -n $fingers ]]; then
+    printf 'enrolled: %s\n' "$(tr '\n' ' ' <<<"$fingers" | sed 's/ $//')"
+  else
+    printf 'enrolled: none\n'
+  fi
+
+  printf 'hyprlock fingerprint: %s\n' "$(hyprlock_state)"
+  printf 'hyprlock config: %s\n' "$HYPRLOCK_CONF"
+
+  printf '\n'
+  if (( seen == 0 )); then
+    if [[ -n $fingers ]]; then
+      printf 'Next step: %s verify  (or %s enroll --finger left-index-finger)\n' \
+        "$PROGRAM" "$PROGRAM"
+    else
+      printf 'Next step: %s setup\n' "$PROGRAM"
+    fi
+  elif [[ -n $reader_vendor ]]; then
+    printf 'Next step: %s, then %s setup\n' "$INSTALL_HINT" "$PROGRAM"
+  else
+    printf 'No fingerprint reader on this host, so there is nothing to set up.\n'
+    printf 'This configuration is shared across machines; fingerprint sign-in\n'
+    printf 'applies only to laptops with a sensor.\n'
+  fi
+}
+
+# ------------------------------------------------------------------ actions ---
+
+do_enroll() {
+  local finger=$1
+  if [[ $DRY_RUN == true ]]; then
+    note "would enroll: $finger for $AUTH_USER"
+    return 0
+  fi
+  note "Place and lift $finger on the reader until enrollment completes."
+  "$FPRINTD_ENROLL" -f "$finger" "$AUTH_USER" \
+    || fail "enrollment failed for $finger; nothing else was changed"
+  note "Enrolled $finger."
+}
+
+while (($#)); do
+  case $1 in
+    status|setup|enroll|verify|delete)
+      [[ -z $ACTION ]] || fail "only one action may be given (already have '$ACTION')"
+      ACTION=$1
+      shift
+      ;;
+    --finger)
+      [[ ${2-} ]] || fail "--finger needs a value"
+      FINGER=$2
+      shift 2
+      ;;
+    --finger=*) FINGER=${1#*=}; shift ;;
+    --no-hyprlock) WIRE_HYPRLOCK=false; shift ;;
+    --dry-run) DRY_RUN=true; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) fail "unknown argument: $1" ;;
+  esac
+done
+
+[[ -n $ACTION ]] || { usage >&2; exit 2; }
+
+if [[ $ACTION == status ]]; then
+  show_status
+  exit 0
+fi
+
+if [[ $ACTION == setup || $ACTION == enroll ]]; then
+  printf '%s\n' "${VALID_FINGERS[@]}" | grep -qx -- "$FINGER" \
+    || fail "invalid finger '$FINGER' (expected one of: ${VALID_FINGERS[*]})"
+fi
+
+require_reader
+
+case $ACTION in
+  verify)
+    have "$FPRINTD_VERIFY" || fail "required command not found: $FPRINTD_VERIFY"
+    [[ -n $(enrolled_fingers) ]] || fail "no fingerprints enrolled for $AUTH_USER; run '$PROGRAM setup'"
+    if [[ $DRY_RUN == true ]]; then
+      note "would verify: an enrolled finger for $AUTH_USER"
+      exit 0
+    fi
+    "$FPRINTD_VERIFY" "$AUTH_USER"
+    ;;
+  delete)
+    have "$FPRINTD_DELETE" || fail "required command not found: $FPRINTD_DELETE"
+    if [[ $DRY_RUN == true ]]; then
+      note "would delete: every enrolled fingerprint for $AUTH_USER"
+      exit 0
+    fi
+    "$FPRINTD_DELETE" "$AUTH_USER"
+    note "Deleted enrolled fingerprints for $AUTH_USER."
+    note "Hyprlock configuration was left untouched; it falls back to the password."
+    ;;
+  enroll)
+    have "$FPRINTD_ENROLL" || fail "required command not found: $FPRINTD_ENROLL"
+    do_enroll "$FINGER"
+    ;;
+  setup)
+    have "$FPRINTD_ENROLL" || fail "required command not found: $FPRINTD_ENROLL"
+    printf 'action: setup\nuser: %s\nfinger: %s\nreader: %s\n' \
+      "$AUTH_USER" "$FINGER" "${reader_name:-reported by fprintd}"
+
+    existing=$(enrolled_fingers) || existing=
+    if [[ -n $existing ]] && grep -qx -- "$FINGER" <<<"$existing"; then
+      note "$FINGER is already enrolled; skipping enrollment."
+    else
+      do_enroll "$FINGER"
+    fi
+
+    if [[ $WIRE_HYPRLOCK == true ]]; then
+      enable_hyprlock_fingerprint
+    else
+      note "Skipping Hyprlock wiring (--no-hyprlock)."
+    fi
+
+    note ""
+    note "Your password still unlocks Hyprlock; the fingerprint runs alongside it."
+    ;;
+esac

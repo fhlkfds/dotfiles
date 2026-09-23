@@ -196,6 +196,43 @@ Automatic detection fails closed when several YubiKeys are connected; select
 one explicitly with `--device`. Generated credentials are held in a mode-0700
 temporary directory, validated before installation, and removed on exit.
 
+## Fingerprint sign-in
+
+`security/.local/bin/fingerprint-auth` covers the *other* fingerprint: a sensor
+built into the host, such as the Goodix reader in a Framework 13 power button.
+It is unrelated to `yubikey-auth --enroll-fingerprint`, which enrolls onto a
+YubiKey Bio token.
+
+| Command | Behavior |
+| --- | --- |
+| `fingerprint-auth status` | reports tools, USB reader, fprintd device, enrolled fingers, and Hyprlock wiring; never exits non-zero |
+| `fingerprint-auth setup` | detects the reader, enrolls `--finger` (default `right-index-finger`), and enables Hyprlock fingerprint unlock |
+| `fingerprint-auth enroll --finger NAME` | adds one more finger to an already-configured host |
+| `fingerprint-auth verify` | tests an enrolled finger against the reader |
+| `fingerprint-auth delete` | removes every enrolled print for the user, leaving the Hyprlock config alone |
+| `fingerprint-auth setup --dry-run` | reports actions without touching prints or configuration |
+| `fingerprint-auth setup --no-hyprlock` | enrolls only |
+
+Reader detection reads `/sys/bus/usb/devices` against a table of fingerprint
+vendor IDs rather than shelling out to `lsusb`, which is not installed by
+default and would turn "no reader" into "command not found". When `fprintd` is
+installed its view wins, because it knows which of those USB IDs libfprint can
+actually drive.
+
+Unlock is wired through Hyprlock's `auth:fingerprint:enabled`, not
+`pam_fprintd.so`: a `sufficient pam_fprintd.so` line blocks the PAM
+conversation until the scan times out, which freezes the lockscreen for anyone
+who meant to type a password. `setup` rewrites only that one key in
+`hypr/.config/hypr/hyprlock.conf`, refuses to install an edit that did not take,
+and is idempotent.
+
+Every path fails closed with an explanation: no reader, a reader that
+`fprintd` cannot drive, a missing `fprintd`, an invalid finger name. Nothing on
+the machine is modified in any of those cases. Honors
+`FINGERPRINT_AUTH_USER`, `FINGERPRINT_AUTH_USB_ROOT`,
+`FINGERPRINT_AUTH_HYPRLOCK_CONF`, and `FINGERPRINT_AUTH_FPRINTD_{ENROLL,LIST,VERIFY,DELETE}`,
+which is how `tests/fingerprint-auth.test.sh` drives it against fixtures.
+
 ## Wallpaper tools
 
 | Tool | Purpose |

@@ -713,6 +713,14 @@
     "action": "kitty -e yubikey-auth status"
   },
   {
+    "id": "setup.security.fingerprint",
+    "icon": "󰈷",
+    "label": "Fingerprint",
+    "when": "command -v fingerprint-auth >/dev/null",
+    "action": "kitty --title 'Fingerprint sign-in' -e bash -lc 'fingerprint-auth setup; read -rp \"Press Enter to close…\"'",
+    "aliases": ["fprint", "biometric", "finger", "reader"]
+  },
+  {
     "id": "setup.security.lock",
     "icon": "󰍁",
     "label": "Lock screen settings",
