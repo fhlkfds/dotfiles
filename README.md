@@ -184,6 +184,10 @@ The optional `security` package provides a guarded setup command for the
 YubiKey Bio, sudo, and Hyprlock. It never stores the registered credential in
 Git and keeps password authentication as the final fallback.
 
+The same commands are available from `SUPER+SHIFT+A` under Setup > Security >
+YubiKey. Status and setup run in a held terminal, so an incomplete setup leaves
+its error on screen instead of closing the window.
+
 ```bash
 yubikey-auth status
 yubikey-auth setup --enroll-fingerprint  # first key and PAM deployment

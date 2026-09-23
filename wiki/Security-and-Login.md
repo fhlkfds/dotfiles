@@ -123,6 +123,11 @@ PIN, then the account password.
 
 ### Normal setup
 
+Open `SUPER+SHIFT+A` > Setup > Security > YubiKey for status, first-key setup,
+additional-key setup, prerequisite installation, and this recovery guide. The
+terminal stays open when status or setup exits, including when setup is
+incomplete.
+
 ```bash
 stow security
 yubikey-auth status

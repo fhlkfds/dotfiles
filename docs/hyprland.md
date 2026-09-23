@@ -128,7 +128,8 @@ See [Keybindings](./keybindings.md#workspaces) and
 
 ## Lock, idle, and power behavior
 
-`hypr/.config/hypr/hypridle.conf` configures:
+`hypr/.config/hypr/hypridle.conf` is the Balanced profile and the template for
+the other profiles:
 
 | Idle time | Action |
 | --- | --- |
@@ -136,6 +137,13 @@ See [Keybindings](./keybindings.md#workspaces) and
 | 300 seconds | lock the session unless selective stay-awake is active |
 | 1,200 seconds | turn displays off with DPMS; restore them on activity |
 | 1,800 seconds | suspend the system through `systemctl` |
+
+Setup > Security > Idle settings selects Quick (1/3/10/20 minutes), Balanced
+(3/5/20/30), Relaxed (5/10/30/60), or Never suspend (3/5/20 with no suspend
+listener). `hypridle-profile` stores the selection under
+`$XDG_STATE_HOME/hyprland-desktop/idle-profile`, renders a private runtime
+config, and restarts Hypridle. Invalid state falls back to Balanced. The menu
+also exposes the existing Stay awake and Screensaver controls.
 
 Before system sleep it locks the login session; after resume it turns displays
 back on. `inhibit_sleep = 3` is also set. `SUPER+L` provides immediate manual
@@ -155,10 +163,13 @@ to the screensaver, DPMS, suspend, or before-sleep locking. Missing or malformed
 mode configuration permits locking rather than weakening the security boundary. See
 [Desktop modes](./desktop-modes.md).
 
-The active lock wrapper is `hypr/.config/hypr/hyprlock.conf`. It sources generated
-colors and `layouts/hyprlock.conf` from the `hyprlock` package, which provides a
-clock/date, wallpaper background, greeting, and password field. Alternate layouts
-and music helpers are tracked but not sourced by the current file.
+The lock wrapper is `hypr/.config/hypr/hyprlock.conf`. It sources generated
+colors and the default `layouts/hyprlock.conf` from the `hyprlock` package.
+Setup > Security > Lock screen can select the default or one of the portable
+layouts whose local assets are present. `screensaver-lock` keeps the selection
+under `$XDG_STATE_HOME/hyprland-desktop/lock-layout` and substitutes it into a
+private runtime copy of the wrapper before starting Hyprlock. The repository
+files stay unchanged.
 
 ## Wallpaper and night light
 

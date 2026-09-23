@@ -12,7 +12,8 @@ them predictable:
 
 ## Hypridle
 
-`hypr/.config/hypr/hypridle.conf`. Four listeners:
+`hypr/.config/hypr/hypridle.conf` is the Balanced template. It has four
+listeners:
 
 | Timeout | Action | Condition |
 | --- | --- | --- |
@@ -20,6 +21,20 @@ them predictable:
 | 300 s | `loginctl lock-session` | `desktop-mode condition lock` — retries every 5 s while stay-awake is active |
 | 1,200 s | DPMS off, restored on resume | none |
 | 1,800 s | `systemctl suspend` | none |
+
+Setup > Security > Idle settings provides four profiles:
+
+| Profile | Screensaver | Lock | DPMS off | Suspend |
+| --- | ---: | ---: | ---: | ---: |
+| Quick | 1 min | 3 min | 10 min | 20 min |
+| Balanced | 3 min | 5 min | 20 min | 30 min |
+| Relaxed | 5 min | 10 min | 30 min | 60 min |
+| Never suspend | 3 min | 5 min | 20 min | disabled |
+
+`hypridle-profile` stores the selected name at
+`$XDG_STATE_HOME/hyprland-desktop/idle-profile`, renders a private config under
+`$XDG_RUNTIME_DIR`, and restarts Hypridle. Corrupt or unknown state falls back
+to Balanced. The tracked template is not rewritten.
 
 Plus, in `general`:
 
@@ -50,10 +65,11 @@ active theme. The background reads the same persisted current-wallpaper state th
 picker and theme tool write; missing or stale state falls back to the theme's
 colour rather than to a black screen.
 
-Many alternate layouts and music/weather helpers are tracked under
-`hyprlock/.config/hyprlock/layouts/`. They are examples, not active composition.
-Several assume `BAT0`, network access, extra fonts, or a profile image — read one
-before enabling it.
+Setup > Security > Lock screen selects the default or one of the portable
+layouts whose local assets are present. `screensaver-lock` stores that choice at
+`$XDG_STATE_HOME/hyprland-desktop/lock-layout` and renders a private copy of the
+wrapper when locking. Other layouts and music/weather helpers remain examples.
+Several assume `BAT0`, network access, extra fonts, or a profile image.
 
 `SUPER+L` locks immediately.
 
@@ -72,6 +88,8 @@ screensaver-branding text
 screensaver-branding image logo.png
 screensaver-branding reset
 screensaver-lock --dry-run           # show the lock handoff without doing it
+screensaver-lock layout current      # selected lock layout
+screensaver-lock layout set layout5 --dry-run
 install-ttfx --dry-run
 ```
 

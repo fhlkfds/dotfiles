@@ -166,5 +166,10 @@ Covered in full on
 | 1,200 s | DPMS off; restore on activity |
 | 1,800 s | `systemctl suspend` |
 
+Setup > Security > Idle settings selects Quick, Balanced, Relaxed, or Never
+suspend. The selection is stored under `$XDG_STATE_HOME`, rendered into a
+runtime config, and applied by restarting Hypridle. Balanced uses the timings
+shown above.
+
 Plus `before_sleep_cmd = loginctl lock-session`, an `after_sleep_cmd` that
 re-enables DPMS, and `inhibit_sleep = 3`.

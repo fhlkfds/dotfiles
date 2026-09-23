@@ -196,6 +196,23 @@ Automatic detection fails closed when several YubiKeys are connected; select
 one explicitly with `--device`. Generated credentials are held in a mode-0700
 temporary directory, validated before installation, and removed on exit.
 
+`SUPER+SHIFT+A` > Setup > Security > YubiKey provides the same status, setup,
+add-key, dependency installation, and recovery-documentation paths. Commands
+that can report an incomplete setup use Kitty's hold mode so their output stays
+visible.
+
+## Lock and idle settings
+
+`screensaver-lock layout current` prints the selected lock layout.
+`screensaver-lock layout set NAME` stores a validated selection without editing
+the Stow source. Its normal lock path renders the selected layout into a private
+runtime config before launching Hyprlock.
+
+`hypr/.config/hypr/scripts/hypridle-profile` accepts `current`, `status`,
+`render`, `set`, and `daemon`. `set PROFILE --dry-run` reports the state and
+restart paths without writing either one. Hyprland autostarts `daemon`, which
+renders the chosen profile before starting Hypridle.
+
 ## Wallpaper tools
 
 | Tool | Purpose |

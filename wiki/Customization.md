@@ -17,8 +17,8 @@ of the deployed files get overwritten by generators anyway.
 | floating / rounding / dimming rules | `hypr/.config/hypr/conf/window_rules.lua` |
 | keyboard layout, mouse, touchpad, gestures | `hypr/.config/hypr/hyprland.lua` |
 | monitor arrangement or workspace pinning | `hypr/.config/hypr/monitor_profiles/` — never the active `monitors.lua` |
-| idle, lock, DPMS, suspend timers | `hypr/.config/hypr/hypridle.conf` |
-| the lock screen layout | `hypr/.config/hypr/hyprlock.conf` and `hyprlock/.config/hyprlock/layouts/` |
+| idle, lock, DPMS, suspend profile | Setup > Security > Idle settings; edit `hypridle-profile` to change the offered profiles |
+| the active lock screen layout | Setup > Security > Lock screen; edit the wrapper and layout files to change the offered layouts |
 | colours, gaps, borders, rounding, opacity, blur | `hypr/.config/hypr/themes/<slug>/colors.toml` |
 | an appearance rule that should apply to *every* theme | `hypr/.config/hypr/theme/templates/` or `generate.py` |
 | the bar layout or a widget | QML under `quickshell/.config/quickshell/` |
