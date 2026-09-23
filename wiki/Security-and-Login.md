@@ -227,6 +227,45 @@ shell.
 Requires `pam-u2f` (including `pamu2fcfg`) and `libfido2`. Fingerprints are
 enrolled with `fido2-token`, so `yubikey-manager` is not needed.
 
+## Host fingerprint sign-in
+
+Two different things in this repository are called "fingerprint", and it is
+worth keeping them apart:
+
+| | Sensor | Enrolled by | Authenticated by |
+| --- | --- | --- | --- |
+| `yubikey-auth --enroll-fingerprint` | on the YubiKey Bio token | `fido2-token -S -e` | `pam_u2f.so` with `userverification=1` |
+| `fingerprint-auth` | built into the laptop | `fprintd-enroll` | Hyprlock's own fprintd client |
+
+`fingerprint-auth` is for the second. It applies to laptops with a reader — the
+Goodix sensor in a Framework 13 power button — and reports that there is
+nothing to do on any host without one, which is how the shared desktops in this
+configuration see it.
+
+```bash
+fingerprint-auth status   # reader, tools, enrolled prints, Hyprlock wiring
+fingerprint-auth setup    # enroll a finger and enable lockscreen unlock
+```
+
+`Setup → Security → Fingerprint` in the Super+Shift+A menu runs `setup` in a
+terminal that stays open, and the entry is hidden unless the command is on
+`PATH`.
+
+### Why not `pam_fprintd.so`
+
+Because it makes the lockscreen worse. `pam_fprintd` owns the PAM conversation
+while it waits for a swipe, so with `auth sufficient pam_fprintd.so` in
+`/etc/pam.d/hyprlock` the password field silently does nothing until the scan
+times out. Hyprlock speaks to fprintd directly and runs the scan *beside* the
+password field instead, so `setup` flips
+`auth { fingerprint:enabled }` in `hypr/.config/hypr/hyprlock.conf` and leaves
+`system/pam.d/` completely alone. The YubiKey `pam_u2f` lines are unaffected,
+and the account password remains the fallback in every case.
+
+Prints live in `/var/lib/fprint/`, are host-local, and are never in Git — the
+same boundary as `/etc/u2f_mappings`. Requires `fprintd`, which is in the
+`optional` setup group.
+
 ## GnuPG
 
 `security/.config/gnupg-conf/` holds example `gpg.conf` and `gpg-agent.conf`

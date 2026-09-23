@@ -51,6 +51,7 @@ stow ai          # ~/.local/bin/ai-agent, ~/.config/ai-agent
 stow screensaver # screensaver commands, terminal configs, and editable logo
 stow modes       # ~/.local/bin/desktop-mode, temporary mode policy/config
 stow security    # ~/.local/bin/yubikey-auth, safe YubiKey PAM setup/addition;
+                 # ~/.local/bin/fingerprint-auth, laptop fingerprint sign-in;
                  # ~/.config/gnupg-conf gpg/gpg-agent examples
 stow ssh         # ~/.local/bin/sshpersist, SSH keepalive config fragment
 stow tmux        # ~/.config/tmux/tmux.conf for local tmux behavior
@@ -202,6 +203,31 @@ fingerprint enrollment automatically.
 The command validates mappings, creates timestamped `/etc` backups, installs
 sudo first, and waits for explicit confirmation after key/password testing
 before installing Hyprlock PAM. See [installation and recovery](docs/installation.md#yubikey-authentication).
+
+## Fingerprint sign-in
+
+Separate from the YubiKey Bio, and only for laptops with their own sensor — the
+Goodix reader in a Framework 13 power button, for instance. `fingerprint-auth`
+ships in the same `security` package and is a no-op on desktops:
+
+```bash
+fingerprint-auth status                        # reader, tools, prints, wiring
+fingerprint-auth setup                         # enroll and enable the lockscreen
+fingerprint-auth enroll --finger left-thumb    # one more finger
+fingerprint-auth setup --dry-run               # inspect without changing anything
+```
+
+It is also the **Setup → Security → Fingerprint** entry in the Super+Shift+A
+menu, which only appears once the command is on `PATH`.
+
+Unlock goes through Hyprlock's own fprintd support (`auth:fingerprint:enabled`),
+not `pam_fprintd.so`. That is deliberate: a `sufficient pam_fprintd.so` line in
+the PAM stack blocks the prompt until the scan times out, so typing your
+password does nothing for thirty seconds. Hyprlock instead runs the scan
+alongside the password field, and the password keeps working throughout.
+
+Enrollment needs `fprintd` (in the `optional` setup group). On a host with no
+reader every subcommand explains that and exits without touching anything.
 
 **Wallpapers** deploy automatically with `dots deploy`/`dots update`. To stow
 them by hand (see the layout note in

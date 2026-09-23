@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+auth="$repo_root/security/.local/bin/fingerprint-auth"
+test_root=$(mktemp -d -t fingerprint-auth-test.XXXXXX)
+trap 'rm -rf -- "$test_root"' EXIT
+
+fail() {
+  printf 'FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+contains() {
+  grep -Fq -- "$2" <<<"$1" || fail "$3"
+}
+
+mkdir -p "$test_root/bin"
+
+# --------------------------------------------------------------- fixtures ---
+
+# A sysfs-shaped USB tree. Only idVendor/idProduct/product are read.
+make_usb_tree() {
+  local root=$1; shift
+  rm -rf -- "$root"
+  mkdir -p "$root/1-0:1.0"
+  printf '1d6b\n' > "$root/1-0:1.0/idVendor"
+  printf '0002\n' > "$root/1-0:1.0/idProduct"
+  printf 'xHCI Host Controller\n' > "$root/1-0:1.0/product"
+  if [[ ${1:-} == --with-reader ]]; then
+    mkdir -p "$root/1-4"
+    printf '27c6\n' > "$root/1-4/idVendor"
+    printf '609c\n' > "$root/1-4/idProduct"
+    printf 'Goodix USB2.0 MISC\n' > "$root/1-4/product"
+  fi
+}
+
+usb_bare="$test_root/usb-bare"
+usb_reader="$test_root/usb-reader"
+make_usb_tree "$usb_bare"
+make_usb_tree "$usb_reader" --with-reader
+
+cat > "$test_root/bin/fprintd-list" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FPRINT_FIXTURE_CALLS"
+if [[ ${FPRINT_FIXTURE_NO_DEVICE:-0} == 1 ]]; then
+  printf 'Impossible to enumerate devices: No devices available\n' >&2
+  exit 1
+fi
+printf 'found 1 devices\n'
+printf 'Devices for user %s:\n' "${1:-liam}"
+if [[ -s ${FPRINT_FIXTURE_ENROLLED:-/dev/null} ]]; then
+  i=0
+  while read -r finger; do
+    printf ' - #%d: %s\n' "$i" "$finger"
+    i=$((i + 1))
+  done < "$FPRINT_FIXTURE_ENROLLED"
+fi
+SH
+
+cat > "$test_root/bin/fprintd-enroll" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FPRINT_FIXTURE_CALLS"
+finger=right-index-finger
+while (($#)); do
+  case $1 in
+    -f) finger=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '%s\n' "$finger" >> "$FPRINT_FIXTURE_ENROLLED"
+printf 'Enroll result: enroll-completed\n'
+SH
+
+cat > "$test_root/bin/fprintd-delete" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FPRINT_FIXTURE_CALLS"
+: > "$FPRINT_FIXTURE_ENROLLED"
+SH
+
+cat > "$test_root/bin/fprintd-verify" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FPRINT_FIXTURE_CALLS"
+printf 'Verify result: verify-match (done)\n'
+SH
+
+chmod +x "$test_root"/bin/*
+
+make_hyprlock_conf() {
+  local path=$1
+  cat > "$path" <<'CONF'
+$hyprlockDir = $HOME/.config/hyprlock
+
+auth {
+    pam:enabled = true
+    pam:module = hyprlock
+    fingerprint:enabled = false
+}
+CONF
+}
+
+reset_state() {
+  : > "$test_root/calls"
+  : > "$test_root/enrolled"
+  make_hyprlock_conf "$test_root/hyprlock.conf"
+}
+
+export FPRINT_FIXTURE_CALLS="$test_root/calls"
+export FPRINT_FIXTURE_ENROLLED="$test_root/enrolled"
+export FINGERPRINT_AUTH_USER=testuser
+export FINGERPRINT_AUTH_HYPRLOCK_CONF="$test_root/hyprlock.conf"
+
+with_fprintd() { PATH="$test_root/bin:$PATH" "$@"; }
+
+# Point the tool names at paths that cannot exist, so `command -v` fails the
+# same way it does on a machine where fprintd was never installed.
+without_fprintd() {
+  FINGERPRINT_AUTH_FPRINTD_ENROLL="$test_root/absent/fprintd-enroll" \
+  FINGERPRINT_AUTH_FPRINTD_LIST="$test_root/absent/fprintd-list" \
+  FINGERPRINT_AUTH_FPRINTD_DELETE="$test_root/absent/fprintd-delete" \
+  FINGERPRINT_AUTH_FPRINTD_VERIFY="$test_root/absent/fprintd-verify" \
+  "$@"
+}
+
+# ------------------------------------------------------------------ tests ---
+
+# 1. The headline requirement from the issue: no reader must produce a clear
+#    message, not a crash, and must leave the machine alone.
+reset_state
+out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_bare" without_fprintd "$auth" status 2>&1) \
+  || fail "status exited non-zero on a machine with no reader"
+contains "$out" 'usb reader: none detected' "status did not report a missing reader"
+contains "$out" 'fprintd device: unknown' "status did not report fprintd as absent"
+contains "$out" 'hyprlock fingerprint: disabled' "status misread the hyprlock config"
+contains "$out" 'MISSING' "status did not flag the missing fprintd tools"
+
+# 2. setup on a machine with no reader: fails closed, explains why, changes nothing.
+reset_state
+if out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_bare" without_fprintd "$auth" setup 2>&1); then
+  fail "setup succeeded on a machine with no fingerprint reader"
+fi
+contains "$out" 'no fingerprint reader was detected' "setup gave no clear no-reader message"
+contains "$out" 'pacman -S --needed fprintd' "setup did not name the install command"
+grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" \
+  || fail "setup modified hyprlock.conf despite having no reader"
+[[ ! -s $test_root/enrolled ]] || fail "setup enrolled a finger with no reader present"
+
+# 3. Reader on USB but fprintd not installed: name the device, name the fix.
+reset_state
+if out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" without_fprintd "$auth" setup 2>&1); then
+  fail "setup succeeded without fprintd installed"
+fi
+contains "$out" '27c6:609c' "setup did not identify the detected reader"
+contains "$out" 'fprintd is not installed' "setup did not explain that fprintd is missing"
+
+# 4. fprintd installed but reporting no device.
+reset_state
+if out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_bare" FPRINT_FIXTURE_NO_DEVICE=1 \
+  with_fprintd "$auth" setup 2>&1); then
+  fail "setup succeeded while fprintd reported no device"
+fi
+contains "$out" 'no fingerprint reader found' "setup gave no clear message for an empty fprintd"
+
+# 5. Happy path: enroll and wire hyprlock.
+reset_state
+out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" with_fprintd "$auth" setup 2>&1) \
+  || fail "setup failed on a machine with a working reader"
+contains "$out" 'Enrolled right-index-finger' "setup did not report the enrollment"
+grep -Fq -- '-f right-index-finger testuser' "$test_root/calls" \
+  || fail "setup did not call fprintd-enroll with the finger and user"
+grep -q 'fingerprint:enabled = true' "$test_root/hyprlock.conf" \
+  || fail "setup did not enable fingerprint unlock in hyprlock.conf"
+grep -q 'pam:module = hyprlock' "$test_root/hyprlock.conf" \
+  || fail "setup damaged the rest of the hyprlock auth block"
+
+# 6. Idempotent: a second setup re-enrolls nothing and re-writes nothing.
+before=$(cat "$test_root/hyprlock.conf")
+out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" with_fprintd "$auth" setup 2>&1) \
+  || fail "second setup failed"
+contains "$out" 'already enrolled' "second setup re-enrolled an existing finger"
+contains "$out" 'already enabled' "second setup rewrote an already-enabled config"
+[[ $before == $(cat "$test_root/hyprlock.conf") ]] \
+  || fail "second setup changed hyprlock.conf"
+
+# 7. status surfaces enrolled fingers.
+out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" with_fprintd "$auth" status 2>&1) \
+  || fail "status failed on a configured machine"
+contains "$out" 'enrolled: right-index-finger' "status did not list the enrolled finger"
+contains "$out" 'hyprlock fingerprint: enabled' "status did not see the enabled config"
+
+# 8. --dry-run reports without touching prints or config.
+reset_state
+out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" with_fprintd "$auth" setup --dry-run 2>&1) \
+  || fail "dry-run setup failed"
+contains "$out" 'would enroll: right-index-finger' "dry run did not report the enrollment"
+contains "$out" 'would enable' "dry run did not report the hyprlock change"
+grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" \
+  || fail "dry run modified hyprlock.conf"
+[[ ! -s $test_root/enrolled ]] || fail "dry run enrolled a finger"
+
+# 9. --no-hyprlock enrolls only.
+reset_state
+out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" with_fprintd "$auth" setup --no-hyprlock 2>&1) \
+  || fail "setup --no-hyprlock failed"
+grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" \
+  || fail "--no-hyprlock still rewrote hyprlock.conf"
+[[ -s $test_root/enrolled ]] || fail "--no-hyprlock skipped enrollment too"
+
+# 10. Bad input is rejected before any device work happens.
+reset_state
+if out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" with_fprintd \
+  "$auth" setup --finger thumb 2>&1); then
+  fail "setup accepted an invalid finger name"
+fi
+contains "$out" "invalid finger 'thumb'" "no clear message for an invalid finger"
+[[ ! -s $test_root/enrolled ]] || fail "invalid finger still reached fprintd-enroll"
+
+if out=$("$auth" --bogus 2>&1); then
+  fail "the tool accepted an unknown argument"
+fi
+contains "$out" 'unknown argument: --bogus' "no clear message for an unknown argument"
+
+# 11. No action prints usage and exits 2, like yubikey-auth.
+set +e
+"$auth" >/dev/null 2>&1
+status=$?
+set -e
+[[ $status -eq 2 ]] || fail "expected exit 2 with no action, got $status"
+
+# 12. delete clears prints and leaves the lockscreen config alone.
+reset_state
+FINGERPRINT_AUTH_USB_ROOT="$usb_reader" with_fprintd "$auth" setup >/dev/null 2>&1
+out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" with_fprintd "$auth" delete 2>&1) \
+  || fail "delete failed"
+[[ ! -s $test_root/enrolled ]] || fail "delete left fingerprints enrolled"
+grep -q 'fingerprint:enabled = true' "$test_root/hyprlock.conf" \
+  || fail "delete unexpectedly changed hyprlock.conf"
+
+printf 'PASS: fingerprint-auth\n'
