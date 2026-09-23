@@ -733,6 +733,13 @@
     "action": "kitty --title 'Add YubiKey' -e bash -lc 'yubikey-auth add; status=$?; if [ $status -eq 0 ]; then printf \"\\n\u2705 Key added.\\n\"; else printf \"\\n\u274c Could not add the key (exit %s).\\n\" \"$status\"; fi; read -rp \"Press Enter to close\u2026\"'"
   },
   {
+    "id": "setup.security.yubikey.remove",
+    "icon": "󰆴",
+    "label": "Remove last registered key",
+    "when": "command -v yubikey-auth >/dev/null",
+    "action": "kitty --title 'Remove YubiKey' -e bash -lc 'yubikey-auth remove; status=$?; if [ $status -eq 0 ]; then printf \"\\n\u2705 Last key removed.\\n\"; else printf \"\\n\u274c No key was removed (exit %s).\\n\" \"$status\"; fi; read -rp \"Press Enter to close\u2026\"'"
+  },
+  {
     "id": "setup.security.yubikey.install",
     "icon": "󰏔",
     "label": "Install prerequisites",

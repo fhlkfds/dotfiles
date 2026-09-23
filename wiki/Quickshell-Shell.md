@@ -40,13 +40,8 @@ what makes the tallest chrome (the 26 design-px workspace cell) sit at 33 px
 inside a 40 px island. The reserved height is that island plus a 5 px gap above
 and below.
 
-Narrow bars scale *down*. A rotated 1920x1080 output gives a 1080 px bar, and at
-full scale the three island groups (~394 + ~364 + ~337 px) need ~1130 px with
-margins and separators — they do not fit, and the capsules collide. The scale
-curve is what keeps them apart; the old floor of 1.0 gave the bar no way to
-shrink into a rotated monitor. If scaling down is still not enough, the clock
-shifts off true centre (`centerGroup.collisionShift`) so the capsules touch
-instead of overlapping. On every landscape monitor that shift is zero.
+Narrow bars scale down. If that still leaves too little room, the clock shifts
+off centre (`centerGroup.collisionShift`) to keep the capsules apart.
 
 Islands are spread to the two edges rather than clustered: workspaces hard left,
 the clock centred, the tray and power hard right.
@@ -54,8 +49,8 @@ the clock centred, the tray and power hard right.
 | Island | Holds |
 | --- | --- |
 | `leftIsland` | `WorkspacesModule` |
-| `centerIsland` | the indicator row, the clock, keyboard and weather |
-| `trayIsland` | the eight status and launcher icons |
+| `centerIsland` | recording and mode indicators, clock |
+| `trayIsland` | launcher, agent, VM, Bluetooth, network, audio, battery when present |
 | `powerIsland` | the power button, alone, circular |
 
 An island is sized to its content, so it shrinks when a module hides itself —
@@ -68,26 +63,21 @@ design, and a theme setting rounding to 4 would flatten it back into a slab.
 the bar, so it does not share a capsule with the icon a mis-aimed click would
 otherwise be one pixel away from.
 
-**Left** — `WorkspacesModule`: fixed cells for workspaces 1–10. Clicking one
+**Left** — `WorkspacesModule` has fixed cells for workspaces 1–10. Clicking one
 switches to it.
 
-**Centre** — the clock is the anchor, and both side groups grow away from it, so
-changing either side never nudges the time. `centerIsland` is drawn *from* those
-two rows rather than wrapping them, because a content-sized capsule would centre
-itself instead and drag the time sideways whenever a mode pill appeared.
+**Centre** — the clock is the anchor. The indicator row grows left, so changing
+it does not nudge the time. The clock opens the calendar.
 
 | Position | Widget |
 | --- | --- |
-| left of the clock | `RecordIcon`, `ModeIndicators`, `UpdatesIcon`, `BatteryIcon` (when a laptop battery is present) |
+| left of the clock | `RecordIcon`, `ModeIndicators` |
 | the anchor | the clock itself |
-| right of the clock | `KeyboardLayoutWidget`, weather glyph, weather temperature |
 
-The `MediaPanel` anchors to the clock, but is opened from `MediaIcon` or the
-`media` IPC target — the clock itself is a plain label with no click target.
+The `MediaPanel` anchors to the clock and opens through the `media` IPC target.
 
-**Right** — `SystemTrayWidget`, `AgentIcon`, `WindowsVmIcon`, `ClipboardIcon`,
-`BluetoothIcon`, `NetworkIcon`, `AudioIcon`, `DisplayIcon`, then a power button
-that runs `scripts/power-menu.sh`.
+**Right** — `AppLauncher`, `AgentIcon`, `WindowsVmIcon`, `BluetoothIcon`,
+`NetworkIcon`, `AudioIcon`, `BatteryIcon` when present, then the power button.
 
 `tests/omakub-bar-layout.test.sh` asserts the bar still mounts this component
 set, so adding or removing a widget means updating that list. It also asserts
@@ -99,21 +89,19 @@ still clears the island on both sides.
 
 - **Empty bar space**: inert. The bar is pinned to the top edge and cannot be
   moved.
-- **Display**: opens the display panel; the wheel adjusts DDC/CI brightness.
+- **Display**: Super+Ctrl+D opens the display panel.
 - **Network**: opens the themed NetworkManager panel.
 - **Bluetooth**: connected devices as hero cards, paired devices below, discovery
   folded behind a scan button. Pointer-driven; Escape closes.
 - **Audio**: panel on left or middle click, mute on right click, 3% wheel steps.
-- **Clipboard**: opens the cliphist browser.
+- **Clipboard**: Super+Ctrl+V opens the cliphist browser.
 - **Recording indicator**: only present while recording; clicking stops it.
 - **Mode indicators**: pills for active night light, DND, stay-awake,
   automatic-screensaver-disabled, and error states. Clicking opens the modes
   panel. They show *observed* state, so an error appears instead of a false
   success.
-- **Updates**: hover shows every pending pacman and AUR package; it checks every
-  90 minutes, and clicking opens a Kitty update window.
 - **Battery**: shows charge percentage and state; hidden when no laptop battery
-  is present.
+  is present. Clicking opens the battery panel.
 - **Windows VM icon**: appears while the container runs. Pulses amber while
   installation or startup waits for RDP, then goes solid accent when RDP is
   ready. Disappears when the VM stops.

@@ -166,6 +166,8 @@ grep -Fq 'yubikey-auth setup;' "$test_root/yubikey-menu.out" ||
   fail 'the YubiKey menu cannot set up the first key'
 grep -Fq 'yubikey-auth add;' "$test_root/yubikey-menu.out" ||
   fail 'the YubiKey menu cannot add another key'
+grep -Fq 'yubikey-auth remove;' "$test_root/yubikey-menu.out" ||
+  fail 'the YubiKey menu cannot remove the last registered key'
 grep -Fq 'enroll-fingerprint' "$test_root/yubikey-menu.out" &&
   fail 'the YubiKey menu still assumes the key has a fingerprint sensor'
 # Every YubiKey entry must park on a prompt so a failure stays readable instead

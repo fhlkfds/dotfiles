@@ -14,19 +14,31 @@ fail() {
 for component in \
   'WorkspacesModule {' \
   'ModeIndicators {' \
-  'UpdatesIcon {' \
   'BatteryIcon {' \
-  'KeyboardLayoutWidget {' \
   'AppLauncher {' \
   'AgentIcon {' \
   'BluetoothIcon {' \
   'NetworkIcon {' \
   'AudioIcon {' \
-  'DisplayIcon {'; do
+  'ClipboardPanel {' \
+  'DisplayPanel {'; do
   grep -Fq "$component" "$bar" || fail "bar does not mount $component"
 done
 
-# The clock-anchored dashboard drawer was removed; the clock is a plain label.
+for removed in 'UpdatesIcon {' 'KeyboardLayoutWidget {' 'WeatherForecastPopup {' \
+               'ClipboardIcon {' 'DisplayIcon {'; do
+  ! grep -Fq "$removed" "$bar" || fail "bar still mounts $removed"
+done
+
+awk '
+  /id: trayIsland/ { in_tray = 1 }
+  in_tray && /BatteryIcon \{/ { battery_in_tray = 1 }
+  in_tray && /^        }/ { exit }
+  END { exit !battery_in_tray }
+' "$bar" || fail 'battery is not in the right tray island'
+[[ $(grep -Fc 'BatteryIcon {' "$bar") == 1 ]] || fail 'bar mounts battery more than once'
+
+# The clock-anchored dashboard drawer was removed; clicking the clock opens the calendar.
 for removed in \
   'DashboardPanel' \
   'DashboardState' \
