@@ -75,7 +75,7 @@ case "${1:-}" in
     done
     exec install "${args[@]}"
     ;;
-  cat|cp) exec "$@" ;;
+  cat|cp|rm) exec "$@" ;;
   *) printf 'unexpected sudo command: %s\n' "$*" >&2; exit 2 ;;
 esac
 SH
@@ -111,20 +111,33 @@ grep -Fq 'no fingerprint sensor' "$test_root/no-sensor.out" \
 "$auth" setup --confirm-sudo-tested > "$test_root/setup.out"
 grep -Fq 'mode: touch' "$test_root/setup.out" \
   || fail 'a key offering only presence did not resolve to touch mode'
+grep -Fq 'Then touch /dev/hidraw-test when it blinks to finish registration.' "$test_root/setup.out" \
+  || fail 'setup did not explain the touch after the optional PIN prompt'
 grep -Fq 'liam:first-handle,first-public-key,es256,+verification' \
   "$test_root/etc/u2f_mappings" || fail 'setup did not install the first mapping'
 cmp "$repo_root/system/pam.d/sudo" "$test_root/etc/pam.d/sudo" \
   || fail 'setup did not install the sudo PAM template'
 cmp "$repo_root/system/pam.d/doas" "$test_root/etc/pam.d/doas" \
   || fail 'setup did not install the doas PAM template'
+for service in sudo doas; do
+  awk '
+    $1 == "auth" {
+      if (/\[success=1 default=ignore\].*pam_unix\.so/) password = NR
+      if (/pam_u2f\.so/) key = NR
+      if (/include.*(system-auth|login)/) fallback = NR
+    }
+    END { exit !(password && key && fallback && password < key && key < fallback) }
+  ' "$repo_root/system/pam.d/$service" \
+    || fail "$service does not offer password before waiting for the key"
+done
 grep -Fq 'old hyprlock pam' "$test_root/etc/pam.d/hyprlock" \
   || fail 'setup changed the lock screen without --with-hyprlock'
 ! grep -Eq -- '(^| )-[NV]( |$)' "$PAMU_FIXTURE_CALLS" \
   || fail 'touch mode still registered a PIN or user-verification requirement'
 find "$test_root/etc" -maxdepth 2 -name '*.pre-yubikey.*' | grep -q . \
   || fail 'setup did not retain recovery backups'
-[[ $(stat -c '%a' "$test_root/etc/u2f_mappings") == 600 ]] \
-  || fail 'mapping permissions are not 0600'
+[[ $(stat -c '%a' "$test_root/etc/u2f_mappings") == 644 ]] \
+  || fail 'mapping permissions are not 0644'
 
 "$auth" add > "$test_root/add.out"
 expected='liam:first-handle,first-public-key,es256,+verification:second-handle,second-public-key,es256,+verification'
@@ -141,6 +154,9 @@ after=$(sha256sum "$test_root/etc/u2f_mappings" "$test_root/etc/pam.d/sudo" "$te
 [[ $before == "$after" ]] || fail 'dry-run changed authentication state'
 grep -Fq "would leave on password: $test_root/etc/pam.d/hyprlock" "$test_root/dry-run.out" \
   || fail 'dry-run did not report that the lock screen is left alone'
+"$auth" setup --with-hyprlock --dry-run > "$test_root/hyprlock-dry-run.out"
+grep -Fq "would check existing mapping: $test_root/etc/u2f_mappings" "$test_root/hyprlock-dry-run.out" \
+  || fail 'Hyprlock dry-run claimed it would replace the existing mapping'
 FIDO_FIXTURE_BIO=1 "$auth" setup --dry-run --enroll-fingerprint --with-hyprlock \
   > "$test_root/dry-run-bio.out"
 grep -Fq 'mode: bio' "$test_root/dry-run-bio.out" \
@@ -177,6 +193,46 @@ grep -Fq 'verification: /dev/hidraw-test can offer touch, PIN' "$test_root/statu
   || fail 'status did not report what the key can actually verify with'
 grep -Fq 'pam: password only' "$test_root/status.out" \
   || fail 'status did not report the lock screen as password only'
+
+before=$(sha256sum "$test_root/etc/u2f_mappings" "$test_root/etc/pam.d/sudo" "$test_root/etc/pam.d/doas")
+pamu_calls_before=$(wc -l < "$PAMU_FIXTURE_CALLS")
+if "$auth" setup --with-hyprlock < /dev/null > "$test_root/hyprlock-checkpoint.out" 2>&1; then
+  fail 'an existing setup skipped the Hyprlock confirmation'
+fi
+grep -Fq 'interactive confirmation unavailable' "$test_root/hyprlock-checkpoint.out" \
+  || fail 'an existing setup did not require the Hyprlock checkpoint'
+grep -Fq 'old hyprlock pam' "$test_root/etc/pam.d/hyprlock" \
+  || fail 'Hyprlock changed before confirmation'
+"$auth" setup --with-hyprlock --confirm-sudo-tested > "$test_root/hyprlock.out"
+after=$(sha256sum "$test_root/etc/u2f_mappings" "$test_root/etc/pam.d/sudo" "$test_root/etc/pam.d/doas")
+[[ $before == "$after" && $(wc -l < "$PAMU_FIXTURE_CALLS") == "$pamu_calls_before" ]] \
+  || fail 'enabling Hyprlock re-registered the key or changed the existing setup'
+cmp "$repo_root/system/pam.d/hyprlock" "$test_root/etc/pam.d/hyprlock" \
+  || fail 'setup --with-hyprlock did not deploy Hyprlock with an existing mapping'
+
+before=$(sha256sum "$test_root/etc/u2f_mappings")
+YUBIKEY_AUTH_FIDO2_TOKEN=/nonexistent YUBIKEY_AUTH_PAMU2FCFG=/nonexistent \
+  "$auth" remove --dry-run > "$test_root/remove-dry-run.out"
+grep -Fq 'would revoke: last registered key' "$test_root/remove-dry-run.out" \
+  || fail 'remove dry-run did not report the key it would revoke'
+if printf 'no\n' | "$auth" remove > "$test_root/remove-cancel.out" 2>&1; then
+  fail 'remove accepted the wrong confirmation'
+fi
+[[ $(sha256sum "$test_root/etc/u2f_mappings") == "$before" ]] \
+  || fail 'remove dry-run or cancelled removal changed the mapping'
+backups_before=$(find "$test_root/etc" -maxdepth 1 -name 'u2f_mappings.pre-yubikey.*' | wc -l)
+printf 'REMOVE LAST KEY\n' | "$auth" remove > "$test_root/remove-one.out"
+expected='liam:first-handle,first-public-key,es256,+verification:second-handle,second-public-key,es256,+verification'
+[[ $(<"$test_root/etc/u2f_mappings") == "$expected" ]] \
+  || fail 'remove did not revoke only the final credential'
+[[ $(find "$test_root/etc" -maxdepth 1 -name 'u2f_mappings.pre-yubikey.*' | wc -l) -gt $backups_before ]] \
+  || fail 'remove did not back up the mapping'
+printf 'REMOVE LAST KEY\n' | "$auth" remove > "$test_root/remove-two.out"
+printf 'REMOVE LAST KEY\n' | "$auth" remove > "$test_root/remove-last.out"
+[[ ! -e $test_root/etc/u2f_mappings ]] \
+  || fail 'remove left a mapping with no credentials'
+cmp "$repo_root/system/pam.d/sudo" "$test_root/etc/pam.d/sudo" \
+  || fail 'remove changed the sudo PAM fallback'
 
 if FIDO_FIXTURE_MULTIPLE=1 "$auth" add --dry-run > "$test_root/multiple.out" 2>&1; then
   fail 'multiple-device auto-detection did not fail closed'
