@@ -22,6 +22,19 @@ case "${1:-}" in
       printf '/dev/hidraw-other: vendor=0x1050, product=0x0407 (Yubico YubiKey OTP+FIDO)\n'
     fi
     ;;
+  -I)
+    # Mirrors the shape of a real `fido2-token -I`. The default key has no
+    # sensor, which is what the attached hardware reports.
+    printf 'proto: 0x02\n'
+    if [[ ${FIDO_FIXTURE_BIO:-0} == 1 ]]; then
+      printf 'options: rk, up, noplat, nobioEnroll, clientPin, uv\n'
+    elif [[ ${FIDO_FIXTURE_NOPIN:-0} == 1 ]]; then
+      printf 'options: rk, up, noplat\n'
+    else
+      printf 'options: rk, up, noplat, clientPin, credentialMgmtPreview\n'
+    fi
+    printf 'pin retries: 8\n'
+    ;;
   -S)
     printf '%s\n' "$*" >> "$FIDO_FIXTURE_CALLS"
     ;;
@@ -83,17 +96,31 @@ printf 'invalid terminal bytes\033[0m\n' > "$test_root/etc/u2f_mappings"
 printf 'old sudo pam\n' > "$test_root/etc/pam.d/sudo"
 printf 'old hyprlock pam\n' > "$test_root/etc/pam.d/hyprlock"
 
-"$auth" setup --enroll-fingerprint --confirm-sudo-tested > "$test_root/setup.out"
+# A key with no fingerprint sensor must not be routed into Bio enrollment: the
+# old product-ID check picked bio for product=0x0402 and libfido2 answered
+# FIDO_ERR_INVALID_COMMAND on hardware that has no sensor at all.
+if "$auth" setup --enroll-fingerprint --confirm-sudo-tested \
+  > "$test_root/no-sensor.out" 2>&1; then
+  fail 'a key without a fingerprint sensor still accepted --enroll-fingerprint'
+fi
+grep -Fq 'no fingerprint sensor' "$test_root/no-sensor.out" \
+  || fail 'the missing-sensor failure was not actionable'
+[[ ! -s $FIDO_FIXTURE_CALLS ]] \
+  || fail 'a key without a sensor was still sent a fingerprint enrollment'
+
+"$auth" setup --confirm-sudo-tested > "$test_root/setup.out"
+grep -Fq 'mode: touch' "$test_root/setup.out" \
+  || fail 'a key offering only presence did not resolve to touch mode'
 grep -Fq 'liam:first-handle,first-public-key,es256,+verification' \
   "$test_root/etc/u2f_mappings" || fail 'setup did not install the first mapping'
 cmp "$repo_root/system/pam.d/sudo" "$test_root/etc/pam.d/sudo" \
   || fail 'setup did not install the sudo PAM template'
-cmp "$repo_root/system/pam.d/hyprlock" "$test_root/etc/pam.d/hyprlock" \
-  || fail 'setup did not install the Hyprlock PAM template'
-grep -Fq -- '-S -e /dev/hidraw-test' "$FIDO_FIXTURE_CALLS" \
-  || fail 'Bio enrollment did not call the fingerprint command'
-grep -Fq -- '-V' "$PAMU_FIXTURE_CALLS" \
-  || fail 'Bio setup did not require user verification'
+cmp "$repo_root/system/pam.d/doas" "$test_root/etc/pam.d/doas" \
+  || fail 'setup did not install the doas PAM template'
+grep -Fq 'old hyprlock pam' "$test_root/etc/pam.d/hyprlock" \
+  || fail 'setup changed the lock screen without --with-hyprlock'
+! grep -Eq -- '(^| )-[NV]( |$)' "$PAMU_FIXTURE_CALLS" \
+  || fail 'touch mode still registered a PIN or user-verification requirement'
 find "$test_root/etc" -maxdepth 2 -name '*.pre-yubikey.*' | grep -q . \
   || fail 'setup did not retain recovery backups'
 [[ $(stat -c '%a' "$test_root/etc/u2f_mappings") == 600 ]] \
@@ -109,22 +136,47 @@ grep -Fq -- '-n ' "$PAMU_FIXTURE_CALLS" \
   || fail 'same-second updates did not preserve distinct mapping backups'
 
 before=$(sha256sum "$test_root/etc/u2f_mappings" "$test_root/etc/pam.d/sudo" "$test_root/etc/pam.d/hyprlock")
-"$auth" setup --dry-run --enroll-fingerprint > "$test_root/dry-run.out"
+"$auth" setup --dry-run > "$test_root/dry-run.out"
 after=$(sha256sum "$test_root/etc/u2f_mappings" "$test_root/etc/pam.d/sudo" "$test_root/etc/pam.d/hyprlock")
 [[ $before == "$after" ]] || fail 'dry-run changed authentication state'
-grep -Fq 'would enroll: fingerprint' "$test_root/dry-run.out" \
+grep -Fq "would leave on password: $test_root/etc/pam.d/hyprlock" "$test_root/dry-run.out" \
+  || fail 'dry-run did not report that the lock screen is left alone'
+FIDO_FIXTURE_BIO=1 "$auth" setup --dry-run --enroll-fingerprint --with-hyprlock \
+  > "$test_root/dry-run-bio.out"
+grep -Fq 'mode: bio' "$test_root/dry-run-bio.out" \
+  || fail 'a key with a sensor did not resolve to bio mode'
+grep -Fq 'would enroll: fingerprint' "$test_root/dry-run-bio.out" \
   || fail 'dry-run did not report fingerprint enrollment'
+grep -Fq "would deploy: $test_root/etc/pam.d/hyprlock" "$test_root/dry-run-bio.out" \
+  || fail '--with-hyprlock did not report the lock-screen deployment'
 
 : > "$PAMU_FIXTURE_CALLS"
 "$auth" add --mode pin > "$test_root/pin.out"
 grep -Fq -- '-N' "$PAMU_FIXTURE_CALLS" || fail 'PIN mode did not request PIN verification'
 ! grep -Fq -- '-V' "$PAMU_FIXTURE_CALLS" || fail 'PIN mode also requested biometric verification'
 
+if FIDO_FIXTURE_NOPIN=1 "$auth" add --mode pin --dry-run \
+  > "$test_root/nopin.out" 2>&1; then
+  fail 'PIN mode was accepted by a key that cannot hold a PIN'
+fi
+grep -Fq 'does not support a FIDO PIN' "$test_root/nopin.out" \
+  || fail 'the unsupported-PIN failure was not actionable'
+
+if "$auth" add --with-hyprlock --dry-run > "$test_root/add-hyprlock.out" 2>&1; then
+  fail "add silently accepted --with-hyprlock"
+fi
+grep -Fq "applies to 'setup' only" "$test_root/add-hyprlock.out" \
+  || fail 'the misplaced --with-hyprlock failure was not actionable'
+
 "$auth" status > "$test_root/status.out"
 grep -Fq 'mapping: valid for liam' "$test_root/status.out" \
   || fail 'status did not recognize the valid mapping'
 grep -Fq 'pam: deployed' "$test_root/status.out" \
   || fail 'status did not recognize deployed PAM templates'
+grep -Fq 'verification: /dev/hidraw-test can offer touch, PIN' "$test_root/status.out" \
+  || fail 'status did not report what the key can actually verify with'
+grep -Fq 'pam: password only' "$test_root/status.out" \
+  || fail 'status did not report the lock screen as password only'
 
 if FIDO_FIXTURE_MULTIPLE=1 "$auth" add --dry-run > "$test_root/multiple.out" 2>&1; then
   fail 'multiple-device auto-detection did not fail closed'
@@ -144,8 +196,8 @@ PATH="$test_root/zsh-bin:$PATH" zsh -f -c '
   source "$1"
   [[ $aliases[yubi] == "yubikey-auth" ]]
   [[ $aliases[yubi-status] == "yubikey-auth status" ]]
-  [[ $aliases[yubi-setup] == "yubikey-auth setup --enroll-fingerprint" ]]
-  [[ $aliases[yubi-add] == "yubikey-auth add --enroll-fingerprint" ]]
+  [[ $aliases[yubi-setup] == "yubikey-auth setup" ]]
+  [[ $aliases[yubi-add] == "yubikey-auth add" ]]
 ' _ "$zsh_integration" || fail 'Zsh shortcuts were not defined as expected'
 
 PATH="$test_root/zsh-bin:$PATH" zsh -f -c '

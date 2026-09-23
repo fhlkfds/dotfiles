@@ -182,31 +182,47 @@ which entries had to be inferred.
 Zsh sessions export `SSH_AUTH_SOCK` to the matching `gpg-agent` socket.
 
 `security/.local/bin/yubikey-auth` manages the host-local PAM-U2F mapping and
-repository-owned sudo/Hyprlock templates without placing credentials in Git.
+repository-owned sudo/doas/Hyprlock templates without placing credentials in
+Git.
 
 | Command | Behavior |
 | --- | --- |
-| `yubikey-auth status` | reports tools, visible tokens, mapping presence, and deployed-template state |
-| `yubikey-auth setup --enroll-fingerprint` | enrolls a YubiKey Bio fingerprint, creates the first mapping, backs up `/etc` targets, and stages sudo before Hyprlock |
-| `yubikey-auth add --enroll-fingerprint` | appends another Bio credential to the existing user's single mapping line |
-| `yubikey-auth add --mode pin` | registers a non-biometric FIDO2 key with PIN verification |
+| `yubikey-auth status` | reports tools, visible tokens, what each token can verify with, mapping presence, and deployed-template state |
+| `yubikey-auth setup` | creates the first mapping, backs up `/etc` targets, and deploys the sudo and doas stacks |
+| `yubikey-auth add` | appends another credential to the existing user's single mapping line |
+| `yubikey-auth setup --with-hyprlock` | also deploys the lock-screen stack, after the interactive `INSTALL HYPRLOCK` checkpoint |
+| `yubikey-auth setup\|add --mode pin` | requires the key's FIDO PIN at every authentication |
+| `yubikey-auth setup\|add --mode bio --enroll-fingerprint` | enrolls and requires a fingerprint on a key that has a sensor |
 | `yubikey-auth setup\|add --dry-run` | detects and reports actions without changing the key, mapping, or PAM |
+
+The verification mode comes from what the key reports through
+`fido2-token -I`, not from its USB product ID: `product=0x0402` is the plain
+FIDO interface and is shared by keys with no fingerprint sensor, so keying off
+it sent sensorless hardware into Bio enrollment and `FIDO_ERR_INVALID_COMMAND`.
+`--mode auto` now picks `bio` only when the key reports `bioEnroll`, and
+`touch` otherwise. Asking for a mode the key cannot do fails with a message
+naming the hardware limit.
+
+Touch mode registers with neither `-V` nor `-N`, so a tap is the whole
+authentication. That proves the key is present, not who pressed it, which is
+why Hyprlock is opt-in: on the lock screen a touch-only credential means anyone
+at the machine can unlock it while the key is plugged in.
 
 Automatic detection fails closed when several YubiKeys are connected; select
 one explicitly with `--device`. Generated credentials are held in a mode-0700
 temporary directory, validated before installation, and removed on exit.
 
 `SUPER+SHIFT+A` > Setup > Security > YubiKey provides the same status, setup,
-add-key, dependency installation, and recovery-documentation paths. Commands
-that can report an incomplete setup use Kitty's hold mode so their output stays
-visible.
+add-key, dependency installation, and recovery-documentation paths. Each of
+those entries reports a ✅ or ❌ line and then waits for Enter, so a failure
+stays readable instead of the window closing or leaving a bare shell.
 
 ## Fingerprint sign-in
 
 `security/.local/bin/fingerprint-auth` covers the *other* fingerprint: a sensor
 built into the host, such as the Goodix reader in a Framework 13 power button.
 It is unrelated to `yubikey-auth --enroll-fingerprint`, which enrolls onto a
-YubiKey Bio token.
+YubiKey Bio token and requires a key with its own sensor.
 
 | Command | Behavior |
 | --- | --- |

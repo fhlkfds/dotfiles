@@ -6,6 +6,7 @@ ACTION=
 DEVICE=
 MODE=auto
 ENROLL_FINGERPRINT=false
+WITH_HYPRLOCK=false
 DRY_RUN=false
 CONFIRM_SUDO_TESTED=false
 
@@ -35,16 +36,26 @@ Usage:
 
 Options:
   --device PATH              use this FIDO device instead of auto-detection
-  --mode auto|bio|pin        registration verification mode (default: auto)
+  --mode auto|touch|bio|pin  registration verification mode (default: auto)
   --enroll-fingerprint       enroll a fingerprint before Bio registration
+  --with-hyprlock            also put the key in the lock-screen PAM stack
   --confirm-sudo-tested      deploy Hyprlock without the interactive checkpoint
   --dry-run                  report actions without changing token or system state
   -h, --help                 show this help
 
+Modes are checked against what the key reports it can actually do:
+  touch  a tap proves the key is present; no PIN and no fingerprint
+  bio    the key's own fingerprint sensor verifies the user
+  pin    the key's FIDO PIN is entered at every authentication
+  auto   bio when the key has a sensor, otherwise touch
+
+Hyprlock is opt-in because a touch-only credential cannot tell who tapped the
+key. Anyone at the machine could unlock it while the key is plugged in.
+
 Examples:
-  $PROGRAM setup --enroll-fingerprint
-  $PROGRAM add --enroll-fingerprint
+  $PROGRAM setup
   $PROGRAM add --device /dev/hidraw1 --mode pin
+  $PROGRAM setup --with-hyprlock --mode bio --enroll-fingerprint
 EOF
 }
 
@@ -87,17 +98,52 @@ detect_device() {
   esac
 }
 
+device_options=
+
+# The USB product ID does not say whether a key has a fingerprint sensor:
+# 0x0402 is the plain YubiKey FIDO interface, shared with keys that have no
+# sensor at all. Ask the authenticator what it supports instead. Returns
+# non-zero rather than exiting, so `status` can survey every attached token
+# without one unreadable key aborting the whole report.
+probe_device() {
+  local info
+  device_options=
+  info=$("$FIDO2_TOKEN" -I "$DEVICE" 2>/dev/null) || return 1
+  device_options=$(awk -F'options: *' '/^options:/ { print $2; exit }' <<<"$info")
+  [[ -n $device_options ]]
+}
+
+# An option the key does not implement is absent; one it implements but has not
+# configured is prefixed with "no". A key with an unenrolled sensor reports
+# "nobioEnroll", which is exactly when --enroll-fingerprint is useful.
+device_has_option() {
+  local options=",${device_options// /},"
+  [[ $options == *",$1,"* ]]
+}
+
+device_supports_option() {
+  device_has_option "$1" || device_has_option "no$1"
+}
+
 resolve_mode() {
   case $MODE in
     auto)
-      if grep -F -- "$DEVICE:" <<<"$device_listing" | grep -Fq 'product=0x0402'; then
+      if device_supports_option bioEnroll; then
         MODE=bio
       else
-        MODE=pin
+        MODE=touch
       fi
       ;;
-    bio|pin) ;;
-    *) fail "invalid mode '$MODE' (expected auto, bio, or pin)" ;;
+    bio)
+      device_supports_option bioEnroll \
+        || fail "$DEVICE has no fingerprint sensor; use --mode touch or --mode pin"
+      ;;
+    pin)
+      device_supports_option clientPin \
+        || fail "$DEVICE does not support a FIDO PIN; use --mode touch"
+      ;;
+    touch) ;;
+    *) fail "invalid mode '$MODE' (expected auto, touch, bio, or pin)" ;;
   esac
 }
 
@@ -153,6 +199,18 @@ show_status() {
 
   if device_listing=$($FIDO2_TOKEN -L 2>/dev/null) && [[ -n $device_listing ]]; then
     printf 'tokens:\n%s\n' "$device_listing"
+    # Shadowed so surveying every token does not leak into the caller's DEVICE.
+    local token_path DEVICE
+    while read -r token_path; do
+      [[ -n $token_path ]] || continue
+      DEVICE=$token_path
+      if probe_device 2>/dev/null; then
+        local capabilities='touch'
+        if device_supports_option bioEnroll; then capabilities+=', fingerprint'; fi
+        if device_supports_option clientPin; then capabilities+=', PIN'; fi
+        printf 'verification: %s can offer %s\n' "$token_path" "$capabilities"
+      fi
+    done < <(awk -F: '{ print $1 }' <<<"$device_listing")
   else
     printf 'tokens: none visible\n'
     failed=1
@@ -172,8 +230,7 @@ show_status() {
     failed=1
   fi
 
-  for pair in "$TEMPLATE_DIR/sudo:$SUDO_PAM" "$TEMPLATE_DIR/doas:$DOAS_PAM" \
-           "$TEMPLATE_DIR/hyprlock:$HYPRLOCK_PAM"; do
+  for pair in "$TEMPLATE_DIR/sudo:$SUDO_PAM" "$TEMPLATE_DIR/doas:$DOAS_PAM"; do
     local template=${pair%%:*} active=${pair#*:}
     if [[ -r $template && -r $active ]] && cmp -s -- "$template" "$active"; then
       printf 'pam: deployed %s\n' "$active"
@@ -182,6 +239,15 @@ show_status() {
       failed=1
     fi
   done
+
+  # Hyprlock is opt-in, so leaving it on the password stack is a valid state
+  # rather than an incomplete setup.
+  if [[ -r $TEMPLATE_DIR/hyprlock && -r $HYPRLOCK_PAM ]] \
+    && cmp -s -- "$TEMPLATE_DIR/hyprlock" "$HYPRLOCK_PAM"; then
+    printf 'pam: deployed %s\n' "$HYPRLOCK_PAM"
+  else
+    printf 'pam: password only (opt in with --with-hyprlock) %s\n' "$HYPRLOCK_PAM"
+  fi
 
   return "$failed"
 }
@@ -206,6 +272,7 @@ while (($#)); do
       ;;
     --mode=*) MODE=${1#*=}; shift ;;
     --enroll-fingerprint) ENROLL_FINGERPRINT=true; shift ;;
+    --with-hyprlock) WITH_HYPRLOCK=true; shift ;;
     --confirm-sudo-tested) CONFIRM_SUDO_TESTED=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -214,6 +281,8 @@ while (($#)); do
 done
 
 [[ -n $ACTION ]] || { usage >&2; exit 2; }
+[[ $WITH_HYPRLOCK == false || $ACTION == setup ]] \
+  || fail "--with-hyprlock applies to 'setup' only"
 
 if [[ $ACTION == status ]]; then
   show_status
@@ -228,19 +297,36 @@ require_cmd "$SUDO"
 [[ -r $TEMPLATE_DIR/hyprlock ]] || fail "Hyprlock PAM template not found: $TEMPLATE_DIR/hyprlock"
 
 detect_device
+probe_device || fail "could not read the capabilities of $DEVICE"
 resolve_mode
-[[ $ENROLL_FINGERPRINT == false || $MODE == bio ]] \
-  || fail "--enroll-fingerprint requires a YubiKey Bio or --mode bio"
+# Report the missing sensor before the mode mismatch: with --mode auto the
+# mismatch is a consequence of the missing sensor, and naming the hardware is
+# the actionable half.
+if [[ $ENROLL_FINGERPRINT == true ]]; then
+  device_supports_option bioEnroll \
+    || fail "$DEVICE has no fingerprint sensor, so there is nothing to enroll"
+  [[ $MODE == bio ]] \
+    || fail "--enroll-fingerprint requires --mode bio"
+fi
 
 printf 'action: %s\nuser: %s\ndevice: %s\nmode: %s\n' \
   "$ACTION" "$AUTH_USER" "$DEVICE" "$MODE"
+
+if [[ $MODE == touch ]]; then
+  printf 'Sign-in will need a touch only: no PIN, no fingerprint. A touch proves\n'
+  printf 'the key is present, not who pressed it.\n'
+fi
 
 if [[ $DRY_RUN == true ]]; then
   [[ $ENROLL_FINGERPRINT == true ]] && printf 'would enroll: fingerprint\n'
   printf 'would update: %s\n' "$MAPPING_FILE"
   if [[ $ACTION == setup ]]; then
-    printf 'would deploy: %s\nwould deploy: %s\nwould deploy: %s\n' \
-      "$SUDO_PAM" "$DOAS_PAM" "$HYPRLOCK_PAM"
+    printf 'would deploy: %s\nwould deploy: %s\n' "$SUDO_PAM" "$DOAS_PAM"
+    if [[ $WITH_HYPRLOCK == true ]]; then
+      printf 'would deploy: %s\n' "$HYPRLOCK_PAM"
+    else
+      printf 'would leave on password: %s\n' "$HYPRLOCK_PAM"
+    fi
   fi
   exit 0
 fi
@@ -254,12 +340,17 @@ if [[ $ENROLL_FINGERPRINT == true ]]; then
   "$FIDO2_TOKEN" -S -e "$DEVICE"
 fi
 
+# Touch-only deliberately passes neither flag: -V records "verify the user at
+# every authentication" and -N records "enter the FIDO PIN at every
+# authentication". If the key has a PIN set it may still ask for it once here,
+# during registration; that is libfido2 unlocking the key to create the
+# credential, and it does not carry over to sign-in.
 registration_args=(-o "$AUTH_ORIGIN" -i "$AUTH_ORIGIN")
-if [[ $MODE == bio ]]; then
-  registration_args+=(-V)
-else
-  registration_args+=(-N)
-fi
+case $MODE in
+  bio) registration_args+=(-V) ;;
+  pin) registration_args+=(-N) ;;
+  touch) ;;
+esac
 
 new_credential="$work_dir/new-credential"
 combined_mapping="$work_dir/u2f_mappings"
@@ -271,7 +362,8 @@ if [[ $ACTION == setup ]]; then
       && fail "a valid mapping already exists; use '$PROGRAM add'"
   fi
 
-  printf 'Register the key now; enter its FIDO PIN only at the local prompt.\n'
+  printf 'Register the key now, and touch it when it blinks.\n'
+  printf 'Enter a FIDO PIN only at the local prompt, if the key asks for one.\n'
   "$PAMU2FCFG" -u "$AUTH_USER" "${registration_args[@]}" > "$combined_mapping"
   mapping_is_valid "$combined_mapping" || fail "generated mapping failed validation"
 else
@@ -280,7 +372,8 @@ else
   mapping_is_valid "$work_dir/current-mapping" \
     || fail "existing mapping is invalid; repair it with '$PROGRAM setup'"
 
-  printf 'Register the additional key now; enter its FIDO PIN only at the local prompt.\n'
+  printf 'Register the additional key now, and touch it when it blinks.\n'
+  printf 'Enter a FIDO PIN only at the local prompt, if the key asks for one.\n'
   "$PAMU2FCFG" -n "${registration_args[@]}" > "$new_credential"
   credential_is_valid "$new_credential" || fail "generated credential failed validation"
   {
@@ -315,6 +408,17 @@ printf '\nTest every escalation path in another terminal before continuing:\n'
 printf '  1. sudo -k; sudo -v       # use the key\n'
 printf '  2. doas -L; doas true     # use the key\n'
 printf '  3. unplug it and repeat both  # use the password\n\n'
+
+if [[ $WITH_HYPRLOCK == false ]]; then
+  printf 'Setup complete. Hyprlock still asks for the account password.\n'
+  printf 'Add the key there with: %s setup --with-hyprlock\n' "$PROGRAM"
+  exit 0
+fi
+
+if [[ $MODE == touch ]]; then
+  printf 'Warning: a touch-only key on the lock screen means anyone at this\n'
+  printf 'machine can unlock it with a tap while the key is plugged in.\n\n'
+fi
 
 if [[ $CONFIRM_SUDO_TESTED == false ]]; then
   [[ -t 0 ]] || fail "interactive confirmation unavailable; rerun with --confirm-sudo-tested after testing sudo"

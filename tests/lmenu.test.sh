@@ -160,12 +160,22 @@ grep -Fq "\${EDITOR:-nvim}" "$test_root/security.out" &&
 
 LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" --dry-run setup.security.yubikey \
   >"$test_root/yubikey-menu.out"
-grep -Fq 'kitty --hold -e yubikey-auth status' "$test_root/yubikey-menu.out" ||
+grep -Fq 'yubikey-auth status' "$test_root/yubikey-menu.out" ||
   fail 'YubiKey status can still disappear when status is incomplete'
-grep -Fq 'yubikey-auth setup --enroll-fingerprint' "$test_root/yubikey-menu.out" ||
+grep -Fq 'yubikey-auth setup;' "$test_root/yubikey-menu.out" ||
   fail 'the YubiKey menu cannot set up the first key'
-grep -Fq 'yubikey-auth add --enroll-fingerprint' "$test_root/yubikey-menu.out" ||
+grep -Fq 'yubikey-auth add;' "$test_root/yubikey-menu.out" ||
   fail 'the YubiKey menu cannot add another key'
+grep -Fq 'enroll-fingerprint' "$test_root/yubikey-menu.out" &&
+  fail 'the YubiKey menu still assumes the key has a fingerprint sensor'
+# Every YubiKey entry must park on a prompt so a failure stays readable instead
+# of the window vanishing or dropping the reader into a bare shell.
+while read -r line; do
+  grep -Fq 'Press Enter to close' <<<"$line" ||
+    fail "a YubiKey menu action does not wait before closing: $line"
+  grep -Fq 'kitty --hold' <<<"$line" &&
+    fail "a YubiKey menu action still uses hold instead of a prompt: $line"
+done < <(grep -F 'kitty ' "$test_root/yubikey-menu.out")
 grep -Fq 'pam-u2f libfido2' "$test_root/yubikey-menu.out" ||
   fail 'the YubiKey menu does not offer the PAM-U2F prerequisites'
 grep -Fq 'libpam-yubico' "$menu" &&
