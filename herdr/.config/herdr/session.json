@@ -7,8 +7,8 @@
       "identity_cwd": "/home/liam/.t3",
       "public_pane_numbers": {
         "1": 1,
-        "2": 2,
-        "3": 3
+        "3": 3,
+        "2": 2
       },
       "next_public_pane_number": 4,
       "public_tab_numbers": [
@@ -61,7 +61,7 @@
           "root_pane": 3
         }
       ],
-      "active_tab": 1
+      "active_tab": 0
     },
     {
       "id": "w3",
