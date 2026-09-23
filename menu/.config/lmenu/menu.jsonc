@@ -716,21 +716,21 @@
     "icon": "󰋼",
     "label": "Status",
     "when": "command -v yubikey-auth >/dev/null",
-    "action": "kitty --hold -e yubikey-auth status"
+    "action": "kitty --title 'YubiKey status' -e bash -lc 'yubikey-auth status; status=$?; if [ $status -eq 0 ]; then printf \"\\n\u2705 Status check finished.\\n\"; else printf \"\\n\u274c Setup is incomplete (exit %s).\\n\" \"$status\"; fi; read -rp \"Press Enter to close\u2026\"'"
   },
   {
     "id": "setup.security.yubikey.setup",
     "icon": "󰢬",
     "label": "Set up first key",
     "when": "command -v yubikey-auth >/dev/null",
-    "action": "kitty --hold -e yubikey-auth setup --enroll-fingerprint"
+    "action": "kitty --title 'YubiKey setup' -e bash -lc 'yubikey-auth setup; status=$?; if [ $status -eq 0 ]; then printf \"\\n\u2705 Setup complete.\\n\"; else printf \"\\n\u274c Setup failed (exit %s).\\n\" \"$status\"; fi; read -rp \"Press Enter to close\u2026\"'"
   },
   {
     "id": "setup.security.yubikey.add",
     "icon": "󰐕",
     "label": "Add another key",
     "when": "command -v yubikey-auth >/dev/null",
-    "action": "kitty --hold -e yubikey-auth add --enroll-fingerprint"
+    "action": "kitty --title 'Add YubiKey' -e bash -lc 'yubikey-auth add; status=$?; if [ $status -eq 0 ]; then printf \"\\n\u2705 Key added.\\n\"; else printf \"\\n\u274c Could not add the key (exit %s).\\n\" \"$status\"; fi; read -rp \"Press Enter to close\u2026\"'"
   },
   {
     "id": "setup.security.yubikey.install",
@@ -738,7 +738,7 @@
     "label": "Install prerequisites",
     "when": "command -v pacman >/dev/null && command -v sudo >/dev/null",
     "disabled": "command -v pamu2fcfg >/dev/null && command -v fido2-token >/dev/null",
-    "action": "kitty --hold -e sudo pacman -S --needed pam-u2f libfido2"
+    "action": "kitty --title 'YubiKey prerequisites' -e bash -lc 'sudo pacman -S --needed pam-u2f libfido2; status=$?; if [ $status -eq 0 ]; then printf \"\\n\u2705 Prerequisites installed.\\n\"; else printf \"\\n\u274c Install failed (exit %s).\\n\" \"$status\"; fi; read -rp \"Press Enter to close\u2026\"'"
   },
   {
     "id": "setup.security.yubikey.docs",
