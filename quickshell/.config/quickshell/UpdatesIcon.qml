@@ -55,7 +55,7 @@ Item {
       width: parent.width - 20
       horizontalAlignment: Text.AlignLeft
       wrapMode: Text.Wrap
-      text: "Pacman (" + UpdatesState.repoCount + "): "
+      text: "Packages (" + UpdatesState.repoCount + "): "
             + (UpdatesState.repoPackages.length > 0
               ? UpdatesState.repoPackages.join(", ")
               : "None")

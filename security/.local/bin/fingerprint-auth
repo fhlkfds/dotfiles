@@ -123,10 +123,14 @@ detect_reader_usb() {
 # libfprint actually drives.
 fprintd_sees_device() {
   have "$FPRINTD_LIST" || return 2
-  local out
-  out=$("$FPRINTD_LIST" "$AUTH_USER" 2>&1) || true
+  local out status=0
+  out=$("$FPRINTD_LIST" "$AUTH_USER" 2>&1) || status=$?
   if grep -qi 'no devices available\|impossible to enumerate' <<<"$out"; then
     return 1
+  fi
+  if (( status != 0 )); then
+    FPRINTD_ERROR=$out
+    return 3
   fi
   return 0
 }
@@ -189,6 +193,9 @@ require_reader() {
   if (( seen == 0 )); then
     return 0
   fi
+  if (( seen == 3 )); then
+    fail "fprintd-list failed: $FPRINTD_ERROR"
+  fi
   if (( seen == 1 )); then
     if detect_reader_usb; then
       fail "fprintd reports no usable device, but USB $reader_vendor:$reader_product ($reader_name) looks like a reader.
@@ -235,7 +242,8 @@ show_status() {
   case $seen in
     0) printf 'fprintd device: available\n' ;;
     1) printf 'fprintd device: none available\n' ;;
-    *) printf 'fprintd device: unknown (fprintd not installed)\n' ;;
+    2) printf 'fprintd device: unknown (fprintd not installed)\n' ;;
+    3) printf 'fprintd device: error (%s)\n' "$FPRINTD_ERROR" ;;
   esac
 
   local fingers
@@ -257,6 +265,8 @@ show_status() {
     else
       printf 'Next step: %s setup\n' "$PROGRAM"
     fi
+  elif (( seen == 3 )); then
+    printf 'Next step: check fprintd.service and the system D-Bus, then retry.\n'
   elif [[ -n $reader_vendor ]]; then
     printf 'Next step: %s, then %s setup\n' "$INSTALL_HINT" "$PROGRAM"
   else

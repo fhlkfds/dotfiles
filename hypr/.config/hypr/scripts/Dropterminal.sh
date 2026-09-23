@@ -12,7 +12,7 @@
 
 DEBUG=false
 SPECIAL_WS="special:scratchpad"
-ADDR_FILE="/tmp/dropdown_terminal_addr"
+ADDR_FILE="${DROPTERMINAL_ADDR_FILE:-/tmp/dropdown_terminal_addr}"
 
 # Dropdown size and position configuration (percentages)
 WIDTH_PERCENT=65  # Width as percentage of screen width
@@ -370,6 +370,7 @@ if terminal_exists; then
     debug_echo "Hiding terminal to scratchpad with slide up animation"
 
     # Get current geometry for animation
+    CLIENTS=""
     refresh_clients
     geometry=$(get_window_geometry "$TERMINAL_ADDR")
     if [ -n "$geometry" ]; then

@@ -47,6 +47,10 @@ if [[ ${FPRINT_FIXTURE_NO_DEVICE:-0} == 1 ]]; then
   printf 'Impossible to enumerate devices: No devices available\n' >&2
   exit 1
 fi
+if [[ ${FPRINT_FIXTURE_DBUS_ERROR:-0} == 1 ]]; then
+  printf 'Failed to connect to bus\n' >&2
+  exit 1
+fi
 printf 'found 1 devices\n'
 printf 'Devices for user %s:\n' "${1:-liam}"
 if [[ -s ${FPRINT_FIXTURE_ENROLLED:-/dev/null} ]]; then
@@ -160,6 +164,20 @@ if out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_bare" FPRINT_FIXTURE_NO_DEVICE=1 \
   fail "setup succeeded while fprintd reported no device"
 fi
 contains "$out" 'no fingerprint reader found' "setup gave no clear message for an empty fprintd"
+
+reset_state
+out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_bare" FPRINT_FIXTURE_DBUS_ERROR=1 \
+  with_fprintd "$auth" status 2>&1) || fail 'status failed on a D-Bus error'
+contains "$out" 'fprintd device: error (Failed to connect to bus)' \
+  'status reported a broken fprintd service as an available reader'
+if out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_bare" FPRINT_FIXTURE_DBUS_ERROR=1 \
+  with_fprintd "$auth" setup 2>&1); then
+  fail 'setup continued after fprintd-list failed'
+fi
+contains "$out" 'fprintd-list failed: Failed to connect to bus' \
+  'setup did not explain the fprintd service failure'
+grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" ||
+  fail 'setup changed Hyprlock after fprintd-list failed'
 
 # 5. Happy path: enroll and wire hyprlock.
 reset_state
