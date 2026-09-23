@@ -140,6 +140,15 @@ grep -Fq 'omarchy' "$test_root/system.out" &&
 # Security settings are menus, not editors. YubiKey actions keep their terminal
 # open, lock layouts report their selected state, and idle profiles are routed
 # through the host-local profile controller.
+mkdir -p "$test_root/home/.config/hypr/scripts" "$test_root/home/.local/bin" "$test_root/bin"
+for command in yubikey-auth pacman sudo; do
+  ln -s /bin/true "$test_root/bin/$command"
+done
+ln -s /bin/true "$test_root/home/.config/hypr/scripts/hypridle-profile"
+ln -s /bin/true "$test_root/home/.local/bin/screensaver-lock"
+original_home=$HOME
+original_path=$PATH
+export HOME="$test_root/home" PATH="$test_root/bin:$PATH"
 LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" --dry-run setup.security \
   >"$test_root/security.out"
 for section in YubiKey 'Lock screen' 'Idle settings'; do
@@ -181,6 +190,7 @@ for profile in Quick Balanced Relaxed 'Never suspend'; do
   grep -Fq "$profile" "$test_root/idle-menu.out" ||
     fail "the Idle profile menu is missing $profile"
 done
+export HOME=$original_home PATH=$original_path
 
 # No action anywhere in the shipped menu may call an omarchy script.
 grep -Fq 'omarchy-' "$menu" && fail 'the shipped menu still references omarchy scripts'
