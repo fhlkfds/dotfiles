@@ -1252,3 +1252,6 @@
 2026-09-23T19:57:44.787065Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w2" tab_id="w2:t2"
 2026-09-23T19:57:44.787210Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w2" tab_id="w2:t2"
 2026-09-23T19:57:49.791284Z  INFO herdr::logging: session saved event="persist.save" subsystem="persist" outcome="ok" path=/home/liam/.config/herdr/session.json workspaces=2
+2026-09-23T19:58:15.823765Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w2" tab_id="w2:t1"
+2026-09-23T19:58:15.823903Z  INFO herdr::logging: tab focused event="tab.focus" subsystem="tab" outcome="ok" workspace_id="w2" tab_id="w2:t1"
+2026-09-23T19:58:20.826902Z  INFO herdr::logging: session saved event="persist.save" subsystem="persist" outcome="ok" path=/home/liam/.config/herdr/session.json workspaces=2
