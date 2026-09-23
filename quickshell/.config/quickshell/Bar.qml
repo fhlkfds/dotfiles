@@ -292,8 +292,7 @@ Scope {
         WorkspacesModule { id: workspaces; barScale: panel.barScale }
       }
 
-      // The clock itself is the center anchor. Indicators grow left while
-      // keyboard/weather grow right, so changing either side never nudges it.
+      // The clock is the center anchor. Indicators grow left without nudging it.
       Item {
         id: centerGroup
         anchors.fill: parent
@@ -301,11 +300,8 @@ Scope {
         // Distance from the clock to each side row.
         readonly property int rowMargin: Theme.fs(8 * panel.barScale)
 
-        // Scaling the content down is the first defence against a bar too
-        // narrow for three islands; this is the backstop for when it is not
-        // enough. Without it the centre capsule merges into the workspaces one
-        // and the weather ends up painted under the tray capsule, which is
-        // exactly what a 1080px rotated output used to show.
+        // Scaling the content down keeps the islands apart on narrow bars;
+        // this shift is the backstop when scaling is not enough.
         //
         // Every term is a width or the x of something the offset does not
         // move. Deriving any of it from leadingRow.x or clockLabel.x would
@@ -314,7 +310,7 @@ Scope {
         readonly property real leadingNeed:
           rowMargin + leadingRow.width + Theme.barIslandPadding
         readonly property real trailingNeed:
-          rowMargin + trailingRow.width + Theme.barIslandPadding
+          rowMargin + Theme.barIslandPadding
         readonly property real minShift:
           leftIsland.x + leftIsland.width + Theme.barIslandGap
           - clockBase + leadingNeed
@@ -328,16 +324,16 @@ Scope {
           minShift > maxShift ? (minShift + maxShift) / 2
                               : Math.min(Math.max(0, minShift), maxShift)
 
-        // Drawn from the two side rows rather than wrapping them in a
+        // Drawn from the indicator row and clock rather than wrapping them in a
         // BarIsland, because the clock has to stay pinned to the screen centre.
         // A content-sized capsule would centre itself instead, and the time
-        // would drift sideways every time a mode pill appeared or the weather
-        // string changed width.
+        // would drift sideways every time a mode pill appeared.
         Rectangle {
           id: centerIsland
           anchors.verticalCenter: parent.verticalCenter
           x: leadingRow.x - Theme.barIslandPadding
-          width: trailingRow.x + trailingRow.width + Theme.barIslandPadding - x
+          width: clockLabel.x + clockLabel.width + centerGroup.rowMargin
+                 + Theme.barIslandPadding - x
           height: Theme.barIslandHeight
           radius: height / 2
           color: Theme.bgDeep
@@ -377,70 +373,10 @@ Scope {
 
           RecordIcon { barScale: panel.barScale }
           ModeIndicators { screenName: panel.modelData.name; barScale: panel.barScale }
-          UpdatesIcon { barScale: panel.barScale }
-          BatteryIcon { barScale: panel.barScale }
         }
 
-        Row {
-          id: trailingRow
-          anchors.left: clockLabel.right
-          anchors.leftMargin: centerGroup.rowMargin
-          anchors.verticalCenter: parent.verticalCenter
-          spacing: Theme.fs(7 * panel.barScale)
-
-          KeyboardLayoutWidget { barScale: panel.barScale }
-
-          // The glyph and the temperature are a Row, but the click target has
-          // to cover both -- and a fill-anchored child disables a Row outright
-          // ("Row will not function"), which would leave the readout reporting
-          // a bogus width. The centre island is sized from this row, so that
-          // width has to be honest. Hence the wrapper: Row inside, MouseArea
-          // over the top, neither fighting the other.
-          Item {
-            id: weatherReadout
-            anchors.verticalCenter: parent.verticalCenter
-            implicitWidth: weatherRow.width
-            implicitHeight: weatherRow.height
-
-            Row {
-              id: weatherRow
-              spacing: Theme.fs(4 * panel.barScale)
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: WeatherState.hasData
-                      ? WeatherState.codeGlyph(WeatherState.current.code,
-                                               WeatherState.current.isDay) : ""
-                color: Theme.text
-                font.family: Theme.glyphFamily
-                font.pixelSize: Theme.fs(15 * panel.barScale)
-              }
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: WeatherState.hasData
-                      ? WeatherState.fmtTemp(WeatherState.current.temp) : "weather…"
-                color: Theme.textDim
-                font.family: Theme.uiFamily
-                font.pixelSize: Theme.fs(12 * panel.barScale)
-              }
-            }
-
-            MouseArea {
-              anchors.fill: parent
-              onClicked: forecastPopup.visible = !forecastPopup.visible
-            }
-
-            WeatherForecastPopup {
-              id: forecastPopup
-              anchorItem: weatherReadout
-            }
-          }
-        }
-
-        // The media panel anchors to the centered clock; it is opened from the
-        // media icon or the `media` IPC target. Left-clicking the clock opens
-        // the calendar instead.
+        // The media panel anchors to the centered clock and opens through the
+        // `media` IPC target. Left-clicking the clock opens the calendar.
         MediaPanel {
           anchorItem: clockLabel
           ownerScreen: panel.modelData.name
@@ -462,11 +398,10 @@ Scope {
           AppLauncher { barScale: panel.barScale }
           AgentIcon { barScale: panel.barScale }
           WindowsVmIcon { barScale: panel.barScale }
-          ClipboardIcon { screenName: panel.modelData.name; barScale: panel.barScale }
           BluetoothIcon { screenName: panel.modelData.name; barScale: panel.barScale }
           NetworkIcon { screenName: panel.modelData.name; barScale: panel.barScale }
           AudioIcon { screenName: panel.modelData.name; barScale: panel.barScale }
-          DisplayIcon { screenName: panel.modelData.name; barScale: panel.barScale }
+          BatteryIcon { barScale: panel.barScale }
         }
 
         // Power gets a circular island of its own. It is the only destructive
@@ -492,6 +427,18 @@ Scope {
       PowerPopup {
         id: powerPopup
         anchorItem: powerButton
+      }
+
+      // Keep the clipboard and display panels available through their IPC
+      // shortcuts after removing their bar icons.
+      ClipboardPanel {
+        anchorItem: trayIsland
+        ownerScreen: panel.modelData.name
+      }
+
+      DisplayPanel {
+        anchorItem: trayIsland
+        ownerScreen: panel.modelData.name
       }
     }
   }
