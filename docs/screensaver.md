@@ -15,6 +15,8 @@ screensaver-branding text
 screensaver-branding image logo.png
 screensaver-branding reset
 screensaver-lock --dry-run       # show lock cleanup without changing session state
+screensaver-lock layout current
+screensaver-lock layout set layout5 --dry-run
 install-ttfx --dry-run           # show the package-helper or Cargo install
 ```
 
@@ -38,7 +40,10 @@ seconds. The persistent off flag is
 `~/.local/state/toggles/screensaver-off`). Manual force-launch ignores it.
 
 The lock command terminates `ttfx`, waits up to one second for it to exit, closes
-the screensaver terminals, and then starts Hyprlock. Hypridle cannot reproduce
+the screensaver terminals, renders the selected lock layout into a private
+runtime config, and then starts Hyprlock. The selected layout is stored at
+`$XDG_STATE_HOME/hyprland-desktop/lock-layout`; changing it does not edit the
+Stow source. Hypridle cannot reproduce
 the source implementation's conditional cancellation of the pending lock when
 the screensaver loses focus: the 300-second timeout still fires unless real
 input resets Hypridle's timers.

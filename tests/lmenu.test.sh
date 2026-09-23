@@ -137,6 +137,51 @@ grep -Fq 'systemctl poweroff' "$test_root/system.out" ||
 grep -Fq 'omarchy' "$test_root/system.out" &&
   fail 'the System menu still calls an omarchy script'
 
+# Security settings are menus, not editors. YubiKey actions keep their terminal
+# open, lock layouts report their selected state, and idle profiles are routed
+# through the host-local profile controller.
+LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" --dry-run setup.security \
+  >"$test_root/security.out"
+for section in YubiKey 'Lock screen' 'Idle settings'; do
+  grep -Fq "$section" "$test_root/security.out" ||
+    fail "the Security menu is missing $section"
+done
+grep -Fq "\${EDITOR:-nvim}" "$test_root/security.out" &&
+  fail 'the Security menu still opens a config file in an editor'
+
+LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" --dry-run setup.security.yubikey \
+  >"$test_root/yubikey-menu.out"
+grep -Fq 'kitty --hold -e yubikey-auth status' "$test_root/yubikey-menu.out" ||
+  fail 'YubiKey status can still disappear when status is incomplete'
+grep -Fq 'yubikey-auth setup --enroll-fingerprint' "$test_root/yubikey-menu.out" ||
+  fail 'the YubiKey menu cannot set up the first key'
+grep -Fq 'yubikey-auth add --enroll-fingerprint' "$test_root/yubikey-menu.out" ||
+  fail 'the YubiKey menu cannot add another key'
+grep -Fq 'pam-u2f libfido2' "$test_root/yubikey-menu.out" ||
+  fail 'the YubiKey menu does not offer the PAM-U2F prerequisites'
+grep -Fq 'libpam-yubico' "$menu" &&
+  fail 'the menu requires the unused libpam-yubico backend'
+
+LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" --dry-run setup.security.lock \
+  >"$test_root/lock-menu.out"
+grep -Fq 'Lock now to preview' "$test_root/lock-menu.out" ||
+  fail 'the lock screen menu has no preview action'
+grep -Fq 'setup.security.lock.layout' "$test_root/lock-menu.out" ||
+  fail 'the lock screen menu has no layout selector'
+LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" --dry-run setup.security.lock.layout \
+  >"$test_root/lock-layout-menu.out"
+for unsupported_layout in 'Layout 1' 'Layout 10' 'Layout 11' 'Layout 18'; do
+  grep -Pq "\t\Q$unsupported_layout\E\t" "$test_root/lock-layout-menu.out" &&
+    fail "the lock menu exposes unsupported $unsupported_layout"
+done
+
+LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" --dry-run setup.security.idle.profile \
+  >"$test_root/idle-menu.out"
+for profile in Quick Balanced Relaxed 'Never suspend'; do
+  grep -Fq "$profile" "$test_root/idle-menu.out" ||
+    fail "the Idle profile menu is missing $profile"
+done
+
 # No action anywhere in the shipped menu may call an omarchy script.
 grep -Fq 'omarchy-' "$menu" && fail 'the shipped menu still references omarchy scripts'
 

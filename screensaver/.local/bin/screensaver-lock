@@ -1,12 +1,136 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+PROGRAM=${0##*/}
 dry_run=0
 clipboard_wipe="$HOME/.config/hypr/scripts/clipboard-wipe.sh"
+state_home=${XDG_STATE_HOME:-$HOME/.local/state}
+layout_state=${SCREENSAVER_LOCK_LAYOUT_FILE:-$state_home/hyprland-desktop/lock-layout}
+source_config=${SCREENSAVER_LOCK_CONFIG:-$HOME/.config/hypr/hyprlock.conf}
+layout_dir=${SCREENSAVER_LOCK_LAYOUT_DIR:-$HOME/.config/hyprlock/layouts}
+runtime_dir=${SCREENSAVER_LOCK_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-/tmp}/hyprland-desktop}
+runtime_config="$runtime_dir/hyprlock.conf"
+
+usage() {
+  cat >&2 <<EOF
+usage:
+  $PROGRAM [--dry-run]
+  $PROGRAM layout current
+  $PROGRAM layout set NAME [--dry-run]
+EOF
+  exit 2
+}
+
+layout_is_allowed() {
+  case $1 in
+    default|layout5|layout6|layout8|layout9|layout13|layout14|layout17)
+      return 0
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+layout_filename() {
+  if [[ $1 == default ]]; then
+    printf 'hyprlock.conf'
+  else
+    printf '%s.conf' "$1"
+  fi
+}
+
+current_layout() {
+  local selected=default
+  if [[ -r $layout_state ]]; then
+    IFS= read -r selected < "$layout_state" || selected=default
+  fi
+  layout_is_allowed "$selected" || selected=default
+  printf '%s\n' "$selected"
+}
+
+set_layout() {
+  local selected=$1 requested_dry_run=${2:-0} filename
+  layout_is_allowed "$selected" || {
+    printf '%s: unknown lock layout: %s\n' "$PROGRAM" "$selected" >&2
+    exit 1
+  }
+  filename=$(layout_filename "$selected")
+  [[ -r $layout_dir/$filename ]] || {
+    printf '%s: lock layout is not readable: %s\n' "$PROGRAM" "$layout_dir/$filename" >&2
+    exit 1
+  }
+  if ((requested_dry_run)); then
+    printf 'would select lock layout: %s\nwould write: %s\n' "$selected" "$layout_state"
+    return
+  fi
+
+  local state_dir temp_state
+  state_dir=${layout_state%/*}
+  mkdir -p -- "$state_dir"
+  temp_state=$(mktemp "$state_dir/.lock-layout.XXXXXX")
+  trap 'rm -f -- "${temp_state:-}"' RETURN
+  printf '%s\n' "$selected" > "$temp_state"
+  chmod 600 "$temp_state"
+  mv -f -- "$temp_state" "$layout_state"
+  trap - RETURN
+  printf 'lock layout: %s\n' "$selected"
+}
+
+render_lock_config() {
+  local selected filename replacement temp_config
+  selected=$(current_layout)
+  filename=$(layout_filename "$selected")
+  [[ -r $source_config ]] || {
+    printf '%s: lock config is not readable: %s\n' "$PROGRAM" "$source_config" >&2
+    exit 1
+  }
+  [[ -r $layout_dir/$filename ]] || {
+    printf '%s: lock layout is not readable: %s\n' "$PROGRAM" "$layout_dir/$filename" >&2
+    exit 1
+  }
+
+  mkdir -p -- "$runtime_dir"
+  temp_config=$(mktemp "$runtime_dir/.hyprlock.conf.XXXXXX")
+  trap 'rm -f -- "${temp_config:-}"' RETURN
+  replacement="source = \$hyprlockDir/layouts/$filename"
+  awk -v replacement="$replacement" '
+    /^[[:space:]]*source = \$hyprlockDir\/layouts\/hyprlock\.conf[[:space:]]*$/ {
+      print replacement
+      replaced++
+      next
+    }
+    { print }
+    END { if (replaced != 1) exit 42 }
+  ' "$source_config" > "$temp_config" || {
+    printf '%s: expected one active layout source in %s\n' "$PROGRAM" "$source_config" >&2
+    exit 1
+  }
+  chmod 600 "$temp_config"
+  mv -f -- "$temp_config" "$runtime_config"
+  trap - RETURN
+}
+
+if [[ ${1:-} == layout ]]; then
+  case ${2:-} in
+    current)
+      (($# == 2)) || usage
+      current_layout
+      exit
+      ;;
+    set)
+      (($# == 3 || $# == 4)) || usage
+      [[ ${4:-} != --dry-run ]] || dry_run=1
+      (($# == 3 || dry_run == 1)) || usage
+      set_layout "$3" "$dry_run"
+      exit
+      ;;
+    *) usage ;;
+  esac
+fi
+
 case ${1:-} in
   '') ;;
   --dry-run) dry_run=1 ;;
-  *) printf 'usage: %s [--dry-run]\n' "${0##*/}" >&2; exit 2 ;;
+  *) usage ;;
 esac
 
 if ((dry_run)); then
@@ -19,7 +143,7 @@ if ((dry_run)); then
   else
     printf '%s\n' \
       "${clipboard_wipe}" \
-      "hyprlock --config $HOME/.config/hypr/hyprlock.conf"
+      "hyprlock --config $runtime_config # layout=$(current_layout)"
   fi
   exit 0
 fi
@@ -30,6 +154,7 @@ pkill -f '[i]o.github.fhlkfds.screensaver' 2>/dev/null || true
 if ! pidof hyprlock >/dev/null 2>&1; then
   # Locking must continue even if clipboard tools are unavailable, but make a
   # best effort to clear both the live selection and plaintext history first.
+  render_lock_config
   [[ ! -x $clipboard_wipe ]] || "$clipboard_wipe" || true
-  exec hyprlock --config "$HOME/.config/hypr/hyprlock.conf"
+  exec hyprlock --config "$runtime_config"
 fi

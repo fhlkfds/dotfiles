@@ -709,22 +709,184 @@
     "id": "setup.security.yubikey",
     "icon": "󰌆",
     "label": "YubiKey",
+    "title": "YubiKey authentication"
+  },
+  {
+    "id": "setup.security.yubikey.status",
+    "icon": "󰋼",
+    "label": "Status",
     "when": "command -v yubikey-auth >/dev/null",
-    "action": "kitty -e yubikey-auth status"
+    "action": "kitty --hold -e yubikey-auth status"
+  },
+  {
+    "id": "setup.security.yubikey.setup",
+    "icon": "󰢬",
+    "label": "Set up first key",
+    "when": "command -v yubikey-auth >/dev/null",
+    "action": "kitty --hold -e yubikey-auth setup --enroll-fingerprint"
+  },
+  {
+    "id": "setup.security.yubikey.add",
+    "icon": "󰐕",
+    "label": "Add another key",
+    "when": "command -v yubikey-auth >/dev/null",
+    "action": "kitty --hold -e yubikey-auth add --enroll-fingerprint"
+  },
+  {
+    "id": "setup.security.yubikey.install",
+    "icon": "󰏔",
+    "label": "Install prerequisites",
+    "when": "command -v pacman >/dev/null && command -v sudo >/dev/null",
+    "disabled": "command -v pamu2fcfg >/dev/null && command -v fido2-token >/dev/null",
+    "action": "kitty --hold -e sudo pacman -S --needed pam-u2f libfido2"
+  },
+  {
+    "id": "setup.security.yubikey.docs",
+    "icon": "󰈙",
+    "label": "Setup and recovery guide",
+    "action": "xdg-open https://github.com/fhlkfds/dotfiles/blob/main/docs/installation.md#yubikey-authentication"
   },
   {
     "id": "setup.security.lock",
     "icon": "󰍁",
-    "label": "Lock screen settings",
-    "when": "[[ -f ~/.config/hypr/hyprlock.conf ]]",
-    "action": "kitty -e ${EDITOR:-nvim} ~/.config/hypr/hyprlock.conf"
+    "label": "Lock screen",
+    "title": "Lock screen",
+    "when": "[[ -x ~/.local/bin/screensaver-lock ]]"
+  },
+  {
+    "id": "setup.security.lock.preview",
+    "icon": "󰌾",
+    "label": "Lock now to preview",
+    "action": "~/.local/bin/screensaver-lock"
+  },
+  {
+    "id": "setup.security.lock.automatic",
+    "icon": "󰒲",
+    "label": "Automatic locking",
+    "target": "setup.security.idle"
+  },
+  {
+    "id": "setup.security.lock.layout",
+    "icon": "󰕰",
+    "label": "Layout",
+    "title": "Lock screen layout"
+  },
+  {
+    "id": "setup.security.lock.layout.default",
+    "icon": "󰗀",
+    "label": "Default",
+    "checked": "[[ $(~/.local/bin/screensaver-lock layout current) == default ]]",
+    "action": "~/.local/bin/screensaver-lock layout set default"
+  },
+  {
+    "id": "setup.security.lock.layout.five",
+    "icon": "󰗀",
+    "label": "Layout 5",
+    "checked": "[[ $(~/.local/bin/screensaver-lock layout current) == layout5 ]]",
+    "action": "~/.local/bin/screensaver-lock layout set layout5"
+  },
+  {
+    "id": "setup.security.lock.layout.six",
+    "icon": "󰗀",
+    "label": "Layout 6",
+    "checked": "[[ $(~/.local/bin/screensaver-lock layout current) == layout6 ]]",
+    "action": "~/.local/bin/screensaver-lock layout set layout6"
+  },
+  {
+    "id": "setup.security.lock.layout.eight",
+    "icon": "󰗀",
+    "label": "Layout 8",
+    "checked": "[[ $(~/.local/bin/screensaver-lock layout current) == layout8 ]]",
+    "action": "~/.local/bin/screensaver-lock layout set layout8"
+  },
+  {
+    "id": "setup.security.lock.layout.nine",
+    "icon": "󰗀",
+    "label": "Layout 9",
+    "checked": "[[ $(~/.local/bin/screensaver-lock layout current) == layout9 ]]",
+    "action": "~/.local/bin/screensaver-lock layout set layout9"
+  },
+  {
+    "id": "setup.security.lock.layout.thirteen",
+    "icon": "󰗀",
+    "label": "Layout 13",
+    "checked": "[[ $(~/.local/bin/screensaver-lock layout current) == layout13 ]]",
+    "action": "~/.local/bin/screensaver-lock layout set layout13"
+  },
+  {
+    "id": "setup.security.lock.layout.fourteen",
+    "icon": "󰗀",
+    "label": "Layout 14",
+    "checked": "[[ $(~/.local/bin/screensaver-lock layout current) == layout14 ]]",
+    "action": "~/.local/bin/screensaver-lock layout set layout14"
+  },
+  {
+    "id": "setup.security.lock.layout.seventeen",
+    "icon": "󰗀",
+    "label": "Layout 17",
+    "checked": "[[ $(~/.local/bin/screensaver-lock layout current) == layout17 ]]",
+    "action": "~/.local/bin/screensaver-lock layout set layout17"
   },
   {
     "id": "setup.security.idle",
     "icon": "󰒲",
     "label": "Idle settings",
-    "when": "[[ -f ~/.config/hypr/hypridle.conf ]]",
-    "action": "kitty -e ${EDITOR:-nvim} ~/.config/hypr/hypridle.conf"
+    "title": "Idle settings",
+    "when": "[[ -x ~/.config/hypr/scripts/hypridle-profile ]]"
+  },
+  {
+    "id": "setup.security.idle.status",
+    "icon": "󰋼",
+    "label": "Current settings",
+    "action": "kitty --hold -e ~/.config/hypr/scripts/hypridle-profile status"
+  },
+  {
+    "id": "setup.security.idle.stay-awake",
+    "icon": "󰅶",
+    "label": "Stay awake",
+    "checked": "~/.config/hypr/scripts/toggles-menu.sh status | jq -e '.\"stay-awake\" == \"on\"' >/dev/null",
+    "action": "~/.config/hypr/scripts/toggles-menu.sh stay-awake"
+  },
+  {
+    "id": "setup.security.idle.screensaver",
+    "icon": "󰶐",
+    "label": "Screensaver",
+    "checked": "~/.local/bin/toggle-screensaver status | grep -qx 'screensaver: on'",
+    "action": "~/.local/bin/toggle-screensaver"
+  },
+  {
+    "id": "setup.security.idle.profile",
+    "icon": "󰔛",
+    "label": "Profile",
+    "title": "Idle profile"
+  },
+  {
+    "id": "setup.security.idle.profile.quick",
+    "icon": "󰔟",
+    "label": "Quick (1 / 3 / 10 / 20 min)",
+    "checked": "[[ $(~/.config/hypr/scripts/hypridle-profile current) == quick ]]",
+    "action": "~/.config/hypr/scripts/hypridle-profile set quick"
+  },
+  {
+    "id": "setup.security.idle.profile.balanced",
+    "icon": "󰔛",
+    "label": "Balanced (3 / 5 / 20 / 30 min)",
+    "checked": "[[ $(~/.config/hypr/scripts/hypridle-profile current) == balanced ]]",
+    "action": "~/.config/hypr/scripts/hypridle-profile set balanced"
+  },
+  {
+    "id": "setup.security.idle.profile.relaxed",
+    "icon": "󰒲",
+    "label": "Relaxed (5 / 10 / 30 / 60 min)",
+    "checked": "[[ $(~/.config/hypr/scripts/hypridle-profile current) == relaxed ]]",
+    "action": "~/.config/hypr/scripts/hypridle-profile set relaxed"
+  },
+  {
+    "id": "setup.security.idle.profile.never-suspend",
+    "icon": "󰤄",
+    "label": "Never suspend (3 / 5 / 20 min)",
+    "checked": "[[ $(~/.config/hypr/scripts/hypridle-profile current) == never-suspend ]]",
+    "action": "~/.config/hypr/scripts/hypridle-profile set never-suspend"
   },
 
   {

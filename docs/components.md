@@ -211,7 +211,7 @@ not used by the current binding.
 
 ## Lock screen and idle service
 
-Hyprlock's entry point is `hypr/.config/hypr/hyprlock.conf`. It uses the
+Hyprlock's source entry point is `hypr/.config/hypr/hyprlock.conf`. It uses the
 `hyprlock` PAM service, disables fingerprint authentication, imports generated
 colors, and sources `layouts/hyprlock.conf`. That active layout contains a
 large clock/date and a compact user/password card. Its colors, borders, radius,
@@ -219,11 +219,15 @@ opacity, scrim, shadow, and blur come from the active desktop theme. The
 background reads the same persisted current-wallpaper state used by the picker
 and theme tool; missing or stale state falls back to the active theme color.
 
-Many alternate layouts and music/weather helpers are tracked. They are examples,
-not active composition. Several assume `BAT0`, network access, extra fonts, or a
-profile image, so inspect a layout before enabling it.
+Setup > Security > Lock screen can select the default or one of the portable
+layouts whose local assets are present. `screensaver-lock` stores the choice
+outside Git and renders a runtime copy of the wrapper when locking. Other
+layouts and music/weather helpers remain examples. Several assume `BAT0`,
+network access, extra fonts, or a profile image.
 
-Hypridle supplies automatic lock/DPMS/suspend timing; see
+Hypridle supplies automatic lock/DPMS/suspend timing. Setup > Security > Idle
+settings selects a tested profile and restarts Hypridle with a generated runtime
+config; see
 [Hyprland](./hyprland.md#lock-idle-and-power-behavior).
 
 ## ASCII screensaver

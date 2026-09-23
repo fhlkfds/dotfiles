@@ -14,8 +14,8 @@ targets below `$HOME`.
 | change app workspace assignments | `hypr/.config/hypr/conf/window_rules.lua` |
 | change input behavior | `hypr/.config/hypr/hyprland.lua` |
 | change monitors/workspace outputs | files under `hypr/.config/hypr/monitor_profiles/` |
-| change lock/DPMS/suspend timers | `hypr/.config/hypr/hypridle.conf` |
-| change active lock layout | `hypr/.config/hypr/hyprlock.conf` and `hyprlock/.config/hyprlock/layouts/` |
+| choose lock/DPMS/suspend timings | Setup > Security > Idle settings; edit `hypridle-profile` to change the offered profiles |
+| choose the active lock layout | Setup > Security > Lock screen; edit the wrapper and layout files to change the offered layouts |
 | change bar layout/modules | QML below `quickshell/.config/quickshell/` |
 | change notification policy | `quickshell/.config/quickshell/notifications/config.json` |
 | change launcher layout | `rofi/.config/rofi/comet-glass.rasi` |

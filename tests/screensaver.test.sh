@@ -196,6 +196,24 @@ SH
 chmod +x "$test_root/bin/pidof" "$test_root/bin/pkill" "$test_root/bin/timeout" \
   "$test_root/bin/hyprlock" "$test_root/home/.config/hypr/scripts/clipboard-wipe.sh"
 export LOCK_ACTION_LOG="$test_root/lock-actions.log"
+export SCREENSAVER_LOCK_CONFIG="$repo_root/hypr/.config/hypr/hyprlock.conf"
+export SCREENSAVER_LOCK_LAYOUT_DIR="$repo_root/hyprlock/.config/hyprlock/layouts"
+export SCREENSAVER_LOCK_RUNTIME_DIR="$test_root/lock-runtime"
+export SCREENSAVER_LOCK_LAYOUT_FILE="$test_root/state/hyprland-desktop/lock-layout"
+
+[[ $(HOME="$test_root/home" "$bin_root/screensaver-lock" layout current) == default ]] ||
+  fail 'missing layout state did not select the default'
+HOME="$test_root/home" "$bin_root/screensaver-lock" layout set layout5 --dry-run \
+  > "$test_root/layout-dry-run.out"
+[[ ! -e $SCREENSAVER_LOCK_LAYOUT_FILE ]] || fail 'layout dry-run wrote state'
+grep -Fq 'would select lock layout: layout5' "$test_root/layout-dry-run.out" ||
+  fail 'layout dry-run did not report the selection'
+HOME="$test_root/home" "$bin_root/screensaver-lock" layout set layout5 \
+  > "$test_root/layout-set.out"
+[[ $(<"$SCREENSAVER_LOCK_LAYOUT_FILE") == layout5 ]] || fail 'layout selection was not persisted'
+if HOME="$test_root/home" "$bin_root/screensaver-lock" layout set layout1 > /dev/null 2>&1; then
+  fail 'an unapproved legacy layout was accepted'
+fi
 
 HOME="$test_root/home" HYPRLOCK_RUNNING=0 \
   "$bin_root/screensaver-lock" --dry-run >"$test_root/lock.out"
@@ -213,8 +231,10 @@ fi
 
 : >"$LOCK_ACTION_LOG"
 HOME="$test_root/home" HYPRLOCK_RUNNING=0 "$bin_root/screensaver-lock"
-[[ $(<"$LOCK_ACTION_LOG") == $'wipe\nhyprlock --config '"$test_root"'/home/.config/hypr/hyprlock.conf' ]] ||
+[[ $(<"$LOCK_ACTION_LOG") == $'wipe\nhyprlock --config '"$test_root"'/lock-runtime/hyprlock.conf' ]] ||
   fail 'real lock path did not wipe immediately before starting hyprlock'
+grep -Fxq "source = \$hyprlockDir/layouts/layout5.conf" \
+  "$test_root/lock-runtime/hyprlock.conf" || fail 'lock config did not use the selected layout'
 
 : >"$LOCK_ACTION_LOG"
 HOME="$test_root/home" HYPRLOCK_RUNNING=1 "$bin_root/screensaver-lock"

@@ -25,7 +25,7 @@ bindings call by absolute path.
 ## lmenu
 
 `SUPER+SHIFT+A`. A data-driven Rofi menu over
-`menu/.config/lmenu/menu.jsonc` — 206 entries in a nested tree, parsed by
+`menu/.config/lmenu/menu.jsonc`: 235 entries in a nested tree, parsed by
 `lmenu-parse.py`.
 
 ```bash

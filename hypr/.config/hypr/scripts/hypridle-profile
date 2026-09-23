@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM=${0##*/}
+state_home=${XDG_STATE_HOME:-$HOME/.local/state}
+state_file=${HYPRIDLE_PROFILE_STATE_FILE:-$state_home/hyprland-desktop/idle-profile}
+source_config=${HYPRIDLE_PROFILE_SOURCE_CONFIG:-$HOME/.config/hypr/hypridle.conf}
+runtime_dir=${HYPRIDLE_PROFILE_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-/tmp}/hyprland-desktop}
+runtime_config="$runtime_dir/hypridle.conf"
+hypridle_command=${HYPRIDLE_PROFILE_HYPRIDLE:-hypridle}
+pkill_command=${HYPRIDLE_PROFILE_PKILL:-pkill}
+setsid_command=${HYPRIDLE_PROFILE_SETSID:-setsid}
+script_path=$(readlink -f -- "${BASH_SOURCE[0]}")
+
+usage() {
+  cat >&2 <<EOF
+usage:
+  $PROGRAM current
+  $PROGRAM status
+  $PROGRAM render [PROFILE]
+  $PROGRAM set PROFILE [--dry-run]
+  $PROGRAM daemon
+EOF
+  exit 2
+}
+
+profile_is_valid() {
+  case $1 in
+    quick|balanced|relaxed|never-suspend) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || {
+    printf '%s: required command not found: %s\n' "$PROGRAM" "$1" >&2
+    exit 1
+  }
+}
+
+current_profile() {
+  local selected=balanced
+  if [[ -r $state_file ]]; then
+    IFS= read -r selected < "$state_file" || selected=balanced
+  fi
+  profile_is_valid "$selected" || selected=balanced
+  printf '%s\n' "$selected"
+}
+
+profile_timeouts() {
+  case $1 in
+    quick) printf '60 180 600 1200\n' ;;
+    balanced) printf '180 300 1200 1800\n' ;;
+    relaxed) printf '300 600 1800 3600\n' ;;
+    never-suspend) printf '180 300 1200 off\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+render_profile() {
+  local selected=$1 timeouts
+  profile_is_valid "$selected" || {
+    printf '%s: unknown idle profile: %s\n' "$PROGRAM" "$selected" >&2
+    return 1
+  }
+  [[ -r $source_config ]] || {
+    printf '%s: Hypridle config is not readable: %s\n' "$PROGRAM" "$source_config" >&2
+    return 1
+  }
+  [[ $(grep -c '^[[:space:]]*listener[[:space:]]*{' "$source_config") == 4 ]] || {
+    printf '%s: expected four listeners in %s\n' "$PROGRAM" "$source_config" >&2
+    return 1
+  }
+  timeouts=$(profile_timeouts "$selected")
+  awk -v values="$timeouts" '
+    BEGIN { split(values, timeout, " ") }
+    /^[[:space:]]*listener[[:space:]]*\{/ {
+      listener++
+      if (timeout[listener] == "off") {
+        skipping = 1
+        next
+      }
+    }
+    skipping {
+      if ($0 ~ /^[[:space:]]*}[[:space:]]*$/) skipping = 0
+      next
+    }
+    listener > 0 && /^[[:space:]]*timeout[[:space:]]*=/ {
+      sub(/[0-9]+[[:space:]]*$/, timeout[listener])
+    }
+    { print }
+  ' "$source_config"
+}
+
+write_runtime_config() {
+  local selected=$1 temp_config
+  mkdir -p -- "$runtime_dir"
+  temp_config=$(mktemp "$runtime_dir/.hypridle.conf.XXXXXX")
+  trap 'rm -f -- "${temp_config:-}"' RETURN
+  render_profile "$selected" > "$temp_config"
+  chmod 600 "$temp_config"
+  mv -f -- "$temp_config" "$runtime_config"
+  trap - RETURN
+}
+
+set_profile() {
+  local selected=$1 requested_dry_run=${2:-0} state_dir temp_state
+  profile_is_valid "$selected" || {
+    printf '%s: unknown idle profile: %s\n' "$PROGRAM" "$selected" >&2
+    exit 1
+  }
+  if ((requested_dry_run)); then
+    printf 'would select idle profile: %s\n' "$selected"
+    printf 'would write: %s\n' "$state_file"
+    printf 'would restart: %s --config %s\n' "$hypridle_command" "$runtime_config"
+    return
+  fi
+
+  require_command "$hypridle_command"
+  require_command "$pkill_command"
+  require_command "$setsid_command"
+
+  # Validate and render before changing persistent state or stopping the current
+  # daemon. A broken source template must leave the running profile untouched.
+  write_runtime_config "$selected"
+
+  state_dir=${state_file%/*}
+  mkdir -p -- "$state_dir"
+  temp_state=$(mktemp "$state_dir/.idle-profile.XXXXXX")
+  trap 'rm -f -- "${temp_state:-}"' RETURN
+  printf '%s\n' "$selected" > "$temp_state"
+  chmod 600 "$temp_state"
+  mv -f -- "$temp_state" "$state_file"
+  trap - RETURN
+
+  "$pkill_command" -x hypridle 2>/dev/null || true
+  "$setsid_command" -f -- "$script_path" daemon
+  printf 'idle profile: %s\n' "$selected"
+}
+
+case ${1:-} in
+  current)
+    (($# == 1)) || usage
+    current_profile
+    ;;
+  status)
+    (($# == 1)) || usage
+    selected=$(current_profile)
+    read -r screensaver lock dpms suspend < <(profile_timeouts "$selected")
+    printf 'idle profile: %s\n' "$selected"
+    printf 'screensaver: %ss\nlock: %ss\ndisplays off: %ss\n' \
+      "$screensaver" "$lock" "$dpms"
+    if [[ $suspend == off ]]; then
+      printf 'suspend: disabled\n'
+    else
+      printf 'suspend: %ss\n' "$suspend"
+    fi
+    ;;
+  render)
+    (($# <= 2)) || usage
+    render_profile "${2:-$(current_profile)}"
+    ;;
+  set)
+    (($# == 2 || $# == 3)) || usage
+    dry_run=0
+    if (($# == 3)); then
+      [[ $3 == --dry-run ]] || usage
+      dry_run=1
+    fi
+    set_profile "$2" "$dry_run"
+    ;;
+  daemon)
+    (($# == 1)) || usage
+    require_command "$hypridle_command"
+    selected=$(current_profile)
+    write_runtime_config "$selected"
+    exec "$hypridle_command" --config "$runtime_config"
+    ;;
+  *) usage ;;
+esac
