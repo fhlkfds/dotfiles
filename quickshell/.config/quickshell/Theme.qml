@@ -347,9 +347,38 @@ Singleton {
   readonly property int animFast: 130
 
   // Metrics that must track the font scale so text does not clip.
-  // 45px bar = ~33px inner widget area + ~6px padding above and below.
-  readonly property int barHeight: fs(45)
+  //
+  // The bar is a transparent strip; the only thing painted on it is a row of
+  // islands (BarIsland.qml). The reserved height is therefore a gap, one
+  // island, and a matching gap, so the capsules float clear of the screen edge
+  // instead of butting against it. barInner is the tallest chrome an island has
+  // to hold -- the 26 design-px workspace cell at the 1.25x bar scale.
   readonly property int barInner: fs(33)
+  readonly property int barGap: fs(5)
+  readonly property int barIslandHeight: barInner + fs(7)
+  readonly property int barHeight: barIslandHeight + barGap * 2
+  // Horizontal breathing room between an island's edge and its first module.
+  // Larger than the vertical padding because the capsule's rounded ends eat
+  // into the corners.
+  readonly property int barIslandPadding: fs(10)
+  // Gap from the screen's left/right edge to the outermost island.
+  readonly property int barSideMargin: fs(10)
+  // Gap between two islands on the same side.
+  readonly property int barIslandGap: fs(7)
+
+  // Bar content scale, by bar width. 1.25x is the ceiling: past that the
+  // chrome just looks oversized.
+  //
+  // The divisor matters on a rotated monitor. At 1.25x the three island groups
+  // measure ~394 + ~364 + ~337 px, which with margins and separators needs
+  // ~1130px -- more than the 1080 a portrait 1920x1080 output gives. A bar that
+  // cannot shrink below 1.0 (the old floor) has no way out of that, and the
+  // islands collide. 960 is that ~1130 plus headroom, so a 1080px bar lands
+  // near 1.12 and still fits once the record indicator and a mode pill appear.
+  // The 0.85 floor stops a very narrow bar from scaling itself unreadable.
+  function barScaleFor(w) {
+    return Math.max(0.85, Math.min(1.25, w / 960))
+  }
   readonly property int panelMargin: fs(16)
   readonly property int sectionSpacing: fs(14)
   readonly property int itemSpacing: fs(8)
