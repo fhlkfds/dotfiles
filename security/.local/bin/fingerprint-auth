@@ -275,7 +275,8 @@ deploy_pam() {
 # setup installs fprintd itself, but only when a reader is on USB, because the
 # same configuration runs on desktops with no sensor. The confirmation is
 # pacman's own "Proceed with installation?", after doas or sudo has asked for a
-# password. Without a terminal one of those prompts fails and setup stops here.
+# password. Without a terminal nobody can answer either prompt, so setup stops
+# before running doas, sudo, or pacman and prints the command to run instead.
 fprintd_pending=false
 ensure_fprintd() {
   have "$FPRINTD_LIST" && have "$FPRINTD_ENROLL" && return 0
@@ -291,6 +292,9 @@ ensure_fprintd() {
 
   [[ -z $SUDO ]] || have "$SUDO" \
     || fail "found neither doas nor sudo to install fprintd with. As root, run: pacman -S --needed fprintd"
+  [[ -t 0 ]] || fail "no terminal is attached to confirm the fprintd install, so nothing was installed, enrolled, or changed.
+  Install it from a terminal, then re-run '$PROGRAM setup':
+    $INSTALL_HINT"
   note "Installing it: $INSTALL_HINT"
   ${SUDO:+"$SUDO"} "$PACMAN" -S --needed fprintd \
     || fail "fprintd was not installed, so nothing was enrolled or changed.

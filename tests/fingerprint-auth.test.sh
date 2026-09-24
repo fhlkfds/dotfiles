@@ -122,9 +122,13 @@ esac
 SH
 
 # "Installs" fprintd by copying the fake fprintd tools to where the script
-# looks for them.
+# looks for them. Like the real pacman, it needs a terminal to confirm on.
 cat > "$test_root/bin/pacman-fixture" <<'SH'
 #!/usr/bin/env bash
+if [[ ! -t 0 ]]; then
+  printf 'pacman fixture ran without a terminal\n' >&2
+  exit 2
+fi
 if [[ $* != '-S --needed fprintd' ]]; then
   printf 'unexpected pacman arguments: %s\n' "$*" >&2
   exit 2
@@ -191,6 +195,14 @@ without_fprintd() {
   "$@"
 }
 
+# Run a command on a pseudo-terminal, the way it runs when someone types it,
+# whatever stdin this test itself was given. script(1) passes the exit status
+# through; its output ends lines with CRLF, which the substring checks ignore.
+command -v script >/dev/null 2>&1 || fail "script(1) from util-linux is needed for the fixture terminal"
+with_terminal() {
+  SHELL=$(command -v bash) script -qec "$(printf '%q ' "$@")" /dev/null </dev/null
+}
+
 # ------------------------------------------------------------------ tests ---
 
 # 1. The headline requirement from the issue: no reader must produce a clear
@@ -219,7 +231,7 @@ grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" \
 # 3. Reader on USB but fprintd not installed: name the device, install fprintd
 #    through the escalation command, then carry on to enroll and wire Hyprlock.
 reset_state
-out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" without_fprintd "$auth" setup --confirm-escalation-tested 2>&1) \
+out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" without_fprintd with_terminal "$auth" setup --confirm-escalation-tested 2>&1) \
   || fail "setup did not install fprintd and carry on: $out"
 contains "$out" '27c6:609c' "setup did not identify the detected reader"
 contains "$out" 'fprintd is not installed' "setup did not explain that fprintd is missing"
@@ -229,11 +241,26 @@ contains "$out" 'Enrolled right-index-finger' "setup stopped after installing fp
 grep -q 'fingerprint:enabled = true' "$test_root/hyprlock.conf" \
   || fail "setup did not wire Hyprlock after installing fprintd"
 
+# 3a. With no terminal to confirm on, setup stops before doas, sudo, or pacman
+#     and prints the command to run by hand.
+reset_state
+if out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" without_fprintd "$auth" setup 2>&1 </dev/null); then
+  fail "setup succeeded with no terminal to confirm the fprintd install"
+fi
+contains "$out" 'no terminal is attached' "setup did not explain why it stopped without a terminal"
+contains "$out" "$test_root/bin/sudo-fixture pacman -S --needed fprintd" \
+  "setup did not print the manual install command with the privilege command"
+[[ ! -s $test_root/root-calls ]] || fail "setup ran the privilege command without a terminal"
+[[ ! -e $test_root/installed ]] || fail "setup installed fprintd without a terminal"
+[[ ! -s $test_root/enrolled ]] || fail "setup enrolled a finger without a terminal"
+grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" \
+  || fail "setup changed hyprlock.conf without a terminal"
+
 # 3b. A declined or failed install stops before enrolling and keeps the manual
 #     command in view.
 reset_state
 if out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" FPRINT_FIXTURE_PACMAN_FAIL=1 \
-  without_fprintd "$auth" setup 2>&1); then
+  without_fprintd with_terminal "$auth" setup 2>&1); then
   fail "setup succeeded although pacman did not install fprintd"
 fi
 contains "$out" 'fprintd was not installed' "setup did not report the failed install"
@@ -492,7 +519,7 @@ if (( EUID != 0 )); then
     "setup did not fall back to sudo without doas"
 
   rm -- "$escalation_bin/sudo"
-  if out=$(no_override "$auth" setup 2>&1); then
+  if out=$(no_override "$auth" setup 2>&1 </dev/null); then
     fail "setup succeeded with neither doas nor sudo"
   fi
   contains "$out" 'found neither doas nor sudo' "setup gave no clear message without doas or sudo"
