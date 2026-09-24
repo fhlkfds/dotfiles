@@ -65,6 +65,12 @@ SH
 cat > "$test_root/bin/fprintd-enroll" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FPRINT_FIXTURE_CALLS"
+# What fprintd-enroll prints when polkit had no agent to ask for the password.
+if [[ ${FPRINT_FIXTURE_ENROLL_DENIED:-0} == 1 ]]; then
+  printf 'Using device /net/reactivated/Fprint/Device/0\n'
+  printf 'EnrollStart failed: GDBus.Error:net.reactivated.Fprint.Error.PermissionDenied: Not Authorized: net.reactivated.fprint.device.enroll\n'
+  exit 1
+fi
 finger=right-index-finger
 while (($#)); do
   case $1 in
@@ -225,6 +231,21 @@ out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" without_fprintd "$auth" status 2>&
 contains "$out" 'Next step: fingerprint-auth setup  (installs fprintd first)' \
   "status did not point at setup"
 [[ ! -s $test_root/root-calls ]] || fail "enroll or status tried to install fprintd"
+
+# 3d. fprintd refuses to enroll because no polkit agent asked for the password:
+#     stop before Hyprlock and say how to start one.
+reset_state
+if out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" FPRINT_FIXTURE_ENROLL_DENIED=1 \
+  with_fprintd "$auth" setup 2>&1); then
+  fail "setup succeeded although fprintd refused to enroll"
+fi
+contains "$out" 'Not Authorized: net.reactivated.fprint.device.enroll' \
+  "the fprintd error did not reach the user"
+contains "$out" 'systemctl --user start hyprpolkitagent.service' \
+  "setup did not say how to start a polkit agent"
+[[ ! -s $test_root/enrolled ]] || fail "a refused enrollment was recorded"
+grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" \
+  || fail "setup wired Hyprlock after a refused enrollment"
 
 # 4. fprintd installed but reporting no device.
 reset_state
