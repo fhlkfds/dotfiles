@@ -415,7 +415,10 @@ do_enroll() {
   fi
   note "Place and lift $finger on the reader until enrollment completes."
   "$FPRINTD_ENROLL" -f "$finger" "$AUTH_USER" \
-    || fail "enrollment failed for $finger; nothing else was changed"
+    || fail "enrollment failed for $finger; nothing else was changed.
+  If fprintd said 'Not Authorized: net.reactivated.fprint.device.enroll', no
+  polkit agent was running to ask for your password. Start one and try again:
+    systemctl --user start hyprpolkitagent.service"
   note "Enrolled $finger."
 }
 
