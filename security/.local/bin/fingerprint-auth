@@ -67,8 +67,7 @@ usage() {
   cat <<EOF
 Usage:
   $PROGRAM status             report reader, dependencies, enrolled fingers, wiring
-  $PROGRAM setup [OPTIONS]    detect the reader, install fprintd if missing,
-                              enroll a finger, wire Hyprlock
+  $PROGRAM setup [OPTIONS]    install fprintd if missing, enroll a finger, wire Hyprlock
   $PROGRAM enroll [OPTIONS]   enroll one more finger
   $PROGRAM verify             test an enrolled finger against the reader
   $PROGRAM delete             remove every enrolled fingerprint for the user
