@@ -32,9 +32,15 @@ USB_ROOT=${FINGERPRINT_AUTH_USB_ROOT:-/sys/bus/usb/devices}
 HYPRLOCK_CONF=${FINGERPRINT_AUTH_HYPRLOCK_CONF:-$repo_root/hypr/.config/hypr/hyprlock.conf}
 ETC_ROOT=${FINGERPRINT_AUTH_ETC_ROOT:-/etc}
 TEMPLATE_DIR=${FINGERPRINT_AUTH_TEMPLATE_DIR:-$repo_root/system/pam.d}
-SUDO=${FINGERPRINT_AUTH_SUDO:-sudo}
 PAM_MODULE=${FINGERPRINT_AUTH_PAM_MODULE:-/usr/lib/security/pam_fprintd.so}
-INSTALL_HINT=${FINGERPRINT_AUTH_INSTALL_HINT:-sudo pacman -S --needed fprintd}
+
+# Prefer doas, which is what this desktop escalates with. zsh aliases sudo to
+# it, but the menu runs setup under `bash -lc`, where `sudo` is the real sudo.
+# Root needs neither.
+SUDO=${FINGERPRINT_AUTH_SUDO:-$(command -v doas >/dev/null 2>&1 && echo doas || echo sudo)}
+[[ ${EUID:-$(id -u)} -ne 0 ]] || SUDO=
+PACMAN=${FINGERPRINT_AUTH_PACMAN:-pacman}
+INSTALL_HINT="${SUDO:+$SUDO }pacman -S --needed fprintd"
 
 VALID_FINGERS=(
   left-thumb left-index-finger left-middle-finger left-ring-finger left-little-finger
@@ -63,7 +69,7 @@ usage() {
   cat <<EOF
 Usage:
   $PROGRAM status             report reader, dependencies, enrolled fingers, wiring
-  $PROGRAM setup [OPTIONS]    enroll, configure Hyprlock, deploy sudo/doas/greetd PAM
+  $PROGRAM setup [OPTIONS]    install fprintd if needed, enroll, wire Hyprlock and PAM
   $PROGRAM enroll [OPTIONS]   enroll one more finger
   $PROGRAM verify             test an enrolled finger against the reader
   $PROGRAM delete             remove every enrolled fingerprint for the user
@@ -73,7 +79,7 @@ Options:
   --no-hyprlock               leave Hyprlock configuration alone
   --no-pam                    leave system PAM configuration alone
   --confirm-escalation-tested skip the login checkpoint after testing sudo/doas
-  --dry-run                   report actions without touching prints or config
+  --dry-run                   report actions without installing or touching prints or config
   -h, --help                  show this help
 
 Fingers:
@@ -264,6 +270,38 @@ deploy_pam() {
   install_pam greetd
 }
 
+# ------------------------------------------------------------------ install ---
+
+# setup installs fprintd itself, but only when a reader is on USB, because the
+# same configuration runs on desktops with no sensor. The confirmation is
+# pacman's own "Proceed with installation?", after doas or sudo has asked for a
+# password. Without a terminal one of those prompts fails and setup stops here.
+fprintd_pending=false
+ensure_fprintd() {
+  have "$FPRINTD_LIST" && have "$FPRINTD_ENROLL" && return 0
+  # No reader: require_reader says so, and nothing gets installed.
+  detect_reader_usb || return 0
+
+  note "Found USB $reader_vendor:$reader_product ($reader_name), but fprintd is not installed."
+  if [[ $DRY_RUN == true ]]; then
+    note "would install: fprintd ($INSTALL_HINT)"
+    fprintd_pending=true
+    return 0
+  fi
+
+  [[ -z $SUDO ]] || have "$SUDO" \
+    || fail "found neither doas nor sudo to install fprintd with. As root, run: pacman -S --needed fprintd"
+  note "Installing it: $INSTALL_HINT"
+  ${SUDO:+"$SUDO"} "$PACMAN" -S --needed fprintd \
+    || fail "fprintd was not installed, so nothing was enrolled or changed.
+  If pacman could not download it, run a full upgrade (${SUDO:+$SUDO }pacman -Syu) first.
+  Then re-run '$PROGRAM setup', or install it yourself:
+    $INSTALL_HINT"
+  if ! have "$FPRINTD_LIST" || ! have "$FPRINTD_ENROLL"; then
+    fail "pacman finished, but $FPRINTD_LIST or $FPRINTD_ENROLL is still not on PATH"
+  fi
+}
+
 # -------------------------------------------------------------- diagnostics ---
 
 # Fails closed with an explanation, never a stack of unbound-variable noise.
@@ -288,16 +326,11 @@ require_reader() {
   applies to laptops with a sensor. Nothing was changed."
   fi
 
-  if (( seen == 3 )); then
-    fail "could not query fprintd; nothing was changed:
-$fprintd_output"
-  fi
-
-  # fprintd absent entirely.
+  # fprintd absent entirely. setup has installed it by now whenever a reader is
+  # on USB, so a reader here means one of the other actions.
   if detect_reader_usb; then
     fail "found USB $reader_vendor:$reader_product ($reader_name), but fprintd is not installed.
-  Install it, then re-run '$PROGRAM setup':
-    $INSTALL_HINT"
+  Run '$PROGRAM setup' first; it installs fprintd and enrolls a finger."
   fi
   fail "fprintd is not installed and no fingerprint reader was detected on USB.
   If this machine has a sensor, install fprintd first:
@@ -361,8 +394,10 @@ show_status() {
     fi
   elif (( seen == 3 )); then
     printf 'Next step: check fprintd.service and the system D-Bus, then retry.\n'
+  elif (( seen == 2 )) && [[ -n $reader_vendor ]]; then
+    printf 'Next step: %s setup  (installs fprintd first)\n' "$PROGRAM"
   elif [[ -n $reader_vendor ]]; then
-    printf 'Next step: %s, then %s setup\n' "$INSTALL_HINT" "$PROGRAM"
+    printf 'Next step: %s setup\n' "$PROGRAM"
   else
     printf 'No fingerprint reader on this host, so there is nothing to set up.\n'
     printf 'This configuration is shared across machines; fingerprint sign-in\n'
@@ -418,7 +453,12 @@ if [[ $ACTION == setup || $ACTION == enroll ]]; then
     || fail "invalid finger '$FINGER' (expected one of: ${VALID_FINGERS[*]})"
 fi
 
-require_reader
+if [[ $ACTION == setup ]]; then
+  ensure_fprintd
+fi
+
+# A dry run that would install fprintd has no fprintd to ask about the reader.
+[[ $fprintd_pending == true ]] || require_reader
 
 case $ACTION in
   verify)
@@ -445,7 +485,8 @@ case $ACTION in
     do_enroll "$FINGER"
     ;;
   setup)
-    have "$FPRINTD_ENROLL" || fail "required command not found: $FPRINTD_ENROLL"
+    [[ $fprintd_pending == true ]] || have "$FPRINTD_ENROLL" \
+      || fail "required command not found: $FPRINTD_ENROLL"
     printf 'action: setup\nuser: %s\nfinger: %s\nreader: %s\n' \
       "$AUTH_USER" "$FINGER" "${reader_name:-reported by fprintd}"
 

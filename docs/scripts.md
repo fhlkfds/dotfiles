@@ -227,12 +227,12 @@ YubiKey Bio token and requires a key with its own sensor.
 | Command | Behavior |
 | --- | --- |
 | `fingerprint-auth status` | reports tools, USB reader, fprintd device, enrolled fingers, and Hyprlock wiring; never exits non-zero |
-| `fingerprint-auth setup` | detects the reader, enrolls `--finger` (default `right-index-finger`), and enables Hyprlock fingerprint unlock |
+| `fingerprint-auth setup` | detects the reader, installs `fprintd` if needed, enrolls `--finger` (default `right-index-finger`), enables Hyprlock fingerprint unlock, and deploys sudo/doas/greetd PAM templates |
 | `fingerprint-auth enroll --finger NAME` | adds one more finger to an already-configured host |
 | `fingerprint-auth verify` | tests an enrolled finger against the reader |
 | `fingerprint-auth delete` | removes every enrolled print for the user, leaving the Hyprlock config alone |
-| `fingerprint-auth setup --dry-run` | reports actions without touching prints or configuration |
-| `fingerprint-auth setup --no-hyprlock` | enrolls only |
+| `fingerprint-auth setup --dry-run` | reports actions, including a pending `fprintd` install, without installing or touching prints or configuration |
+| `fingerprint-auth setup --no-hyprlock --no-pam` | enrolls only |
 
 Reader detection reads `/sys/bus/usb/devices` against a table of fingerprint
 vendor IDs rather than shelling out to `lsusb`, which is not installed by
@@ -240,19 +240,23 @@ default and would turn "no reader" into "command not found". When `fprintd` is
 installed its view wins, because it knows which of those USB IDs libfprint can
 actually drive.
 
-Unlock is wired through Hyprlock's `auth:fingerprint:enabled`, not
-`pam_fprintd.so`: a `sufficient pam_fprintd.so` line blocks the PAM
-conversation until the scan times out, which freezes the lockscreen for anyone
-who meant to type a password. `setup` rewrites only that one key in
-`hypr/.config/hypr/hyprlock.conf`, refuses to install an edit that did not take,
-and is idempotent.
+Hyprlock uses its parallel fprintd client so the password field remains usable
+while a scan runs. `setup` also deploys fingerprint PAM templates for sudo,
+doas, and greetd, with a checkpoint after testing escalation and before greetd.
+Use `--no-pam` to leave system PAM alone.
 
-Every path fails closed with an explanation: no reader, a reader that
-`fprintd` cannot drive, a missing `fprintd`, an invalid finger name. Nothing on
-the machine is modified in any of those cases. Honors
+When a reader is on USB but `fprintd` is missing, `setup` installs it with
+`pacman -S --needed fprintd` through doas, or sudo when doas is absent, then
+carries on. Pacman's own prompt is the confirmation. `enroll`, `verify`, and
+`delete` point at `setup` instead, and `status` never installs anything.
+
+Every other path fails closed with an explanation: no reader, a reader that
+`fprintd` cannot drive, a declined or failed install, an invalid finger name.
+Enrollment and configuration are not modified in any of those cases. Honors
 `FINGERPRINT_AUTH_USER`, `FINGERPRINT_AUTH_USB_ROOT`,
-`FINGERPRINT_AUTH_HYPRLOCK_CONF`, and `FINGERPRINT_AUTH_FPRINTD_{ENROLL,LIST,VERIFY,DELETE}`,
-which is how `tests/fingerprint-auth.test.sh` drives it against fixtures.
+`FINGERPRINT_AUTH_HYPRLOCK_CONF`, `FINGERPRINT_AUTH_FPRINTD_{ENROLL,LIST,VERIFY,DELETE}`,
+`FINGERPRINT_AUTH_SUDO`, and `FINGERPRINT_AUTH_PACMAN`, which is how
+`tests/fingerprint-auth.test.sh` drives it against fixtures.
 
 ## Lock and idle settings
 

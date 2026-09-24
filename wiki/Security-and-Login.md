@@ -270,7 +270,7 @@ worth keeping them apart:
 | | Sensor | Enrolled by | Authenticated by |
 | --- | --- | --- | --- |
 | `yubikey-auth --enroll-fingerprint` | on a YubiKey Bio token, which the key attached here is not | `fido2-token -S -e` | `pam_u2f.so` with `userverification=1` |
-| `fingerprint-auth` | built into the laptop | `fprintd-enroll` | Hyprlock's own fprintd client |
+| `fingerprint-auth` | built into the laptop | `fprintd-enroll` | Hyprlock's fprintd client; sudo/doas/greetd PAM |
 
 `fingerprint-auth` is for the second. It applies to laptops with a reader — the
 Goodix sensor in a Framework 13 power button — and reports that there is
@@ -279,27 +279,26 @@ configuration see it.
 
 ```bash
 fingerprint-auth status   # reader, tools, enrolled prints, Hyprlock wiring
-fingerprint-auth setup    # enroll a finger and enable lockscreen unlock
+fingerprint-auth setup    # install fprintd, enroll, configure Hyprlock and PAM
 ```
 
 `Setup → Security → Fingerprint` in the Super+Shift+A menu runs `setup` in a
 terminal that stays open, and the entry is hidden unless the command is on
 `PATH`.
 
-### Why not `pam_fprintd.so`
+### Hyprlock and PAM
 
-Because it makes the lockscreen worse. `pam_fprintd` owns the PAM conversation
-while it waits for a swipe, so with `auth sufficient pam_fprintd.so` in
-`/etc/pam.d/hyprlock` the password field silently does nothing until the scan
-times out. Hyprlock speaks to fprintd directly and runs the scan *beside* the
-password field instead, so `setup` flips
-`auth { fingerprint:enabled }` in `hypr/.config/hypr/hyprlock.conf` and leaves
-`system/pam.d/` completely alone. The YubiKey `pam_u2f` lines are unaffected,
-and the account password remains the fallback in every case.
+Hyprlock speaks to fprintd directly and runs the scan beside the password
+field, so `setup` flips `auth { fingerprint:enabled }` in
+`hypr/.config/hypr/hyprlock.conf`. It also installs the fingerprint PAM
+templates for sudo, doas, and greetd. Setup pauses for escalation tests before
+installing greetd. `--no-pam` leaves system PAM alone.
 
 Prints live in `/var/lib/fprint/`, are host-local, and are never in Git — the
 same boundary as `/etc/u2f_mappings`. Requires `fprintd`, which is in the
-`optional` setup group.
+`optional` setup group. When it is missing on a host with a reader, `setup`
+installs it through doas, or sudo when doas is absent, after pacman's own
+confirmation prompt.
 
 ## GnuPG
 
