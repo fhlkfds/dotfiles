@@ -272,9 +272,9 @@ recorded in `~/.local/state/dots/last-deployed`.
 
 ## AI Agent Launcher
 
-The standalone `ai` package provides one launcher for Claude Code, Codex,
-OpenCode, and T3 Code. It does not install or authenticate any agent and has no Omarchy
-dependency.
+The standalone `ai` package provides one launcher for Claude Code through
+TeamClaude, Codex, OpenCode, and T3 Code. It does not install or authenticate
+any agent and has no Omarchy dependency.
 
 The default is configured in `ai/.config/ai-agent/config`:
 

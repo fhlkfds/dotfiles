@@ -51,6 +51,10 @@ if [[ ${FPRINT_FIXTURE_DBUS_ERROR:-0} == 1 ]]; then
   printf 'Failed to connect to bus\n' >&2
   exit 1
 fi
+if [[ -n ${FPRINT_FIXTURE_ERROR:-} ]]; then
+  printf '%s\n' "$FPRINT_FIXTURE_ERROR" >&2
+  exit 1
+fi
 printf 'found 1 devices\n'
 printf 'Devices for user %s:\n' "${1:-liam}"
 if [[ -s ${FPRINT_FIXTURE_ENROLLED:-/dev/null} ]]; then
@@ -65,6 +69,7 @@ SH
 cat > "$test_root/bin/fprintd-enroll" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FPRINT_FIXTURE_CALLS"
+[[ ${FPRINT_FIXTURE_ENROLL_FAIL:-0} == 0 ]] || exit 1
 finger=right-index-finger
 while (($#)); do
   case $1 in
@@ -88,6 +93,26 @@ printf '%s\n' "$*" >> "$FPRINT_FIXTURE_CALLS"
 printf 'Verify result: verify-match (done)\n'
 SH
 
+cat > "$test_root/bin/sudo-fixture" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FPRINT_FIXTURE_ROOT_CALLS"
+if [[ $1 == install ]]; then
+  shift
+  args=()
+  while (($#)); do
+    case $1 in
+      -o|-g) shift 2 ;;
+      *) args+=("$1"); shift ;;
+    esac
+  done
+  [[ ${FPRINT_FIXTURE_INSTALL_FAIL:-0} == 0 ]] || exit 1
+  exec install "${args[@]}"
+fi
+case $1 in
+  cp|mktemp|mv|rm) exec "$@" ;;
+  *) exit 2 ;;
+esac
+SH
 chmod +x "$test_root"/bin/*
 
 make_hyprlock_conf() {
@@ -104,17 +129,28 @@ CONF
 }
 
 reset_state() {
+  rm -rf -- "$test_root/etc"
+  mkdir -p "$test_root/etc/pam.d"
+  for service in sudo doas greetd; do
+    printf 'old %s pam\n' "$service" > "$test_root/etc/pam.d/$service"
+  done
+  : > "$test_root/root-calls"
   : > "$test_root/calls"
   : > "$test_root/enrolled"
   make_hyprlock_conf "$test_root/hyprlock.conf"
 }
 
+export FINGERPRINT_AUTH_ETC_ROOT="$test_root/etc"
+export FINGERPRINT_AUTH_SUDO="$test_root/bin/sudo-fixture"
+export FINGERPRINT_AUTH_PAM_MODULE="$test_root/pam_fprintd.so"
+export FPRINT_FIXTURE_ROOT_CALLS="$test_root/root-calls"
+: > "$FINGERPRINT_AUTH_PAM_MODULE"
 export FPRINT_FIXTURE_CALLS="$test_root/calls"
 export FPRINT_FIXTURE_ENROLLED="$test_root/enrolled"
 export FINGERPRINT_AUTH_USER=testuser
 export FINGERPRINT_AUTH_HYPRLOCK_CONF="$test_root/hyprlock.conf"
 
-with_fprintd() { PATH="$test_root/bin:$PATH" "$@"; }
+with_fprintd() { PATH="$test_root/bin:$PATH" "$@" --confirm-escalation-tested; }
 
 # Point the tool names at paths that cannot exist, so `command -v` fails the
 # same way it does on a machine where fprintd was never installed.
@@ -216,9 +252,9 @@ grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" \
   || fail "dry run modified hyprlock.conf"
 [[ ! -s $test_root/enrolled ]] || fail "dry run enrolled a finger"
 
-# 9. --no-hyprlock enrolls only.
+# 9. --no-hyprlock --no-pam enrolls only.
 reset_state
-out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" with_fprintd "$auth" setup --no-hyprlock 2>&1) \
+out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" with_fprintd "$auth" setup --no-hyprlock --no-pam 2>&1) \
   || fail "setup --no-hyprlock failed"
 grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" \
   || fail "--no-hyprlock still rewrote hyprlock.conf"
@@ -253,5 +289,87 @@ out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" with_fprintd "$auth" delete 2>&1) 
 [[ ! -s $test_root/enrolled ]] || fail "delete left fingerprints enrolled"
 grep -q 'fingerprint:enabled = true' "$test_root/hyprlock.conf" \
   || fail "delete unexpectedly changed hyprlock.conf"
+
+# Errors must not turn into available devices or start enrollment/deployment.
+for error in 'Failed to connect to session bus: connection refused' \
+             'Impossible to get devices: daemon unavailable' \
+             'ListEnrolledFingers failed: permission denied'; do
+  reset_state
+  out=$(FPRINT_FIXTURE_ERROR="$error" with_fprintd "$auth" status)
+  contains "$out" 'fprintd device: error' 'query failure reported as a reader'
+  if out=$(FPRINT_FIXTURE_ERROR="$error" with_fprintd "$auth" setup 2>&1); then
+    fail 'setup accepted a failed device query'
+  fi
+  contains "$out" "$error" 'query diagnostic was lost'
+  [[ ! -s $test_root/enrolled && ! -s $test_root/root-calls ]] || fail 'query failure mutated state'
+done
+
+# Missing, ambiguous, or unsupported Hyprlock keys fail before enrollment.
+for state in missing absent duplicate invalid; do
+  reset_state
+  case $state in
+    missing) rm "$test_root/hyprlock.conf" ;;
+    absent) printf 'auth {\n}\n' > "$test_root/hyprlock.conf" ;;
+    duplicate) printf 'fingerprint:enabled = false\n' >> "$test_root/hyprlock.conf" ;;
+    invalid) sed -i 's/= false/= perhaps/' "$test_root/hyprlock.conf" ;;
+  esac
+  if out=$(with_fprintd "$auth" setup 2>&1); then fail "accepted $state config"; fi
+  [[ ! -s $test_root/enrolled && ! -s $test_root/root-calls ]] || fail "$state config mutated state"
+done
+
+reset_state
+out=$(with_fprintd "$auth" setup)
+for service in sudo doas greetd; do
+  target="$test_root/etc/pam.d/$service"
+  cmp "$repo_root/system/pam.d/$service" "$target" || fail "$service template not deployed"
+  backups=("$target".pre-fingerprint.*)
+  [[ ${#backups[@]} == 1 ]] || fail "$service missing backup"
+  [[ $(cat "${backups[0]}") == "old $service pam" ]] || fail "$service backup content lost"
+  [[ $(stat -c %a "$target") == 644 ]] || fail "$service has incorrect permissions"
+done
+: > "$test_root/root-calls"
+out=$(with_fprintd "$auth" setup)
+[[ ! -s $test_root/root-calls ]] || fail 'second setup redeployed PAM'
+out=$(with_fprintd "$auth" status)
+contains "$out" 'pam greetd: configured' 'status lost PAM deployment state'
+
+reset_state
+out=$(with_fprintd "$auth" setup --dry-run)
+contains "$out" 'would back up and deploy:' 'dry-run omitted PAM plan'
+[[ ! -s $test_root/root-calls ]] || fail 'dry-run invoked privilege escalation'
+for service in sudo doas greetd; do
+  [[ $(cat "$test_root/etc/pam.d/$service") == "old $service pam" ]] || fail 'dry-run changed PAM'
+done
+
+reset_state
+if out=$(FINGERPRINT_AUTH_PAM_MODULE="$test_root/missing.so" with_fprintd "$auth" setup 2>&1); then
+  fail 'setup succeeded without PAM module'
+fi
+[[ ! -s $test_root/enrolled && ! -s $test_root/root-calls ]] || fail 'missing module mutated state'
+
+reset_state
+if out=$(FPRINT_FIXTURE_ENROLL_FAIL=1 with_fprintd "$auth" setup 2>&1); then
+  fail 'setup accepted failed enrollment'
+fi
+[[ ! -s $test_root/root-calls ]] || fail 'failed enrollment deployed PAM'
+grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" || fail 'failed enrollment wired Hyprlock'
+
+# Without a terminal/checkpoint override, fail before any changes.
+reset_state
+if out=$(PATH="$test_root/bin:$PATH" "$auth" setup </dev/null 2>&1); then
+  fail 'noninteractive setup skipped login checkpoint'
+fi
+[[ ! -s $test_root/enrolled && ! -s $test_root/root-calls ]] || fail 'checkpoint preflight mutated state'
+
+# An install failure must preserve the original destination and its backup.
+if (( EUID != 0 )); then
+  reset_state
+  if out=$(FPRINT_FIXTURE_INSTALL_FAIL=1 with_fprintd "$auth" setup 2>&1); then
+    fail 'setup accepted PAM installation failure'
+  fi
+  [[ $(cat "$test_root/etc/pam.d/sudo") == 'old sudo pam' ]] || fail 'failed install damaged sudo'
+  [[ $(cat "$test_root/etc/pam.d/greetd") == 'old greetd pam' ]] || fail 'failed install changed login'
+  grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" || fail 'failed install wired Hyprlock'
+fi
 
 printf 'PASS: fingerprint-auth\n'
