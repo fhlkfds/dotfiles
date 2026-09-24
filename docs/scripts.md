@@ -249,12 +249,16 @@ and is idempotent.
 
 When a reader is on USB but `fprintd` is missing, `setup` installs it with
 `pacman -S --needed fprintd` through doas, or sudo when doas is absent, then
-carries on. Pacman's own prompt is the confirmation. `enroll`, `verify`, and
-`delete` point at `setup` instead, and `status` never installs anything.
+carries on. Pacman's own prompt is the confirmation. With no terminal attached,
+`setup` stops before running doas, sudo, or pacman and prints the command to run
+by hand. `enroll`, `verify`, and `delete` point at `setup` instead, and `status`
+never installs anything.
 
 Every other path fails closed with an explanation: no reader, a reader that
-`fprintd` cannot drive, a declined or failed install, an invalid finger name.
-Nothing on the machine is modified in any of those cases. Honors
+`fprintd` cannot drive, no terminal, a declined or failed install, an invalid
+finger name. Nothing on the machine is modified in any of those cases, with one
+exception: if `setup` installs `fprintd` and libfprint then turns out not to
+support the reader, `fprintd` stays installed. Honors
 `FINGERPRINT_AUTH_USER`, `FINGERPRINT_AUTH_USB_ROOT`,
 `FINGERPRINT_AUTH_HYPRLOCK_CONF`, `FINGERPRINT_AUTH_FPRINTD_{ENROLL,LIST,VERIFY,DELETE}`,
 `FINGERPRINT_AUTH_SUDO`, and `FINGERPRINT_AUTH_PACMAN`, which is how
