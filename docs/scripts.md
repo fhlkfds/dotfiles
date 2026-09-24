@@ -227,11 +227,11 @@ YubiKey Bio token and requires a key with its own sensor.
 | Command | Behavior |
 | --- | --- |
 | `fingerprint-auth status` | reports tools, USB reader, fprintd device, enrolled fingers, and Hyprlock wiring; never exits non-zero |
-| `fingerprint-auth setup` | detects the reader, enrolls `--finger` (default `right-index-finger`), and enables Hyprlock fingerprint unlock |
+| `fingerprint-auth setup` | detects the reader, installs `fprintd` if it is missing, enrolls `--finger` (default `right-index-finger`), and enables Hyprlock fingerprint unlock |
 | `fingerprint-auth enroll --finger NAME` | adds one more finger to an already-configured host |
 | `fingerprint-auth verify` | tests an enrolled finger against the reader |
 | `fingerprint-auth delete` | removes every enrolled print for the user, leaving the Hyprlock config alone |
-| `fingerprint-auth setup --dry-run` | reports actions without touching prints or configuration |
+| `fingerprint-auth setup --dry-run` | reports actions, including a pending `fprintd` install, without installing or touching prints or configuration |
 | `fingerprint-auth setup --no-hyprlock` | enrolls only |
 
 Reader detection reads `/sys/bus/usb/devices` against a table of fingerprint
@@ -247,12 +247,18 @@ who meant to type a password. `setup` rewrites only that one key in
 `hypr/.config/hypr/hyprlock.conf`, refuses to install an edit that did not take,
 and is idempotent.
 
-Every path fails closed with an explanation: no reader, a reader that
-`fprintd` cannot drive, a missing `fprintd`, an invalid finger name. Nothing on
-the machine is modified in any of those cases. Honors
+When a reader is on USB but `fprintd` is missing, `setup` installs it with
+`pacman -S --needed fprintd` through doas, or sudo when doas is absent, then
+carries on. Pacman's own prompt is the confirmation. `enroll`, `verify`, and
+`delete` point at `setup` instead, and `status` never installs anything.
+
+Every other path fails closed with an explanation: no reader, a reader that
+`fprintd` cannot drive, a declined or failed install, an invalid finger name.
+Nothing on the machine is modified in any of those cases. Honors
 `FINGERPRINT_AUTH_USER`, `FINGERPRINT_AUTH_USB_ROOT`,
-`FINGERPRINT_AUTH_HYPRLOCK_CONF`, and `FINGERPRINT_AUTH_FPRINTD_{ENROLL,LIST,VERIFY,DELETE}`,
-which is how `tests/fingerprint-auth.test.sh` drives it against fixtures.
+`FINGERPRINT_AUTH_HYPRLOCK_CONF`, `FINGERPRINT_AUTH_FPRINTD_{ENROLL,LIST,VERIFY,DELETE}`,
+`FINGERPRINT_AUTH_SUDO`, and `FINGERPRINT_AUTH_PACMAN`, which is how
+`tests/fingerprint-auth.test.sh` drives it against fixtures.
 
 ## Lock and idle settings
 

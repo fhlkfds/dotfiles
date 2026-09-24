@@ -88,6 +88,34 @@ printf '%s\n' "$*" >> "$FPRINT_FIXTURE_CALLS"
 printf 'Verify result: verify-match (done)\n'
 SH
 
+# Stand-ins for doas/sudo and pacman. Every run below uses them, so no test can
+# reach the real escalation command or the real package manager.
+cat > "$test_root/bin/root-fixture" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FPRINT_FIXTURE_ROOT_CALLS"
+if [[ ${1##*/} != pacman-fixture ]]; then
+  printf 'unexpected root command: %s\n' "$*" >&2
+  exit 2
+fi
+exec "$@"
+SH
+
+# "Installs" fprintd by copying the fake fprintd tools to where the script
+# looks for them.
+cat > "$test_root/bin/pacman-fixture" <<'SH'
+#!/usr/bin/env bash
+if [[ $* != '-S --needed fprintd' ]]; then
+  printf 'unexpected pacman arguments: %s\n' "$*" >&2
+  exit 2
+fi
+if [[ ${FPRINT_FIXTURE_PACMAN_FAIL:-0} == 1 ]]; then
+  printf 'error: failed retrieving file fprintd-1.94.5-2-x86_64.pkg.tar.zst\n' >&2
+  exit 1
+fi
+mkdir -p "$FPRINT_FIXTURE_INSTALLED"
+cp "$FPRINT_FIXTURE_TOOLS"/fprintd-* "$FPRINT_FIXTURE_INSTALLED"/
+SH
+
 chmod +x "$test_root"/bin/*
 
 make_hyprlock_conf() {
@@ -106,23 +134,31 @@ CONF
 reset_state() {
   : > "$test_root/calls"
   : > "$test_root/enrolled"
+  : > "$test_root/root-calls"
+  rm -rf -- "$test_root/installed"
   make_hyprlock_conf "$test_root/hyprlock.conf"
 }
 
 export FPRINT_FIXTURE_CALLS="$test_root/calls"
 export FPRINT_FIXTURE_ENROLLED="$test_root/enrolled"
+export FPRINT_FIXTURE_ROOT_CALLS="$test_root/root-calls"
+export FPRINT_FIXTURE_TOOLS="$test_root/bin"
+export FPRINT_FIXTURE_INSTALLED="$test_root/installed"
 export FINGERPRINT_AUTH_USER=testuser
 export FINGERPRINT_AUTH_HYPRLOCK_CONF="$test_root/hyprlock.conf"
+export FINGERPRINT_AUTH_SUDO="$test_root/bin/root-fixture"
+export FINGERPRINT_AUTH_PACMAN="$test_root/bin/pacman-fixture"
 
 with_fprintd() { PATH="$test_root/bin:$PATH" "$@"; }
 
-# Point the tool names at paths that cannot exist, so `command -v` fails the
-# same way it does on a machine where fprintd was never installed.
+# Point the tool names into a directory that starts out empty, so `command -v`
+# fails the same way it does on a machine where fprintd was never installed.
+# The pacman fixture fills it in.
 without_fprintd() {
-  FINGERPRINT_AUTH_FPRINTD_ENROLL="$test_root/absent/fprintd-enroll" \
-  FINGERPRINT_AUTH_FPRINTD_LIST="$test_root/absent/fprintd-list" \
-  FINGERPRINT_AUTH_FPRINTD_DELETE="$test_root/absent/fprintd-delete" \
-  FINGERPRINT_AUTH_FPRINTD_VERIFY="$test_root/absent/fprintd-verify" \
+  FINGERPRINT_AUTH_FPRINTD_ENROLL="$test_root/installed/fprintd-enroll" \
+  FINGERPRINT_AUTH_FPRINTD_LIST="$test_root/installed/fprintd-list" \
+  FINGERPRINT_AUTH_FPRINTD_DELETE="$test_root/installed/fprintd-delete" \
+  FINGERPRINT_AUTH_FPRINTD_VERIFY="$test_root/installed/fprintd-verify" \
   "$@"
 }
 
@@ -138,24 +174,57 @@ contains "$out" 'fprintd device: unknown' "status did not report fprintd as abse
 contains "$out" 'hyprlock fingerprint: disabled' "status misread the hyprlock config"
 contains "$out" 'MISSING' "status did not flag the missing fprintd tools"
 
-# 2. setup on a machine with no reader: fails closed, explains why, changes nothing.
+# 2. setup on a machine with no reader: fails closed, explains why, installs
+#    and changes nothing.
 reset_state
 if out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_bare" without_fprintd "$auth" setup 2>&1); then
   fail "setup succeeded on a machine with no fingerprint reader"
 fi
 contains "$out" 'no fingerprint reader was detected' "setup gave no clear no-reader message"
 contains "$out" 'pacman -S --needed fprintd' "setup did not name the install command"
+[[ ! -s $test_root/root-calls ]] || fail "setup installed fprintd with no reader present"
 grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" \
   || fail "setup modified hyprlock.conf despite having no reader"
 [[ ! -s $test_root/enrolled ]] || fail "setup enrolled a finger with no reader present"
 
-# 3. Reader on USB but fprintd not installed: name the device, name the fix.
+# 3. Reader on USB but fprintd not installed: name the device, install fprintd
+#    through the escalation command, then carry on to enroll and wire Hyprlock.
 reset_state
-if out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" without_fprintd "$auth" setup 2>&1); then
-  fail "setup succeeded without fprintd installed"
-fi
+out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" without_fprintd "$auth" setup 2>&1) \
+  || fail "setup did not install fprintd and carry on: $out"
 contains "$out" '27c6:609c' "setup did not identify the detected reader"
 contains "$out" 'fprintd is not installed' "setup did not explain that fprintd is missing"
+[[ $(cat "$test_root/root-calls") == "$test_root/bin/pacman-fixture -S --needed fprintd" ]] \
+  || fail "setup did not run exactly 'pacman -S --needed fprintd' as root"
+contains "$out" 'Enrolled right-index-finger' "setup stopped after installing fprintd"
+grep -q 'fingerprint:enabled = true' "$test_root/hyprlock.conf" \
+  || fail "setup did not wire Hyprlock after installing fprintd"
+
+# 3b. A declined or failed install stops before enrolling and keeps the manual
+#     command in view.
+reset_state
+if out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" FPRINT_FIXTURE_PACMAN_FAIL=1 \
+  without_fprintd "$auth" setup 2>&1); then
+  fail "setup succeeded although pacman did not install fprintd"
+fi
+contains "$out" 'fprintd was not installed' "setup did not report the failed install"
+contains "$out" 'pacman -Syu' "setup did not suggest a full upgrade after a failed download"
+contains "$out" 'pacman -S --needed fprintd' "setup did not keep the manual install command"
+[[ ! -s $test_root/enrolled ]] || fail "setup enrolled a finger after a failed install"
+grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" \
+  || fail "setup changed hyprlock.conf after a failed install"
+
+# 3c. Only setup installs. enroll and status point at it instead.
+reset_state
+if out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" without_fprintd "$auth" enroll 2>&1); then
+  fail "enroll succeeded without fprintd installed"
+fi
+contains "$out" "Run 'fingerprint-auth setup' first" "enroll did not point at setup"
+out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" without_fprintd "$auth" status 2>&1) \
+  || fail "status failed with a reader but no fprintd"
+contains "$out" 'Next step: fingerprint-auth setup  (installs fprintd first)' \
+  "status did not point at setup"
+[[ ! -s $test_root/root-calls ]] || fail "enroll or status tried to install fprintd"
 
 # 4. fprintd installed but reporting no device.
 reset_state
@@ -216,6 +285,19 @@ grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" \
   || fail "dry run modified hyprlock.conf"
 [[ ! -s $test_root/enrolled ]] || fail "dry run enrolled a finger"
 
+# 8b. A dry run on a host that still needs fprintd reports the install and the
+#     rest of the plan, and installs nothing.
+reset_state
+out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" without_fprintd "$auth" setup --dry-run 2>&1) \
+  || fail "dry-run setup failed without fprintd: $out"
+contains "$out" 'would install: fprintd' "dry run did not report the fprintd install"
+contains "$out" 'would enroll: right-index-finger' "dry run stopped at the fprintd install"
+contains "$out" 'would enable' "dry run did not report the hyprlock change"
+[[ ! -s $test_root/root-calls ]] || fail "dry run ran the install"
+[[ ! -e $test_root/installed ]] || fail "dry run installed fprintd"
+grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" \
+  || fail "dry run without fprintd modified hyprlock.conf"
+
 # 9. --no-hyprlock enrolls only.
 reset_state
 out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" with_fprintd "$auth" setup --no-hyprlock 2>&1) \
@@ -253,5 +335,42 @@ out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" with_fprintd "$auth" delete 2>&1) 
 [[ ! -s $test_root/enrolled ]] || fail "delete left fingerprints enrolled"
 grep -q 'fingerprint:enabled = true' "$test_root/hyprlock.conf" \
   || fail "delete unexpectedly changed hyprlock.conf"
+
+# 13. Without an override the install goes through doas when it exists and
+#     sudo otherwise. The PATH here holds only the tools the script needs plus
+#     fake doas and sudo, so the real ones can be neither picked nor run.
+#     Root needs no escalation command at all, so skip this as root.
+if (( EUID != 0 )); then
+  escalation_bin="$test_root/escalation-bin"
+  mkdir -p "$escalation_bin"
+  for tool in bash readlink dirname grep sed cat rm mktemp tr id; do
+    ln -s "$(command -v "$tool")" "$escalation_bin/$tool"
+  done
+  for tool in doas sudo; do
+    printf '#!/bin/sh\necho "unexpected %s call" >&2\nexit 2\n' "$tool" > "$escalation_bin/$tool"
+    chmod +x "$escalation_bin/$tool"
+  done
+  no_override() {
+    without_fprintd env -u FINGERPRINT_AUTH_SUDO PATH="$escalation_bin" \
+      FINGERPRINT_AUTH_USB_ROOT="$usb_reader" "$@"
+  }
+
+  reset_state
+  out=$(no_override "$auth" setup --dry-run 2>&1) || fail "dry run failed with fake doas and sudo: $out"
+  contains "$out" 'would install: fprintd (doas pacman -S --needed fprintd)' \
+    "setup did not prefer doas over sudo"
+
+  rm -- "$escalation_bin/doas"
+  out=$(no_override "$auth" setup --dry-run 2>&1) || fail "dry run failed with only fake sudo: $out"
+  contains "$out" 'would install: fprintd (sudo pacman -S --needed fprintd)' \
+    "setup did not fall back to sudo without doas"
+
+  rm -- "$escalation_bin/sudo"
+  if out=$(no_override "$auth" setup 2>&1); then
+    fail "setup succeeded with neither doas nor sudo"
+  fi
+  contains "$out" 'found neither doas nor sudo' "setup gave no clear message without doas or sudo"
+  [[ ! -e $test_root/installed ]] || fail "setup installed fprintd without doas or sudo"
+fi
 
 printf 'PASS: fingerprint-auth\n'

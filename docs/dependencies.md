@@ -115,6 +115,12 @@ the `security` package to install the guarded `yubikey-auth` helper. The
 package also ships example `gpg.conf`/`gpg-agent.conf` templates; using the
 SSH-agent path additionally requires `gnupg`.
 
+### Fingerprint sign-in
+
+Laptops with a built-in reader need `fprintd`, which pulls in `libfprint`.
+`fingerprint-auth setup` installs it when it is missing and a reader is on
+USB. Hosts without a reader need neither.
+
 ### ASCII screensaver
 
 The screensaver requires Bash, `ttfx`, `xdg-terminal-exec`, `socat`, `jq`,

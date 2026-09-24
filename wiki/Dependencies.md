@@ -113,6 +113,11 @@ ImageMagick 7 is needed only for PNG/SVG logo conversion.
 `fido2-token`, so `yubikey-manager` is not required. The SSH-agent path in the
 GnuPG examples additionally needs `gnupg`.
 
+### Fingerprint sign-in
+
+`fprintd`, which pulls in `libfprint`, on laptops with a built-in sensor only.
+`fingerprint-auth setup` installs it when it is missing.
+
 ### Browser tools
 
 A Chromium-family browser for the extension runtime and native messaging, plus
