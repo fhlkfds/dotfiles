@@ -37,7 +37,7 @@ confirmed package list.
 | `bluez-utils` | configured | `bluetoothctl` |
 | `iputils` | configured | dashboard and network checks |
 | `qrencode` | network panel | runtime-only Wi-Fi QR |
-| polkit provider | configured | NetworkManager authorization for persistent DNS/IPv4 changes |
+| `hyprpolkitagent` | started at login from `conf/autostart.lua` | polkit password prompts for NetworkManager DNS/IPv4 changes and fingerprint enrollment |
 | `greetd` | display manager | login |
 | `greetd-regreet` | themed GTK4 greeter | `[default_session]` |
 | `greetd-tuigreet` | rescue greeter | manual fallback |

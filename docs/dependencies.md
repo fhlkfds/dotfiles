@@ -36,7 +36,7 @@ can run without it, but that feature cannot.
 | `qrencode` | network-panel Wi-Fi sharing | renders the runtime-only Wi-Fi QR SVG; never stores a plaintext secret |
 | `bluez-utils` | configured Bluetooth widget | `bluetoothctl` |
 | `iputils` | dashboard/network checks | `ping` |
-| polkit provider | NetworkManager authorization | persistent DNS and IPv4 profile changes when the active policy requires confirmation |
+| `hyprpolkitagent` | started at login from `hypr/.config/hypr/conf/autostart.lua` (mirrored in the rollback `autostart.conf`) | polkit password prompts for persistent DNS and IPv4 profile changes when the active policy requires confirmation, and for fingerprint enrollment |
 | `greetd` | display manager, already installed/enabled on this machine | login; `system/greetd/config.toml` |
 | `greetd-regreet` | themed GTK4 greeter | `[default_session]` in `system/greetd/config.toml` |
 | `greetd-tuigreet` | rescue greeter | manual fallback via `/etc/greetd/config.toml.pre-regreet`, see `greeter/README.md` |

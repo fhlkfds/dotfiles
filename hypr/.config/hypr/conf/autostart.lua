@@ -11,6 +11,12 @@ hl.on("hyprland.start", function()
     start("$HOME/.local/bin/desktop-mode daemon")
     start("~/.config/hypr/scripts/spotify-notify.sh")
     start("$HOME/.config/hypr/scripts/hypr-monitor-watch.py")
+    -- Polkit needs an agent to ask for passwords, for example when fprintd
+    -- enrolls a finger or NetworkManager saves a profile.
+    -- hyprpolkitagent.service only starts with graphical-session.target, which
+    -- a start-hyprland session never reaches, so without this those requests
+    -- fail with "Not Authorized".
+    start("systemctl --user start hyprpolkitagent.service")
     start("helium-browser", { workspace = "2 silent" })
     start("spotify", { workspace = "9 silent" })
     start("virt-manager", { workspace = "6 silent" })
