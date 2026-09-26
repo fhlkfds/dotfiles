@@ -147,6 +147,39 @@ Scope {
     }
   }
 
+  // lmenu opens from a Hyprland global shortcut (hl.dsp.global("quickshell:lmenu")
+  // in keybindings.lua) rather than `quickshell ipc call`, so the keypress
+  // reaches the shell without starting a process. The IPC target is for scripts
+  // that want to open it at a route: `quickshell ipc call lmenu summon themes`.
+  GlobalShortcut {
+    name: "lmenu"
+    description: "lmenu root"
+    onPressed: LmenuState.toggle(bar.focusedScreen(), "")
+  }
+
+  IpcHandler {
+    target: "lmenu"
+    function toggle(route: string): void {
+      LmenuState.toggle(bar.focusedScreen(), route)
+    }
+    function summon(route: string): void {
+      LmenuState.summon(bar.focusedScreen(), route)
+    }
+    function close(): void {
+      LmenuState.close()
+    }
+  }
+
+  Variants {
+    model: Quickshell.screens
+
+    LmenuPanel {
+      required property var modelData
+      screen: modelData
+      ownerScreen: modelData.name
+    }
+  }
+
   // The keybindings palette is a fullscreen overlay rather than a bar-anchored
   // popup, so it gets its own per-screen instance instead of living inside a
   // bar widget. Only the one on the focused monitor ever becomes visible.
