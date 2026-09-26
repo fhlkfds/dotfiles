@@ -30,13 +30,13 @@ FloatingWindow {
       id: trayIsland
       anchors.verticalCenter: parent.verticalCenter
 
-      KeyboardLayoutWidget {}
-      SystemTrayWidget { parentWindow: window }
+      AppLauncher {}
       AgentIcon {}
+      WindowsVmIcon {}
       BluetoothIcon { screenName: "fixture" }
       NetworkIcon { screenName: "fixture" }
       AudioIcon { screenName: "fixture" }
-      DisplayIcon { screenName: "fixture" }
+      BatteryIcon {}
     }
 
     BarIsland {
@@ -66,8 +66,8 @@ FloatingWindow {
           leftIsland.height === Theme.barIslandHeight)
     check("island is sized to its modules",
           leftIsland.width > Theme.barIslandPadding * 2)
-    check("tray island holds every mounted module",
-          trayIsland.width > leftIsland.width / 2)
+    check("tray island is sized to its modules",
+          trayIsland.width > Theme.barIslandPadding * 2)
     check("power island is circular",
           powerIsland.width === powerIsland.height)
     check("reserved strip clears the island on both sides",

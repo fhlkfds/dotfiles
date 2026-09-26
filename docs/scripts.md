@@ -190,10 +190,11 @@ Git.
 | `yubikey-auth status` | reports tools, visible tokens, what each token can verify with, mapping presence, and deployed-template state |
 | `yubikey-auth setup` | creates the first mapping, backs up `/etc` targets, and deploys the sudo and doas stacks |
 | `yubikey-auth add` | appends another credential to the existing user's single mapping line |
+| `yubikey-auth remove` | after confirmation, backs up the mapping and revokes its last registered key; the key need not be plugged in |
 | `yubikey-auth setup --with-hyprlock` | also deploys the lock-screen stack, after the interactive `INSTALL HYPRLOCK` checkpoint |
 | `yubikey-auth setup\|add --mode pin` | requires the key's FIDO PIN at every authentication |
 | `yubikey-auth setup\|add --mode bio --enroll-fingerprint` | enrolls and requires a fingerprint on a key that has a sensor |
-| `yubikey-auth setup\|add --dry-run` | detects and reports actions without changing the key, mapping, or PAM |
+| `yubikey-auth setup\|add\|remove --dry-run` | reports actions without changing the key, mapping, or PAM |
 
 The verification mode comes from what the key reports through
 `fido2-token -I`, not from its USB product ID: `product=0x0402` is the plain
@@ -213,9 +214,11 @@ one explicitly with `--device`. Generated credentials are held in a mode-0700
 temporary directory, validated before installation, and removed on exit.
 
 `SUPER+SHIFT+A` > Setup > Security > YubiKey provides the same status, setup,
-add-key, dependency installation, and recovery-documentation paths. Each of
-those entries reports a ✅ or ❌ line and then waits for Enter, so a failure
-stays readable instead of the window closing or leaving a bare shell.
+add-key, remove-last-key, dependency installation, and recovery paths. Each
+entry reports a ✅ or ❌ line and then waits for Enter, so a failure stays
+readable instead of the window closing or leaving a bare shell. Removing the
+only credential deletes the mapping file and leaves the PAM password fallback
+in place; it does not change the key's PIN.
 
 ## Fingerprint sign-in
 

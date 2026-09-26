@@ -140,15 +140,17 @@ credentialMgmtPreview` — no `bioEnroll`, no `uv` — so it resolves to `touch`
 would never be reached by the command actually typed, so both are deployed.
 
 Both key rules use `sufficient`, so initial greetd login and password recovery
-remain unchanged. The order per attempt is the key, then the account password.
+remain unchanged. Enter the account password normally. To use the key, submit
+an empty prompt, then touch it when prompted. The password is checked by the
+usual system stack before success is returned.
 
 ### Normal setup
 
 Open `SUPER+SHIFT+A` > Setup > Security > YubiKey for status, first-key setup,
-additional-key setup, prerequisite installation, and this recovery guide. Each
-entry finishes with a ✅ or ❌ line and then waits for Enter, so the output of a
-failed run stays on screen instead of the window closing or leaving a bare
-shell.
+additional-key setup, removal of the last registered key, prerequisites, and
+this recovery guide. Each entry finishes with a ✅ or ❌ line and then waits
+for Enter, so the output of a failed run stays on screen instead of the
+window closing or leaving a bare shell.
 
 ```bash
 stow security
@@ -167,10 +169,11 @@ yubikey-auth add
 | `status` | tools, visible tokens, per-token verification options, mapping presence, deployed-template state |
 | `setup` | create the first mapping, back up `/etc` targets, deploy sudo and doas |
 | `add` | append another credential to the existing single mapping line |
+| `remove` | after confirmation, back up the mapping and remove its last credential; no key needs to be plugged in |
 | `setup --with-hyprlock` | additionally deploy the lock-screen stack, behind the `INSTALL HYPRLOCK` checkpoint |
 | `setup\|add --mode pin` | require the key's FIDO PIN at every authentication |
 | `setup\|add --mode bio --enroll-fingerprint` | enrol and require a fingerprint on a key that has a sensor |
-| `setup\|add --dry-run` | detect and report without changing the key, the mapping, or PAM |
+| `setup\|add\|remove --dry-run` | report without changing the key, the mapping, or PAM |
 
 Use `--device /dev/hidrawN` when several keys are attached. Automatic detection
 fails closed rather than guessing.
