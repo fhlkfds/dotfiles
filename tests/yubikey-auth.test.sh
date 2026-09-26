@@ -204,7 +204,10 @@ grep -Fq 'interactive confirmation unavailable' "$test_root/hyprlock-checkpoint.
   || fail 'an existing setup did not require the Hyprlock checkpoint'
 grep -Fq 'old hyprlock pam' "$test_root/etc/pam.d/hyprlock" \
   || fail 'Hyprlock changed before confirmation'
+chmod 0600 "$test_root/etc/u2f_mappings"
 "$auth" setup --with-hyprlock --confirm-sudo-tested > "$test_root/hyprlock.out"
+[[ $(stat -c '%a' "$test_root/etc/u2f_mappings") == 644 ]] \
+  || fail 'existing mapping permissions were not migrated from 0600 to 0644'
 after=$(sha256sum "$test_root/etc/u2f_mappings" "$test_root/etc/pam.d/sudo" "$test_root/etc/pam.d/doas")
 [[ $before == "$after" && $(wc -l < "$PAMU_FIXTURE_CALLS") == "$pamu_calls_before" ]] \
   || fail 'enabling Hyprlock re-registered the key or changed the existing setup'

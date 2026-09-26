@@ -374,7 +374,9 @@ rest were removed — recoverable from Git history if ever wanted.
 ## AI launcher
 
 `ai/.local/bin/ai-agent` preserves the caller's working directory and launches
-Claude, Codex, OpenCode, or T3 Code. Selection precedence is an explicit `--agent`, then
+Claude through `teamclaude run --`, or Codex, OpenCode, or T3 Code directly.
+Claude requires a configured TeamClaude installation on `PATH`.
+Selection precedence is an explicit `--agent`, then
 `AI_AGENT_DEFAULT`, then the configured value in `AI_AGENT_CONFIG` (defaulting to
 `~/.config/ai-agent/config`). Shell aliases in `zsh/.zshrc` call this launcher.
 

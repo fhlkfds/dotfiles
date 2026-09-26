@@ -81,8 +81,8 @@ if command -v quickshell >/dev/null 2>&1; then
     sed -n '1,120p' "$smoke_log" >&2
     fail 'LmenuSmoke.qml did not finish'
   }
-  # PanelWindow needs a Wayland backend to compile. The factory never builds
-  # the window, so nothing appears on screen.
+  # PanelWindow needs a Wayland backend. The fixture keeps the panel invisible
+  # while checking that hundreds of rows fit within its viewport.
   if [[ -n ${WAYLAND_DISPLAY:-} ]]; then
     panel_log="$test_root/panel.log"
     timeout 30 quickshell -p "$qs_root/LmenuPanelSmoke.qml" >"$panel_log" 2>&1 || true

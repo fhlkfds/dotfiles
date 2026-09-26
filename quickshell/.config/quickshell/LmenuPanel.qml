@@ -41,9 +41,13 @@ PanelWindow {
   readonly property int rowHeight:
     Math.ceil(metrics.height) + 2 * Theme.launcherRowPadV + 2
   // The search box can reach rows the view's own list never shows, so the list
-  // is never shorter than the theme's ten lines once there is a query.
-  readonly property int visibleLines:
-    Math.max(Theme.launcherLines, panel.controller.directRows.length)
+  // allows the theme's ten lines for a query, bounded by the screen height.
+  readonly property int availableLines: Math.max(0, Math.floor(
+    (panel.height - 2 * Theme.launcherPadding - inputbar.height
+      - Theme.launcherSpacing + Theme.launcherRowSpacing)
+      / (panel.rowHeight + Theme.launcherRowSpacing)))
+  readonly property int visibleLines: Math.min(panel.availableLines,
+    Math.max(Theme.launcherLines, panel.controller.directRows.length))
   readonly property int shownRows:
     Math.min(panel.controller.filtered.length, panel.visibleLines)
   readonly property int listHeight: panel.shownRows === 0 ? 0

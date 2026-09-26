@@ -93,4 +93,3 @@ fi
 export PATH="/home/liam/.local/bin:$PATH"
 # <<< Codex installer <<<
 export PATH="$HOME/.npm-global/bin:$PATH"
-export PATH="$HOME/.npm-global/bin:$PATH"

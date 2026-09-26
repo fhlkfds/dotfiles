@@ -293,7 +293,7 @@ After stowing both `ai` and `zsh`, these commands are available in a new shell:
 
 ```bash
 ai                         # configured default
-ai-claude                  # Claude Code directly
+ai-claude                  # Claude Code through TeamClaude
 ai-codex                   # Codex directly
 ai-opencode                # OpenCode directly
 ai-t3code                  # T3 Code directly
@@ -303,7 +303,9 @@ ai-agent --agent codex -- --help  # pass --help to the selected agent
 
 The aliases are only defined when their names are otherwise unused. The
 launcher preserves the current working directory and passes agent arguments
-through unchanged.
+through unchanged. The Claude selection requires `teamclaude` on `PATH` and
+invokes `teamclaude run --` with those arguments. Install and configure
+TeamClaude before using `ai-claude`; the launcher does not install it.
 
 `SUPER + I` opens the configured default. T3 Code is assigned to workspace 4
 by its `t3code` window class. Change or remove that binding in

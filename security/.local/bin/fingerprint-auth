@@ -176,7 +176,8 @@ preflight_hyprlock() {
     || fail "Hyprlock config missing or not writable: $HYPRLOCK_CONF"
   local keys
   keys=$(grep -cE '^[[:space:]]*fingerprint:enabled[[:space:]]*=' "$HYPRLOCK_CONF" || true)
-  [[ $keys == 1 ]] && grep -qE '^[[:space:]]*fingerprint:enabled[[:space:]]*=[[:space:]]*(true|false)[[:space:]]*(#.*)?$' "$HYPRLOCK_CONF" \
+  [[ $keys == 1 ]] || fail "expected exactly one fingerprint:enabled key in $HYPRLOCK_CONF"
+  grep -qE '^[[:space:]]*fingerprint:enabled[[:space:]]*=[[:space:]]*(true|false)[[:space:]]*(#.*)?$' "$HYPRLOCK_CONF" \
     || fail "expected exactly one fingerprint:enabled = true/false key in $HYPRLOCK_CONF"
 }
 
@@ -215,7 +216,10 @@ run_root() {
 }
 
 preflight_pam() {
-  [[ -r $PAM_MODULE ]] || fail "PAM module missing: $PAM_MODULE; $INSTALL_HINT"
+  # The pending package supplies this module; a dry run cannot read it yet.
+  if [[ $DRY_RUN != true || $fprintd_pending != true ]]; then
+    [[ -r $PAM_MODULE ]] || fail "PAM module missing: $PAM_MODULE; $INSTALL_HINT"
+  fi
   (( EUID == 0 )) || have "$SUDO" || fail "required command not found: $SUDO"
   [[ -d $ETC_ROOT/pam.d ]] || fail "PAM directory missing: $ETC_ROOT/pam.d"
   local service

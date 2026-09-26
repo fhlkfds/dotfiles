@@ -157,7 +157,7 @@ CONF
 }
 
 reset_state() {
-  rm -rf -- "$test_root/etc"
+  rm -rf -- "${test_root:?}/etc"
   mkdir -p "$test_root/etc/pam.d"
   for service in sudo doas greetd; do
     printf 'old %s pam\n' "$service" > "$test_root/etc/pam.d/$service"
@@ -359,7 +359,8 @@ grep -q 'fingerprint:enabled = false' "$test_root/hyprlock.conf" \
 # 8b. A dry run on a host that still needs fprintd reports the install and the
 #     rest of the plan, and installs nothing.
 reset_state
-out=$(FINGERPRINT_AUTH_USB_ROOT="$usb_reader" without_fprintd "$auth" setup --dry-run 2>&1) \
+out=$(FINGERPRINT_AUTH_PAM_MODULE="$test_root/missing-pam_fprintd.so" \
+  FINGERPRINT_AUTH_USB_ROOT="$usb_reader" without_fprintd "$auth" setup --dry-run 2>&1) \
   || fail "dry-run setup failed without fprintd: $out"
 contains "$out" 'would install: fprintd' "dry run did not report the fprintd install"
 contains "$out" 'would enroll: right-index-finger' "dry run stopped at the fprintd install"

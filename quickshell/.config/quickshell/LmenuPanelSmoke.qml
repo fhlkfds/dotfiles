@@ -1,19 +1,43 @@
 import Quickshell
 import QtQuick
 
-// Compiles the real lmenu panel without constructing its layer-shell window.
-// PanelWindow needs a Wayland backend even to compile, so
-// tests/lmenu-quickshell.test.sh runs this only when a display is available.
+// Construct an invisible panel with fixture rows. No layer surface is mapped.
 Scope {
-  Component {
-    id: panelFactory
-    LmenuPanel { ownerScreen: "smoke" }
+  id: smoke
+  QtObject {
+    id: fixtureController
+    property bool panelVisible: false
+    property string panelScreen: "smoke"
+    property var directRows: []
+    property var filtered: directRows
+    property int selectedIndex: 0
+    property string title: "Fixture"
+    property string query: ""
+    property string lastError: ""
+    property bool loaded: true
+    signal queryReset()
+    function display(row) { return row.label }
   }
-
+  LmenuPanel {
+    id: panel
+    ownerScreen: "smoke"
+    controller: fixtureController
+    implicitHeight: 800
+  }
   Component.onCompleted: {
-    console.log(panelFactory.status === Component.Ready
-      ? "ok: lmenu panel compiles"
-      : "FAIL: lmenu panel does not compile: " + panelFactory.errorString())
-    Qt.quit()
+    const rows = []
+    for (let i = 0; i < 500; i++)
+      rows.push({ label: "App " + i, disabled: false })
+    fixtureController.directRows = rows
+    Qt.callLater(function() {
+      if (panel.visible || panel.shownRows <= 0 || panel.shownRows >= rows.length
+          || panel.listHeight > panel.height) {
+        console.log("FAIL: large lmenu list does not fit the viewport")
+      } else {
+        console.log("ok: lmenu panel compiles")
+        console.log("ok: 500-row lmenu is bounded to " + panel.shownRows + " visible rows")
+      }
+      Qt.quit()
+    })
   }
 }
