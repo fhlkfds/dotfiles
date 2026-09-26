@@ -212,7 +212,7 @@ ships in the same `security` package and is a no-op on desktops:
 
 ```bash
 fingerprint-auth status                        # reader, tools, prints, wiring
-fingerprint-auth setup                         # enroll and enable the lockscreen
+fingerprint-auth setup                         # install fprintd if missing, enroll, enable unlock
 fingerprint-auth enroll --finger left-thumb    # one more finger
 fingerprint-auth setup --dry-run               # inspect without changing anything
 ```
@@ -226,8 +226,12 @@ the PAM stack blocks the prompt until the scan times out, so typing your
 password does nothing for thirty seconds. Hyprlock instead runs the scan
 alongside the password field, and the password keeps working throughout.
 
-Enrollment needs `fprintd` (in the `optional` setup group). On a host with no
-reader every subcommand explains that and exits without touching anything.
+Enrollment needs `fprintd`, which is in the `optional` setup group. If it is
+missing and a reader is present, `setup` installs it with
+`doas pacman -S --needed fprintd`, or sudo when doas is absent. Pacman lists
+the packages and asks before installing anything. On a host with no reader
+every subcommand explains that and exits without installing or touching
+anything.
 
 **Wallpapers** deploy automatically with `dots deploy`/`dots update`. To stow
 them by hand (see the layout note in

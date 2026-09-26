@@ -279,7 +279,7 @@ configuration see it.
 
 ```bash
 fingerprint-auth status   # reader, tools, enrolled prints, Hyprlock wiring
-fingerprint-auth setup    # enroll a finger and enable lockscreen unlock
+fingerprint-auth setup    # install fprintd if missing, enroll, enable unlock
 ```
 
 `Setup → Security → Fingerprint` in the Super+Shift+A menu runs `setup` in a
@@ -299,7 +299,9 @@ and the account password remains the fallback in every case.
 
 Prints live in `/var/lib/fprint/`, are host-local, and are never in Git — the
 same boundary as `/etc/u2f_mappings`. Requires `fprintd`, which is in the
-`optional` setup group.
+`optional` setup group. When it is missing on a host with a reader, `setup`
+installs it through doas, or sudo when doas is absent, after pacman's own
+confirmation prompt.
 
 ## GnuPG
 
