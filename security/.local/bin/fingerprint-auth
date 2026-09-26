@@ -4,11 +4,8 @@ set -euo pipefail
 # Host fingerprint-reader sign-in, for machines with a real sensor (the Goodix
 # reader in a Framework 13 power button, for example).
 #
-# This is deliberately NOT pam_fprintd. Hyprlock speaks to fprintd itself and
-# runs the scan in parallel with password entry; a `sufficient pam_fprintd.so`
-# line in /etc/pam.d/hyprlock blocks the prompt until the swipe times out, which
-# freezes the lockscreen for anyone who wanted to type their password. So the
-# only wiring performed here is Hyprlock's own `auth:fingerprint:enabled`.
+# Hyprlock uses its parallel fprintd client. Login and sudo/doas use a short
+# PAM fingerprint attempt, followed by the existing YubiKey/password fallback.
 #
 # Not to be confused with `yubikey-auth --enroll-fingerprint`, which enrolls a
 # fingerprint onto a YubiKey Bio token. Different sensor, different subsystem.
@@ -18,6 +15,8 @@ ACTION=
 FINGER=right-index-finger
 DRY_RUN=false
 WIRE_HYPRLOCK=true
+WIRE_PAM=true
+CONFIRM_ESCALATION_TESTED=false
 
 AUTH_USER=${FINGERPRINT_AUTH_USER:-${SUDO_USER:-${USER:-$(id -un)}}}
 
@@ -31,6 +30,9 @@ FPRINTD_DELETE=${FINGERPRINT_AUTH_FPRINTD_DELETE:-fprintd-delete}
 FPRINTD_VERIFY=${FINGERPRINT_AUTH_FPRINTD_VERIFY:-fprintd-verify}
 USB_ROOT=${FINGERPRINT_AUTH_USB_ROOT:-/sys/bus/usb/devices}
 HYPRLOCK_CONF=${FINGERPRINT_AUTH_HYPRLOCK_CONF:-$repo_root/hypr/.config/hypr/hyprlock.conf}
+ETC_ROOT=${FINGERPRINT_AUTH_ETC_ROOT:-/etc}
+TEMPLATE_DIR=${FINGERPRINT_AUTH_TEMPLATE_DIR:-$repo_root/system/pam.d}
+PAM_MODULE=${FINGERPRINT_AUTH_PAM_MODULE:-/usr/lib/security/pam_fprintd.so}
 
 # Prefer doas, which is what this desktop escalates with. zsh aliases sudo to
 # it, but the menu runs setup under `bash -lc`, where `sudo` is the real sudo.
@@ -67,14 +69,16 @@ usage() {
   cat <<EOF
 Usage:
   $PROGRAM status             report reader, dependencies, enrolled fingers, wiring
-  $PROGRAM setup [OPTIONS]    install fprintd if missing, enroll a finger, wire Hyprlock
+  $PROGRAM setup [OPTIONS]    install fprintd if needed, enroll, wire Hyprlock and PAM
   $PROGRAM enroll [OPTIONS]   enroll one more finger
   $PROGRAM verify             test an enrolled finger against the reader
   $PROGRAM delete             remove every enrolled fingerprint for the user
 
 Options:
   --finger NAME               which finger to enroll (default: $FINGER)
-  --no-hyprlock               enroll only; leave Hyprlock configuration alone
+  --no-hyprlock               leave Hyprlock configuration alone
+  --no-pam                    leave system PAM configuration alone
+  --confirm-escalation-tested skip the login checkpoint after testing sudo/doas
   --dry-run                   report actions without installing or touching prints or config
   -h, --help                  show this help
 
@@ -128,25 +132,30 @@ detect_reader_usb() {
 
 # fprintd is authoritative when it is installed: it knows which of those USB IDs
 # libfprint actually drives.
+fprintd_output=
 fprintd_sees_device() {
   have "$FPRINTD_LIST" || return 2
-  local out status=0
-  out=$("$FPRINTD_LIST" "$AUTH_USER" 2>&1) || status=$?
-  if grep -qi 'no devices available\|impossible to enumerate' <<<"$out"; then
+  local status=0
+  fprintd_output=$(LC_ALL=C "$FPRINTD_LIST" "$AUTH_USER" 2>&1) || status=$?
+  if grep -qi 'no devices available\|impossible to enumerate' <<<"$fprintd_output"; then
     return 1
   fi
   if (( status != 0 )); then
-    FPRINTD_ERROR=$out
+    FPRINTD_ERROR=$fprintd_output
+    return 3
+  fi
+  # Fail closed even if an unexpected response happens to exit successfully.
+  if ! grep -qE '^found [1-9][0-9]* devices' <<<"$fprintd_output"; then
+    FPRINTD_ERROR=$fprintd_output
     return 3
   fi
   return 0
 }
 
 enrolled_fingers() {
-  have "$FPRINTD_LIST" || return 1
-  local out
-  out=$("$FPRINTD_LIST" "$AUTH_USER" 2>&1) || return 1
-  grep -oE '\- #[0-9]+: [a-z-]+' <<<"$out" | sed 's/.*: //' || true
+  # require_reader/show_status already obtained this snapshot. Do not turn a
+  # second failed query into an empty enrollment list and overwrite a print.
+  grep -oE '\- #[0-9]+: [a-z-]+' <<<"$fprintd_output" | sed 's/.*: //' || true
 }
 
 # ------------------------------------------------------------------ hyprlock ---
@@ -162,15 +171,24 @@ hyprlock_state() {
   fi
 }
 
+preflight_hyprlock() {
+  [[ -r $HYPRLOCK_CONF && -w $HYPRLOCK_CONF ]] \
+    || fail "Hyprlock config missing or not writable: $HYPRLOCK_CONF"
+  local keys
+  keys=$(grep -cE '^[[:space:]]*fingerprint:enabled[[:space:]]*=' "$HYPRLOCK_CONF" || true)
+  [[ $keys == 1 ]] || fail "expected exactly one fingerprint:enabled key in $HYPRLOCK_CONF"
+  grep -qE '^[[:space:]]*fingerprint:enabled[[:space:]]*=[[:space:]]*(true|false)[[:space:]]*(#.*)?$' "$HYPRLOCK_CONF" \
+    || fail "expected exactly one fingerprint:enabled = true/false key in $HYPRLOCK_CONF"
+}
+
 enable_hyprlock_fingerprint() {
   local state
   state=$(hyprlock_state)
   case $state in
     enabled) note "Hyprlock fingerprint unlock: already enabled"; return 0 ;;
-    missing) note "Hyprlock config not found at $HYPRLOCK_CONF; skipping"; return 0 ;;
+    missing) fail "Hyprlock config not found at $HYPRLOCK_CONF" ;;
     absent)
-      note "No 'fingerprint:enabled' key in $HYPRLOCK_CONF; add it to the auth block by hand"
-      return 0
+      fail "No 'fingerprint:enabled' key in $HYPRLOCK_CONF; add it to the auth block by hand"
       ;;
   esac
 
@@ -189,6 +207,71 @@ enable_hyprlock_fingerprint() {
   rm -f -- "$tmp"
   note "Enabled Hyprlock fingerprint unlock in $HYPRLOCK_CONF"
   note "Re-stow the hypr package (or run 'dots deploy') and relock to pick it up."
+}
+
+# ---------------------------------------------------------------------- PAM ---
+
+run_root() {
+  if (( EUID == 0 )); then "$@"; else "$SUDO" "$@"; fi
+}
+
+preflight_pam() {
+  # The pending package supplies this module; a dry run cannot read it yet.
+  if [[ $DRY_RUN != true || $fprintd_pending != true ]]; then
+    [[ -r $PAM_MODULE ]] || fail "PAM module missing: $PAM_MODULE; $INSTALL_HINT"
+  fi
+  (( EUID == 0 )) || have "$SUDO" || fail "required command not found: $SUDO"
+  [[ -d $ETC_ROOT/pam.d ]] || fail "PAM directory missing: $ETC_ROOT/pam.d"
+  local service
+  for service in sudo doas greetd; do
+    [[ -r $TEMPLATE_DIR/$service ]] || fail "PAM template missing: $TEMPLATE_DIR/$service"
+    [[ ! -L $ETC_ROOT/pam.d/$service ]] || fail "refusing to replace PAM symlink: $ETC_ROOT/pam.d/$service"
+  done
+  if [[ $DRY_RUN == false && $CONFIRM_ESCALATION_TESTED == false && ! -t 0 ]]; then
+    fail "interactive login checkpoint unavailable; use --no-pam or --confirm-escalation-tested after testing sudo/doas"
+  fi
+}
+
+install_pam() {
+  local service=$1 target="$ETC_ROOT/pam.d/$1" backup
+  if cmp -s -- "$TEMPLATE_DIR/$service" "$target"; then
+    note "PAM $service: already configured"
+    return
+  fi
+  if [[ $DRY_RUN == true ]]; then
+    note "would back up and deploy: $TEMPLATE_DIR/$service -> $target"
+    return
+  fi
+  if [[ -e $target ]]; then
+    backup=$(run_root mktemp "${target}.pre-fingerprint.XXXXXX") \
+      || fail "could not create backup for $target"
+    run_root cp -a -- "$target" "$backup" || fail "could not back up $target"
+    note "backup: $backup"
+  fi
+  # Stage beside the destination, then rename so readers never see a partial file.
+  local staged
+  staged=$(run_root mktemp "${target}.fingerprint.XXXXXX") || fail "could not stage $target"
+  if ! run_root install -o root -g root -m 0644 -- "$TEMPLATE_DIR/$service" "$staged" \
+      || ! run_root mv -f -- "$staged" "$target"; then
+    run_root rm -f -- "$staged"
+    fail "could not install $target; earlier installations remain in place (see backups above)"
+  fi
+  note "installed: $target"
+}
+
+deploy_pam() {
+  install_pam sudo
+  install_pam doas
+  if [[ $DRY_RUN == false && $CONFIRM_ESCALATION_TESTED == false ]]; then
+    note "Keep this session open. In another terminal test /usr/bin/sudo -k; /usr/bin/sudo -v"
+    note "and doas -L; doas true with fingerprint, YubiKey, and password fallback."
+    local confirmation
+    read -r -p "Type INSTALL LOGIN after those tests pass: " confirmation \
+      || fail "login PAM was not changed; sudo/doas remain installed (see backups above)"
+    [[ $confirmation == 'INSTALL LOGIN' ]] \
+      || fail "login PAM was not changed; sudo/doas remain installed (see backups above)"
+  fi
+  install_pam greetd
 }
 
 # ------------------------------------------------------------------ install ---
@@ -290,7 +373,8 @@ show_status() {
   esac
 
   local fingers
-  fingers=$(enrolled_fingers) || fingers=
+  fingers=
+  if (( seen == 0 )); then fingers=$(enrolled_fingers); fi
   if [[ -n $fingers ]]; then
     printf 'enrolled: %s\n' "$(tr '\n' ' ' <<<"$fingers" | sed 's/ $//')"
   else
@@ -299,6 +383,14 @@ show_status() {
 
   printf 'hyprlock fingerprint: %s\n' "$(hyprlock_state)"
   printf 'hyprlock config: %s\n' "$HYPRLOCK_CONF"
+  local service
+  for service in sudo doas greetd; do
+    if cmp -s -- "$TEMPLATE_DIR/$service" "$ETC_ROOT/pam.d/$service"; then
+      printf 'pam %s: configured\n' "$service"
+    else
+      printf 'pam %s: missing or differs from template\n' "$service"
+    fi
+  done
 
   printf '\n'
   if (( seen == 0 )); then
@@ -352,6 +444,8 @@ while (($#)); do
       ;;
     --finger=*) FINGER=${1#*=}; shift ;;
     --no-hyprlock) WIRE_HYPRLOCK=false; shift ;;
+    --no-pam) WIRE_PAM=false; shift ;;
+    --confirm-escalation-tested) CONFIRM_ESCALATION_TESTED=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) fail "unknown argument: $1" ;;
@@ -407,13 +501,16 @@ case $ACTION in
     printf 'action: setup\nuser: %s\nfinger: %s\nreader: %s\n' \
       "$AUTH_USER" "$FINGER" "${reader_name:-reported by fprintd}"
 
-    existing=$(enrolled_fingers) || existing=
+    if [[ $WIRE_HYPRLOCK == true ]]; then preflight_hyprlock; fi
+    if [[ $WIRE_PAM == true ]]; then preflight_pam; fi
+    existing=$(enrolled_fingers)
     if [[ -n $existing ]] && grep -qx -- "$FINGER" <<<"$existing"; then
       note "$FINGER is already enrolled; skipping enrollment."
     else
       do_enroll "$FINGER"
     fi
 
+    if [[ $WIRE_PAM == true ]]; then deploy_pam; fi
     if [[ $WIRE_HYPRLOCK == true ]]; then
       enable_hyprlock_fingerprint
     else
@@ -421,6 +518,10 @@ case $ACTION in
     fi
 
     note ""
-    note "Your password still unlocks Hyprlock; the fingerprint runs alongside it."
+    if [[ $DRY_RUN == true ]]; then
+      note "Dry run complete; no enrollment or configuration changes made."
+    else
+      note "Requested setup steps complete. Test authentication on this host before closing your session."
+    fi
     ;;
 esac

@@ -260,9 +260,14 @@ grep -Pq 'Firefox\t' "$test_root/install.out" ||
 # both duplicated the label on screen and left the id empty, making unticked
 # rows unselectable.
 LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent LMENU_PARSER="$parser" \
-  "$cli" --dry-run-display '' >"$test_root/display.out"
-[[ $(grep -c . "$test_root/display.out") == 11 ]] ||
-  fail 'the root menu does not render exactly eleven sections'
+  "$cli" --dry-run-display '' >"$test_root/display-all.out"
+# The root's own rows come first; the nested search rows follow them.
+head -n 11 "$test_root/display-all.out" >"$test_root/display.out"
+grep -q '/' "$test_root/display.out" &&
+  fail 'a nested search row was rendered among the eleven root sections'
+[[ $(LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" rows '' |
+  grep '^#direct:') == '#direct:11' ]] ||
+  fail 'the root menu does not report exactly eleven sections of its own'
 # A row may carry a suffix column, but only a chevron or a tick belongs there -
 # never an id. Strip a trailing suffix, then require what is left to be a single
 # "icon  label" pair.
@@ -456,5 +461,113 @@ grep -q -- '-kb-custom-1 BackSpace' "$test_root/rofi.log" ||
   fail 'Backspace is not bound to the back action'
 grep -q -- '-kb-remove-char-back Shift+BackSpace,Control+h' "$test_root/rofi.log" ||
   fail 'character deletion was not moved off plain Backspace'
+
+# Search reaches into submenus: a view lists its own rows first, then every row
+# nested below it with a breadcrumb, skipping anything browsing could not reach.
+cat >"$test_root/search.jsonc" <<'JSON'
+[
+  { "id": "s", "label": "Section" },
+  { "id": "s.sub", "label": "Sub", "aliases": ["nested"] },
+  { "id": "s.sub.deep", "label": "Deep", "aliases": ["buried"],
+    "description": "Two levels down", "action": "true" },
+  { "id": "s.gone", "label": "Gone", "when": "false" },
+  { "id": "s.gone.child", "label": "Orphaned", "action": "true" },
+  { "id": "s.dim", "label": "Dim", "disabled": "true" },
+  { "id": "s.dim.child", "label": "Unreachable", "action": "true" },
+  { "id": "s.fonts", "label": "Fonts", "provider": "fonts" },
+  { "id": "s.leaf", "label": "Leaf", "action": "true" }
+]
+JSON
+LMENU_MENU="$test_root/search.jsonc" LMENU_EXTENSIONS=/nonexistent \
+  python3 "$parser" rows s >"$test_root/search.out"
+mapfile -t search_ids < <(grep -v '^#' "$test_root/search.out" | cut -f4)
+[[ ${search_ids[*]} == 's.sub s.dim s.fonts s.leaf s.sub.deep' ]] ||
+  fail "the search view has the wrong rows or order: ${search_ids[*]}"
+grep -qx '#direct:4' "$test_root/search.out" ||
+  fail 'the search view miscounts its own rows'
+grep -Pq '^\tDeep\t\ts\.sub\.deep\tSub\tburied Two levels down$' "$test_root/search.out" ||
+  fail 'a nested row lacks its breadcrumb or its hidden search terms'
+grep -Pq '\tSub\t›\ts\.sub\t\tnested$' "$test_root/search.out" ||
+  fail 'a direct row lost its chevron or its aliases'
+[[ $(LMENU_MENU="$test_root/search.jsonc" LMENU_EXTENSIONS=/nonexistent \
+  python3 "$parser" resolve s s.sub.deep) == $'leaf\ttrue' ]] ||
+  fail 'a nested search row does not resolve to its action'
+LMENU_MENU="$test_root/search.jsonc" LMENU_EXTENSIONS=/nonexistent \
+  python3 "$parser" rows '' >"$test_root/search-root.out"
+grep -Pq '\tDeep\t\ts\.sub\.deep\tSection / Sub\t' "$test_root/search-root.out" ||
+  fail 'the root does not search two levels down'
+
+# The CLI hands rofi the hidden terms as a row option and sizes the list to the
+# view's own rows, so nested rows only show once the search filters.
+cat >"$fake_rofi" <<'FAKE'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$FAKE_LOG"
+cat >"$FAKE_INPUT"
+exit 1
+FAKE
+: >"$test_root/rofi.log"
+FAKE_LOG="$test_root/rofi.log" FAKE_INPUT="$test_root/rofi.in" \
+XDG_STATE_HOME="$test_root/state" ROFI="$fake_rofi" \
+LMENU_MENU="$test_root/search.jsonc" LMENU_EXTENSIONS=/nonexistent LMENU_PARSER="$parser" \
+  "$cli" summon s >/dev/null 2>&1 || true
+grep -q -- ' -l 4\b' "$test_root/rofi.log" ||
+  fail 'the list is not sized to the view'"'"'s own rows'
+grep -Faq $'Deep   Sub\0meta\x1fburied Two levels down' "$test_root/rofi.in" ||
+  fail 'rofi was not given the nested row with its hidden search terms'
+LMENU_MENU="$test_root/search.jsonc" LMENU_EXTENSIONS=/nonexistent LMENU_PARSER="$parser" \
+  "$cli" --dry-run-display s >"$test_root/search-display.out"
+grep -qx 'Leaf' "$test_root/search-display.out" ||
+  fail 'a direct row picked up padding from a nested label'
+
+# rofi 2.0 reads its input synchronously whenever -no-custom is given, which
+# would hold the window back until every nested guard had run.
+grep -q -- '-no-custom' "$test_root/rofi.log" &&
+  fail 'rofi was given -no-custom, which forces it to wait for every row'
+
+# The feed puts the view's own rows on the wire before evaluating anything
+# nested, so a slow nested guard cannot delay the menu opening.
+cat >"$test_root/slow.jsonc" <<'JSON'
+[
+  { "id": "a", "label": "Alpha" },
+  { "id": "a.slow", "label": "Slow", "when": "sleep 3", "action": "true" },
+  { "id": "b", "label": "Beta", "action": "true" }
+]
+JSON
+exec {slow_fd}< <(LMENU_MENU="$test_root/slow.jsonc" LMENU_EXTENSIONS=/nonexistent \
+  python3 "$parser" feed '' "$test_root/slow.view")
+slow_pid=$!
+slow_lines=()
+for _ in 1 2 3; do
+  IFS= read -r -t 1 -u "$slow_fd" line || fail 'the view waited on a nested guard before drawing'
+  slow_lines+=("$line")
+done
+exec {slow_fd}<&-
+kill "$slow_pid" 2>/dev/null || true
+[[ ${slow_lines[0]} == $'Menu\t2\t1' ]] ||
+  fail "the feed header is not title, direct count and nested flag: ${slow_lines[0]}"
+[[ ${slow_lines[2]} == Beta ]] || fail 'the feed did not stream the direct rows first'
+
+# Picking a row maps rofi's index back through the recorded view, so a nested
+# submenu opens at its own route, and unmatched custom text redraws the view.
+cat >"$fake_rofi" <<'FAKE'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$FAKE_LOG"
+cat >/dev/null
+round=$(grep -c . "$FAKE_LOG")
+reply=$(sed -n "${round}p" "$FAKE_REPLIES")
+[[ -n $reply ]] || exit 1
+printf '%s\n' "${reply#* }"
+exit "${reply%% *}"
+FAKE
+# Root rows are Section, then nested Sub (1) and Deep (2) beneath it.
+printf '%s\n' '0 -1' '0 1' '1 x' >"$test_root/replies"
+: >"$test_root/rofi.log"
+FAKE_LOG="$test_root/rofi.log" FAKE_REPLIES="$test_root/replies" \
+XDG_STATE_HOME="$test_root/state" ROFI="$fake_rofi" \
+LMENU_MENU="$test_root/search.jsonc" LMENU_EXTENSIONS=/nonexistent LMENU_PARSER="$parser" \
+  "$cli" summon '' >/dev/null 2>&1 || true
+mapfile -t prompts < <(grep -o -- '-p [A-Za-z]*' "$test_root/rofi.log")
+[[ ${prompts[*]} == '-p Menu -p Menu -p Sub' ]] ||
+  fail "custom text did not redraw, or a nested pick opened the wrong view: ${prompts[*]}"
 
 printf 'ok\n'

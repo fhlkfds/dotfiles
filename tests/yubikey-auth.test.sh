@@ -121,12 +121,13 @@ cmp "$repo_root/system/pam.d/doas" "$test_root/etc/pam.d/doas" \
   || fail 'setup did not install the doas PAM template'
 for service in sudo doas; do
   awk '
-    $1 == "auth" {
-      if (/\[success=1 default=ignore\].*pam_unix\.so/) password = NR
+    $1 == "auth" || $1 == "-auth" {
+      if (/\[success=2 default=ignore\].*pam_unix\.so/) password = NR
+      if (/pam_fprintd\.so/) fingerprint = NR
       if (/pam_u2f\.so/) key = NR
       if (/include.*(system-auth|login)/) fallback = NR
     }
-    END { exit !(password && key && fallback && password < key && key < fallback) }
+    END { exit !(password && fingerprint && key && fallback && password < fingerprint && fingerprint < key && key < fallback) }
   ' "$repo_root/system/pam.d/$service" \
     || fail "$service does not offer password before waiting for the key"
 done
