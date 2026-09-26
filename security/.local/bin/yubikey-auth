@@ -133,7 +133,7 @@ resolve_mode() {
       if device_supports_option bioEnroll; then
         MODE=bio
       else
-        MODE=touch
+        MODE='touch'
       fi
       ;;
     bio)
@@ -430,6 +430,10 @@ if [[ $ACTION == setup && $WITH_HYPRLOCK == true && -e $MAPPING_FILE ]]; then
       || fail "an existing mapping cannot be re-registered; omit --mode and --enroll-fingerprint"
     printf 'Using the existing mapping: %s\n' "$MAPPING_FILE"
     stamp=$(date +%Y%m%d-%H%M%S)
+    # Older setups installed this public mapping root-only. Reusing its
+    # credentials still needs to make it readable by unprivileged Hyprlock.
+    backup_file "$MAPPING_FILE" "$stamp"
+    install_file "$work_dir/current-mapping" "$MAPPING_FILE" 0644
     if ! cmp -s -- "$TEMPLATE_DIR/sudo" "$SUDO_PAM"; then
       backup_file "$SUDO_PAM" "$stamp"
       install_file "$TEMPLATE_DIR/sudo" "$SUDO_PAM" 0644
