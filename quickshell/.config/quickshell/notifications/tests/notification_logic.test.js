@@ -9,6 +9,13 @@ assert.equal(logic.durationFor(2, 90000, 5000, 8000, 30000), 0);
 assert.equal(logic.sanitizeBody("<b>Hello</b><br>world<img src=x>"), "Hello\nworld");
 assert.equal(logic.sanitizeBody("A &amp; B"), "A & B");
 
+assert.equal(logic.ageLabel(1000, 1000 + 59 * 1000), "now");
+assert.equal(logic.ageLabel(1000, 1000 + 5 * 60 * 1000), "5m");
+assert.equal(logic.ageLabel(1000, 1000 + 3 * 3600 * 1000), "3h");
+assert.equal(logic.ageLabel(1000, 1000 + 2 * 86400 * 1000), "2d");
+assert.equal(logic.ageLabel(5000, 1000), "now");
+assert.equal(logic.ageLabel("junk", 1000), "now");
+
 const notification = {
   id: 7, appName: "NetworkManager", summary: "Wi-Fi connected", body: "Office",
   urgency: 1, expireTimeout: 1000, hints: {}

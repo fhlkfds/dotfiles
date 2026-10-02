@@ -18,7 +18,6 @@
   "countdownHeight": 2,
   "animationMs": 130,
   "closeFadeMs": 100,
-  "borderWidths": [],
   "debug": false,
   "dndBypassApps": [
     "Do Not Disturb",

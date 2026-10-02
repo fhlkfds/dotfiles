@@ -33,12 +33,6 @@ Singleton {
   readonly property int closeFadeMs: intValue("closeFadeMs", 100, 0, 1000)
   readonly property bool debug: boolValue("debug", false)
   readonly property var dndBypassApps: Array.isArray(values.dndBypassApps) ? values.dndBypassApps : []
-  readonly property var borderWidths: {
-    const v = values.borderWidths
-    if (!Array.isArray(v) || v.length !== 4)
-      return []
-    return v.map(function(n) { return Math.max(0, Math.round(Number(n) || 0)) })
-  }
 
   function intValue(name, fallback, minimum, maximum) {
     const n = Number(root.values[name])

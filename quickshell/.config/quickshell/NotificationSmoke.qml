@@ -7,7 +7,6 @@ import "notifications" as Notifications
 Scope {
   id: smoke
   readonly property var service: Notifications.NotificationService
-  property Component borderType: Component { Notifications.NotificationBorder {} }
   property Component cardType: Component { Notifications.NotificationCard {} }
   property Component stackType: Component {
     Notifications.NotificationStack { ownerScreen: "smoke" }

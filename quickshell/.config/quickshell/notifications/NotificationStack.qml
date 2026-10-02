@@ -94,6 +94,8 @@ Item {
           actionsJson: slot.actionsJson
           glyph: slot.glyph
           urgency: slot.urgency
+          replay: slot.replay
+          timestamp: slot.timestamp
           expiring: slot.lifetime > 0
           remainingFraction: slot.lifetime > 0 ? slot.remainingMs / slot.lifetime : 1
           onCloseRequested: NotificationService.dismissKey(slot.key)
