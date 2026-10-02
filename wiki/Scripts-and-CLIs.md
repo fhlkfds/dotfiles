@@ -108,7 +108,7 @@ Under `hypr/.config/hypr/scripts/`.
 | Script | Bound to | What it does |
 | --- | --- | --- |
 | `Dropterminal.sh` | `SUPER+SHIFT+Return` | Kitty scratchpad on a special workspace |
-| `calculator.sh` | `SUPER+CTRL+Q`, `SUPER+SHIFT+C` | `qalc` behind Rofi; Enter copies the answer |
+| `calculator.sh` | `SUPER+CTRL+Q`, `SUPER+SHIFT+C` | `qalc` behind Rofi; Enter copies the answer; searchable history of the last 100 calculations in `~/.local/state/calculator/history`, Ctrl+Enter copies a past result |
 | `quick-search.sh` | `SUPER+A` | apps view; `Tab` cycles windows, apps, commands |
 | `quick-search-everything.sh` | — | category navigation plus confirmed reboot and shutdown |
 | `docker-dev-env` | lmenu → Development | start, stop, inspect, and tail local MySQL, PostgreSQL, MariaDB, Redis |
@@ -133,7 +133,7 @@ Under `hypr/.config/hypr/scripts/`.
 | `clipboard-wipe.sh` | manual | clears clipboard and history |
 | `run-if-deployed.sh` | used by bindings | see [below](#the-deployment-guard) |
 | `run-or-install` | used by bindings | see [below](#missing-programs) |
-| `shell-reload.sh` | manual, `dots deploy` | reloads Hyprland, then stops both Quickshell instances and relaunches them with `--daemonize` |
+| `shell-reload.sh` | manual, `dots deploy` | reloads Hyprland, then stops Quickshell and relaunches it with `--daemonize` |
 | `bluetooth-control` | Quickshell | JSON adapter/device state and validated control commands |
 | `network-control` | Quickshell | `nmcli` wrapper: Wi-Fi, DNS, IPv4, QR |
 | `arch-updates` | Quickshell | `count` (JSON) and `update` (Kitty window) |
