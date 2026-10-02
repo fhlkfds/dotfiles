@@ -30,6 +30,13 @@ for removed in 'KeyboardLayoutWidget {' 'WeatherForecastPopup {' \
   ! grep -Fq "$removed" "$bar" || fail "bar still mounts $removed"
 done
 
+# The update count sits on the far side of the mode pills, not against the clock.
+awk '
+  /UpdatesIcon \{/ { updates = NR }
+  /ModeIndicators \{/ { modes = NR }
+  END { exit !(updates && modes && updates < modes) }
+' "$bar" || fail 'update count is not left of the mode pills'
+
 awk '
   /id: trayIsland/ { in_tray = 1 }
   in_tray && /BatteryIcon \{/ { battery_in_tray = 1 }

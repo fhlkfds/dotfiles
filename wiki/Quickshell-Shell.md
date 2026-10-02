@@ -72,7 +72,7 @@ it does not nudge the time. The clock opens the calendar.
 
 | Position | Widget |
 | --- | --- |
-| left of the clock | `RecordIcon`, `ModeIndicators`, `UpdatesIcon` |
+| left of the clock | `RecordIcon`, `UpdatesIcon`, `ModeIndicators` |
 | the anchor | the clock itself |
 
 The `MediaPanel` anchors to the clock and opens through the `media` IPC target.
