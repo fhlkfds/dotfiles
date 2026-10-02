@@ -50,8 +50,10 @@ hl.window_rule({ match = { class = "^(Spotify|spotify)$" }, workspace = "9 silen
 hl.window_rule({ match = { class = "^([Bb]rave-browser|helium|firefox)$" }, workspace = "2 silent" })
 hl.window_rule({ match = { class = "^t3code$" }, workspace = "4 silent" })
 -- The updater terminal from the bar's update count (scripts/arch-updates).
--- Not silent: it asks a question, so follow it there.
-hl.window_rule({ match = { title = "^System Update$" }, workspace = "1" })
+-- Silent like the rest: it runs in the background on workspace 1 while the bar
+-- shows an ellipsis. Go there when the sudo prompt or the both/pacman/AUR
+-- question needs an answer.
+hl.window_rule({ match = { title = "^System Update$" }, workspace = "1 silent" })
 
 hl.window_rule({
     name = "ascii-screensaver",

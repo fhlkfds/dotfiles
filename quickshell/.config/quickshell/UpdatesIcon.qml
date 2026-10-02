@@ -7,8 +7,11 @@ Item {
   property real barScale: 1.0
   function s(n) { return Theme.fs(n * root.barScale) }
 
-  // A notification, not a permanent fixture: nothing pending, nothing shown.
-  visible: UpdatesState.totalCount > 0 || UpdatesState.updating
+  // A notification, not a permanent fixture: a clean check that finds nothing
+  // shows nothing. A failed check is not a clean zero, so it stays visible
+  // (muted) with the failure in the hover; otherwise a missing checkupdates or
+  // an AUR rate limit would look exactly like an up-to-date system.
+  visible: UpdatesState.totalCount > 0 || UpdatesState.updating || UpdatesState.stale
 
   implicitWidth: label.implicitWidth + root.s(16)
   implicitHeight: label.implicitHeight + root.s(6)
@@ -24,7 +27,11 @@ Item {
     anchors.centerIn: parent
     // An ellipsis while the upgrade terminal is open makes a second click
     // obviously unnecessary, instead of looking like the first one was ignored.
-    text: UpdatesState.updating ? "󰚰  …" : "󰚰  " + UpdatesState.totalCount
+    text: UpdatesState.updating
+      ? "󰚰  …"
+      : UpdatesState.totalCount === 0 && UpdatesState.stale
+        ? "󰚰  !"
+        : "󰚰  " + UpdatesState.totalCount
     font.family: Theme.glyphFamily
     font.pixelSize: root.s(14)
     color: UpdatesState.totalCount > 0 ? Theme.onAccent : Theme.textMuted

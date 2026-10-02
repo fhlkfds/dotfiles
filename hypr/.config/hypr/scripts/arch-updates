@@ -218,8 +218,8 @@ run_update() {
 
   # The terminal's stdout is not ours, so the chosen side comes back in a file.
   scope_file=$(mktemp) || return 1
-  # The title is what the Hyprland window rule matches to open this on
-  # workspace 1.
+  # The title is what the Hyprland window rule matches to open this silently
+  # on workspace 1.
   "$term" --title "System Update" bash -lc '
     manager=$1 helper=$2 scope_file=$3
     shift 3

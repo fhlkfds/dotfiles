@@ -39,6 +39,13 @@ grep -Fq '"Pacman (" + UpdatesState.repoCount' "$widget" &&
   grep -Fq '"\nAUR (" + UpdatesState.aurCount' "$widget" ||
   fail 'hover does not break the count down into pacman and AUR'
 
+# Hidden on a clean zero, but a failed check must stay visible or a missing
+# checkupdates looks like an up-to-date system.
+grep -Fq 'UpdatesState.totalCount > 0 || UpdatesState.updating || UpdatesState.stale' "$widget" ||
+  fail 'a failed check with no count hides the widget'
+grep -Fq '"󰚰  !"' "$widget" ||
+  fail 'a failed check with no count has no visible marker'
+
 # A partial update clears only the side the script reports it upgraded.
 grep -Fq 'if (scope !== "aur")' "$state" && grep -Fq 'if (scope !== "repo")' "$state" ||
   fail 'a partial update still clears both counts'
