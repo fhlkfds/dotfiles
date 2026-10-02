@@ -75,8 +75,8 @@ bindings that currently call `notificationctl`.
 ## Wallpapers
 
 Set `HYPR_WALLPAPER_DIR` to a durable directory or change the picker default. By
-default, the picker reads `~/Pictures/Wallpapers`. Deploy the `wallpaper/`
-package there with `stow --target="$HOME/Pictures/Wallpapers" wallpaper`.
+default, the picker reads `~/Pictures/Wallpapers`, which `wallpaper-sync` keeps
+in sync across machines (see **Wallpapers** in the root `README.md`).
 
 Theme wallpapers and interactive search are related but separate paths. Update
 the theme asset resolver if a palette should choose a particular image.

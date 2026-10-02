@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# Keep ~/Pictures/Wallpapers the same on every machine by syncing it through
+# the dotfiles repository's main branch. Run by wallpaper-sync.timer and
+# wallpaper-sync.path; there is nothing to call by hand.
+#
+# ~/Pictures/Wallpapers is a symlink to the wallpaper/ directory of a sparse
+# worktree at ~/Pictures/.wallpaper-sync, detached at origin/main. Adding or
+# deleting a wallpaper shows up there as a Git change, which is committed,
+# rebased onto origin/main and pushed. The worktree never touches the branch
+# checked out in ~/dotfiles.
+
+set -euo pipefail
+
+repo=${DOTS_REPO:-"$HOME/dotfiles"}
+sync_dir=${WALLPAPER_SYNC_DIR:-"$HOME/Pictures/.wallpaper-sync"}
+wallpaper_dir=${HYPR_WALLPAPER_DIR:-"$HOME/Pictures/Wallpapers"}
+remote=${WALLPAPER_SYNC_REMOTE:-origin}
+branch=${WALLPAPER_SYNC_BRANCH:-main}
+settle=${WALLPAPER_SYNC_SETTLE:-30}
+host=${WALLPAPER_SYNC_HOST:-${HOSTNAME%%.*}}
+upstream=$remote/$branch
+files=$sync_dir/wallpaper
+# GitHub warns above 50 MB and rejects pushes with files above 100 MB.
+max_bytes=$((50 * 1024 * 1024))
+
+# A background unit must never wait on a passphrase prompt: without a key in
+# an agent, fetch and push fail and the next run retries.
+export GIT_SSH_COMMAND=${GIT_SSH_COMMAND:-"ssh -o BatchMode=yes"}
+export GIT_TERMINAL_PROMPT=0
+
+notify() {
+  printf 'wallpaper-sync: %s\n' "$1" >&2
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send "Wallpaper sync" "$1" || true
+  fi
+}
+
+fail() {
+  notify "$1"
+  exit 1
+}
+
+g() { git -C "$sync_dir" "$@"; }
+
+# name.jpg -> name-host.jpg, so a different file with a taken name keeps both.
+host_suffixed() {
+  local dir=${1%/*} base=${1##*/}
+  if [[ $base == ?*.* ]]; then
+    printf '%s/%s-%s.%s\n' "$dir" "${base%.*}" "$host" "${base##*.}"
+  else
+    printf '%s/%s-%s\n' "$dir" "$base" "$host"
+  fi
+}
+
+ensure_worktree() {
+  [[ -e $sync_dir/.git ]] && return
+  git -C "$repo" fetch -q "$remote" "$branch" || fail "cannot fetch $upstream"
+  git -C "$repo" worktree add -q --no-checkout --detach "$sync_dir" "$upstream"
+  g sparse-checkout set wallpaper
+  g checkout -q
+  mkdir -p "$files"
+}
+
+# Machines deployed before this script have a real ~/Pictures/Wallpapers full
+# of Stow links into ~/dotfiles plus any wallpapers added since. Drop the links,
+# move the files into the worktree as new wallpapers, then replace the
+# directory with the symlink.
+adopt_wallpaper_dir() {
+  local repo_real path rel target
+  if [[ -L $wallpaper_dir ]]; then
+    [[ $(readlink -- "$wallpaper_dir") == "$files" ]] ||
+      fail "$wallpaper_dir is a symlink to somewhere else; remove it to start syncing"
+    return
+  fi
+  if [[ -d $wallpaper_dir ]]; then
+    repo_real=$(realpath -- "$repo")
+    while IFS= read -r -d '' path; do
+      [[ $(realpath -m -- "$path") == "$repo_real"/wallpaper/* ]] && rm -- "$path"
+    done < <(find "$wallpaper_dir" -type l -print0)
+    while IFS= read -r -d '' path; do
+      rel=${path#"$wallpaper_dir"/}
+      target=$files/$rel
+      if [[ -e $target ]]; then
+        cmp -s -- "$path" "$target" && { rm -- "$path"; continue; }
+        target=$(host_suffixed "$target")
+      fi
+      mkdir -p -- "${target%/*}"
+      mv -n -- "$path" "$target"
+    done < <(find "$wallpaper_dir" -type f -print0)
+    find "$wallpaper_dir" -depth -type d -empty -delete
+    [[ ! -e $wallpaper_dir ]] ||
+      fail "$wallpaper_dir still has entries that are not wallpapers; move them out to start syncing"
+  fi
+  mkdir -p -- "${wallpaper_dir%/*}"
+  ln -s -- "$files" "$wallpaper_dir"
+}
+
+# Don't commit a file that is still being copied in: wait until nothing in the
+# directory has changed for $settle seconds, up to two minutes.
+wait_for_quiet() {
+  local tries=0
+  while ((settle > 0 && tries++ < 12)) &&
+    [[ -n $(find "$files" -newermt "@$(($(date +%s) - settle))" -print -quit) ]]; do
+    sleep 10
+  done
+}
+
+commit_local() {
+  local path name
+  g add -u -- wallpaper
+  while IFS= read -r -d '' path; do
+    name=${path##*/}
+    case $name in .* | *.part | *.crdownload | *.tmp | *~) continue ;; esac
+    if (($(stat -c %s -- "$sync_dir/$path") > max_bytes)); then
+      notify "Not syncing $name: it is over 50 MB"
+      continue
+    fi
+    # Another machine pushed a file with the same name. The same image is
+    # already on its way; a different one is kept under a host-suffixed name.
+    if g cat-file -e "$upstream:$path" 2>/dev/null; then
+      if [[ $(g rev-parse "$upstream:$path") == "$(g hash-object -- "$path")" ]]; then
+        rm -- "$sync_dir/$path"
+        continue
+      fi
+      mv -n -- "$sync_dir/$path" "$(host_suffixed "$sync_dir/$path")"
+      path=$(host_suffixed "$path")
+    fi
+    g add -- "$path"
+  done < <(g ls-files -z --others --exclude-standard -- wallpaper)
+  g diff --cached --quiet || g commit -q -m "wallpaper: sync from $host"
+}
+
+# Returns 1 only when the push was rejected because another machine pushed
+# first, which is worth an immediate retry.
+sync_once() {
+  g fetch -q "$remote" "$branch" || fail "cannot fetch $upstream"
+  commit_local
+  if ! g rebase -q "$upstream"; then
+    g rebase --abort 2>/dev/null || true
+    fail "wallpapers changed on two machines in a way Git cannot merge; resolve it in $sync_dir"
+  fi
+  [[ $(g rev-parse HEAD) == "$(g rev-parse "$upstream")" ]] && return 0
+  g push -q "$remote" "HEAD:refs/heads/$branch"
+}
+
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/wallpaper-sync-$UID.lock"
+flock -w 300 9 || fail "another sync is still running"
+
+ensure_worktree
+adopt_wallpaper_dir
+wait_for_quiet
+for _ in 1 2 3; do
+  sync_once && exit 0
+done
+fail "push to $upstream failed three times"

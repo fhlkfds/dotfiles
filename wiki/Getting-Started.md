@@ -75,12 +75,8 @@ Retained alternatives, only if you intend to switch to them:
 stow swaync wofi
 ```
 
-Wallpapers are the one package that does not target `$HOME`. Its files sit at the
-package root, so deploy it into the picker's default directory instead:
-
-```bash
-stow --target="$HOME/Pictures/Wallpapers" wallpaper
-```
+Do not stow `wallpaper`. `wallpaper-sync` links `~/Pictures/Wallpapers` to it
+and keeps it in sync across machines on its own after login.
 
 To remove a package: `stow -D hypr`.
 

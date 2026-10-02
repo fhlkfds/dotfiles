@@ -102,9 +102,11 @@ fi
 head_sha=$(git -C "$repo" rev-parse --verify 'HEAD^{commit}') ||
   fail "cannot resolve HEAD in $repo"
 
+# wallpaper: ~/Pictures/Wallpapers is owned by wallpaper-sync, which links it to
+# its own worktree at origin/main rather than to this checkout's branch.
 is_excluded() {
   case $1 in
-    docs|wiki|tests|system|setup|dotfiles|neovim|obsidian) return 0 ;;
+    docs|wiki|tests|system|setup|dotfiles|neovim|obsidian|wallpaper) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -121,18 +123,8 @@ is_manual_package() {
 # into the repository.
 uses_no_folding() {
   case $1 in
-    neovim|btop|obsidian|wallpaper|systemd) return 0 ;;
+    neovim|btop|obsidian|systemd) return 0 ;;
     *) return 1 ;;
-  esac
-}
-
-# Where a package deploys. Kept separate from uses_no_folding: wallpaper needs
-# both a non-$HOME target and no folding, and the old if/elif chain could only
-# express one of the two.
-stow_target() {
-  case $1 in
-    wallpaper) printf '%s\n' "$HOME/Pictures/Wallpapers" ;;
-    *) printf '%s\n' "$HOME" ;;
   esac
 }
 
@@ -240,12 +232,12 @@ printf 'Actions:\n'
 for package in "${packages[@]}"; do
   if package_removed "$package"; then
     printf '  - stow --delete --target %q %q (package removed from repository)\n' \
-      "$(stow_target "$package")" "$package"
+      "$HOME" "$package"
   elif uses_no_folding "$package"; then
     printf '  - stow --restow --no-folding --target %q %q\n' \
-      "$(stow_target "$package")" "$package"
+      "$HOME" "$package"
   else
-    printf '  - stow --restow --target %q %q\n' "$(stow_target "$package")" "$package"
+    printf '  - stow --restow --target %q %q\n' "$HOME" "$package"
   fi
 done
 if [[ -n ${is_package[hypr]+present} ]]; then
@@ -333,7 +325,7 @@ for package in "${packages[@]}"; do
     printf 'Unstowing %s (removed from repository)...\n' "$package"
     # Best effort: with the package gone, stow cannot know which links were
     # its, so nothing may be removed. That is not a reason to fail the run.
-    (cd "$repo" && stow --delete --target "$(stow_target "$package")" "$package") 2>/dev/null ||
+    (cd "$repo" && stow --delete --target "$HOME" "$package") 2>/dev/null ||
       printf 'Notice: %s had no links left to remove.\n' "$package"
     continue
   fi
@@ -343,7 +335,7 @@ for package in "${packages[@]}"; do
   if uses_no_folding "$package"; then
     stow_args+=(--no-folding)
   fi
-  stow_args+=(--target "$(stow_target "$package")")
+  stow_args+=(--target "$HOME")
   stow_args+=("$package")
   if ! (cd "$repo" && stow "${stow_args[@]}"); then
     fail "stow failed for '$package'; resolve the reported conflict and retry (files were not adopted or overwritten)"

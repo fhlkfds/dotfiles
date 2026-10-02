@@ -29,7 +29,7 @@ nothing in the live session reaches it.
 | `neovim` | `~/.config/nvim/colors` | optional | Generated palette colorscheme and stable `current.lua` alias |
 | `btop` | `~/.config/btop/themes` | optional | Generated btop theme and stable `current.theme` alias |
 | `obsidian` | `~/.config/obsidian/snippets` | optional | Generated CSS source that must be linked into each Obsidian vault |
-| `wallpaper` | `~/Pictures/Wallpapers` (custom target) | optional | Tracked wallpaper assets, including per-theme images |
+| `wallpaper` | `~/Pictures/Wallpapers` via `wallpaper-sync` (not stowed) | active | Wallpapers synced across machines, including per-theme images |
 | `swaync` | `~/.config/swaync` | retained | Rollback notification backend; its autostart line is commented out |
 | `wofi` | `~/.config/wofi` | retained | Alternative launcher; not bound, not started |
 

@@ -127,9 +127,9 @@ Do not use a broad pattern — it will take browser processes with it.
 
 ## Wallpaper picker shows no local results
 
-It defaults to `~/Pictures/Wallpapers`. Create that directory and put JPEG or PNG
-files in it; `stow --target="$HOME/Pictures/Wallpapers" wallpaper` deploys the
-tracked assets straight there. Local matching is by filename.
+It defaults to `~/Pictures/Wallpapers`, which `wallpaper-sync` creates after
+login; check `journalctl --user -u wallpaper-sync` if it is missing. Local
+matching is by filename.
 
 Empty remote results need `curl`, `jq`, DNS, and a successful Wallhaven API
 response. If the menu reports a Cisco Umbrella DNS block, allow-list
