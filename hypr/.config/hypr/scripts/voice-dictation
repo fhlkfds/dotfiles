@@ -8,6 +8,8 @@ hyprvoice_config=${HYPRVOICE_CONFIG:-"${XDG_CONFIG_HOME:-$HOME/.config}/hyprvoic
 hyprvoice_bin=${HYPRVOICE:-hyprvoice}
 notify_send=${NOTIFY_SEND:-notify-send}
 gdbus=${GDBUS:-gdbus}
+hyprctl_bin=${HYPRCTL:-hyprctl}
+target_file=${VOICE_DICTATION_TARGET:-"${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/voice-dictation-target"}
 
 resolved_source=
 resolved_label=
@@ -149,6 +151,70 @@ tmp.replace(path)
 PY
 }
 
+hyprvoice_status() {
+  "$hyprvoice_bin" status 2>/dev/null | sed -n 's/^STATUS status=//p'
+}
+
+active_window() {
+  "$hyprctl_bin" -j activewindow 2>/dev/null | jq -r '.address // empty'
+}
+
+window_open() {
+  "$hyprctl_bin" -j clients | jq -e --arg address "$1" 'any(.[]; .address == $address)' >/dev/null
+}
+
+option_value() {
+  "$hyprctl_bin" getoption "$1" -j | jq -er '(.int | numbers) // (.bool | booleans | tostring)'
+}
+
+# Lua-provider dispatch, as in app-widget.
+focus_window() {
+  "$hyprctl_bin" -q dispatch "hl.dsp.focus({ window = \"address:$1\" })"
+}
+
+# Remember the window holding the text box, so the mouse is free to wander
+# while speaking.
+start_dictation() {
+  local tmp
+  tmp=$(mktemp "$target_file.XXXXXX") || exec "$hyprvoice_bin" toggle
+  active_window >"$tmp" || true
+  mv -fT -- "$tmp" "$target_file" || rm -f -- "$tmp"
+  exec "$hyprvoice_bin" toggle
+}
+
+# Hyprvoice types into whatever has keyboard focus, and follow_mouse hands
+# focus to the window under the cursor. Focus the remembered window with mouse
+# focus and cursor warps off until the text is typed, then hand focus back.
+finish_dictation() {
+  local target follow warps
+  target=$(cat -- "$target_file" 2>/dev/null || true)
+  rm -f -- "$target_file"
+  if [[ ! $target =~ ^0x[[:xdigit:]]+$ ]] || ! window_open "$target" ||
+    ! follow=$(option_value input:follow_mouse) || ! warps=$(option_value cursor:no_warps); then
+    exec "$hyprvoice_bin" toggle
+  fi
+  return_to=$(active_window || true)
+  restore_config="hl.config({ input = { follow_mouse = $follow }, cursor = { no_warps = $warps } })"
+  trap restore_focus EXIT
+  trap 'exit 1' INT TERM HUP
+  "$hyprctl_bin" -q eval 'hl.config({ input = { follow_mouse = 0 }, cursor = { no_warps = true } })'
+  focus_window "$target"
+  "$hyprvoice_bin" toggle
+  # ponytail: polls every 0.1s for at most two minutes; an LLM step slower than
+  # that gets its focus back early.
+  for _ in {1..1200}; do
+    [[ $(hyprvoice_status) =~ ^(transcribing|processing|injecting)$ ]] || break
+    sleep 0.1
+  done
+}
+
+restore_focus() {
+  if [[ $return_to =~ ^0x[[:xdigit:]]+$ ]] && window_open "$return_to"; then
+    focus_window "$return_to" || true
+  fi
+  "$hyprctl_bin" -q eval "$restore_config" || true
+}
+
 choose() {
   local choice key
   command -v rofi >/dev/null 2>&1 || die 'rofi is required to choose a dictation microphone'
@@ -175,9 +241,19 @@ toggle() {
   fi
   command -v "$hyprvoice_bin" >/dev/null 2>&1 ||
     die 'Hyprvoice is not installed; install hyprvoice-bin and run hyprvoice onboarding'
+  umask 077
+  mkdir -p -- "$(dirname -- "$target_file")"
+  # Drop repeated shortcut presses while a focus transaction is still running.
+  exec 9>"$target_file.lock"
+  flock -n 9 || return 0
   sync_hyprvoice_config "$source"
   [[ $fallback == false ]] || notify_fallback "$label"
-  exec "$hyprvoice_bin" toggle
+  # While listening Hyprvoice reports "transcribing"; a toggle then types it.
+  case $(hyprvoice_status) in
+    idle) start_dictation ;;
+    transcribing) finish_dictation ;;
+    *) exec "$hyprvoice_bin" toggle ;;
+  esac
 }
 
 usage() {
