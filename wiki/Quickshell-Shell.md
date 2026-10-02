@@ -16,13 +16,18 @@ Scope {
     model: Quickshell.screens
     DesktopClock { required property var modelData; output: modelData }
   }
+  Variants {
+    model: Quickshell.screens
+    DesktopNowPlaying { required property var modelData; output: modelData }
+  }
   Notifications.NotificationRoot {}
   VideoDownloadRoot {}
 }
 ```
 
-Five things: battery monitoring, the bar, one desktop clock per screen, the
-notification service, and the browser-video progress service.
+Six things: battery monitoring, the bar, one desktop clock and one Spotify
+now-playing card per screen, the notification service, and the browser-video
+progress service.
 
 ## Bar layout
 
@@ -115,6 +120,25 @@ still clears the island on both sides.
 empty input mask and `ExclusionMode.Ignore`, so it is entirely click-through, and
 it requests no keyboard focus. It draws in the bottom-right corner.
 
+## Desktop now-playing card
+
+`DesktopNowPlaying.qml` puts a Spotify card in the bottom-left corner of every
+output, on the same **background** layer as the clock: a record carrying the
+album art, the title and artist, previous / play-pause / next, elapsed time,
+and a progress line. It follows **Spotify only**, through `SpotifyState.qml`,
+so a browser tab playing a video never takes it over; the bar's media module
+still follows any player. The card is hidden while Spotify is closed, stopped,
+or has no track, and stays up while paused.
+
+Unlike the clock the window is sized to the card, not the whole screen, so its
+buttons take clicks and the rest of the desktop is untouched. Like anything on
+the background layer it is only visible on a workspace with no windows over
+it; the record stops spinning whenever the monitor's active workspace has
+windows, so a hidden card does not keep the output redrawing.
+
+It deliberately has no queue, sleep timer, or volume control: Spotify does not
+publish its queue over MPRIS, and ignores MPRIS volume on Linux.
+
 ## Panels and their backends
 
 | Panel | Backed by |
@@ -177,7 +201,7 @@ dropdown.
 | System metrics (unmounted since the dashboard drawer was removed) | `SysState.qml`, `MediaTab.qml`, `PerfTab.qml`, `WorkspacesTab.qml`, `WeatherTab.qml`, `MetricCard.qml`, `Gauge.qml`, `HeroGauge.qml`, `ProfileCard.qml` |
 | Network | `NetworkState/Icon/Panel.qml`, `SpeedTestOverlay.qml`, `SpeedTestGauge.qml` |
 | Disk speed test | `DiskState.qml`, `DiskSpeedOverlay.qml` (reuses `SpeedTestGauge.qml`) |
-| Audio and media | `AudioState/Icon/Panel.qml`, `AudioPanelContent.qml`, `VolumeSlider.qml`, `MediaState/Icon/Panel.qml`, `MediaPreviewCard.qml`, `LyricsState.qml`, `LyricsView.qml` |
+| Audio and media | `AudioState/Icon/Panel.qml`, `AudioPanelContent.qml`, `VolumeSlider.qml`, `MediaState/Icon/Panel.qml`, `MediaPreviewCard.qml`, `LyricsState.qml`, `LyricsView.qml`, `SpotifyState.qml`, `DesktopNowPlaying.qml`, `DesktopNowPlayingCard.qml` |
 | Visualiser | `CavaState.qml`, `CavaBars.qml`, `CavaEdgeVisualizer.qml`, `VisualizerState.qml` |
 | Bluetooth | `BluetoothState/Icon/Panel/HeroCard/DeviceRow/Battery.qml` |
 | Display | `DisplayState/Icon/Panel.qml` |
