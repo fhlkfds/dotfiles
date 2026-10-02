@@ -40,7 +40,7 @@ you forget any binding on this page, `Super+K` is the answer.
 | `Super+S` | Opens Spotify. | Music. |
 | `Super+O` | Opens Obsidian. | Notes. |
 | `Super+Shift+H` | Opens Hermes. | Talking to your agent. |
-| `Super+R` | Toggles voice dictation. | Typing hands-free. |
+| `Super+R` | Toggles voice dictation. The text goes where you clicked before starting, even if you moved away. | Typing hands-free. |
 | `Super+Ctrl+S` | Opens LocalSend to share files with a nearby device. | Sending a file to your phone. |
 | `Super+Alt+W` / `Super+Ctrl+Alt+W` | Starts / stops the Windows VM. | The occasional Windows-only app. |
 | `Super+Shift+G` | Starts the Gaming VM and connects to it. | Gaming through Looking Glass. |

@@ -35,16 +35,35 @@ cat <<'JSON'
 [{"type":"PipeWire:Interface:Node","info":{"props":{"media.class":"Audio/Source","node.name":"alsa_input.webcam","node.description":"Webcam","device.id":"50"}}},{"type":"PipeWire:Interface:Node","info":{"props":{"media.class":"Audio/Source","node.name":"bluez_input.airpods","node.description":"AirPods Pro","device.id":"102"}}}]
 JSON
 SH
+# Toggling flips idle <-> transcribing; the stop finishes typing instantly.
 cat >"$test_root/bin/hyprvoice" <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >>"$VOICE_DICTATION_CALLS"
+state=$(cat "$HYPRVOICE_STATE" 2>/dev/null || printf idle)
+case $1 in
+  status) printf 'STATUS status=%s\n' "$state" ;;
+  toggle)
+    printf 'toggle\n' >>"$VOICE_DICTATION_CALLS"
+    [[ $state == idle ]] && printf transcribing >"$HYPRVOICE_STATE" || printf idle >"$HYPRVOICE_STATE"
+    ;;
+esac
+SH
+cat >"$test_root/bin/hyprctl" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  '-j activewindow') printf '{"address":"%s"}\n' "${HYPR_ACTIVE:-}" ;;
+  '-j clients') printf '[{"address":"0xaaa"},{"address":"0xbbb"}]\n' ;;
+  'getoption input:follow_mouse -j') printf '{"int":1}\n' ;;
+  'getoption cursor:no_warps -j') printf '{"int":0}\n' ;;
+  -q\ *) shift; printf '%s\n' "$*" >>"$VOICE_DICTATION_CALLS" ;;
+  *) exit 1 ;;
+esac
 SH
 cat >"$test_root/bin/notify-send" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$VOICE_DICTATION_NOTIFICATIONS"
 SH
 chmod +x "$test_root/bin/wpctl" "$test_root/bin/pw-dump" "$test_root/bin/hyprvoice" \
-  "$test_root/bin/notify-send"
+  "$test_root/bin/notify-send" "$test_root/bin/hyprctl"
 
 config="$test_root/voice-dictation.json"
 hyprvoice_config="$test_root/hyprvoice/config.toml"
@@ -59,6 +78,7 @@ TOML
 export PATH="$test_root/bin:$PATH" VOICE_DICTATION_CONFIG="$config"
 export HYPRVOICE_CONFIG="$hyprvoice_config" VOICE_DICTATION_CALLS="$calls"
 export VOICE_DICTATION_NOTIFICATIONS="$notifications"
+export HYPRVOICE_STATE="$test_root/hyprvoice-state" VOICE_DICTATION_TARGET="$test_root/target"
 
 "$script" use-default-output
 [[ $("$script" resolve-source) == bluez_input.airpods ]] || fail 'default output does not resolve to its matching source'
@@ -87,6 +107,27 @@ grep -Fq 'Using Webcam microphone' "$notifications" || fail 'fallback microphone
 [[ $("$script" resolve-source) == alsa_input.webcam ]] || fail 'explicit source selection was not retained'
 "$script" toggle --dry-run >"$test_root/dry-run"
 grep -Fq 'action=would-toggle device=alsa_input.webcam' "$test_root/dry-run" || fail 'dry-run does not report the selected source'
+
+# Start in window 0xaaa, stop from 0xbbb: the text must land in 0xaaa, with
+# mouse focus held off while it types, then focus and settings come back.
+: >"$calls"; printf idle >"$HYPRVOICE_STATE"
+HYPR_ACTIVE=0xaaa "$script" toggle
+[[ $(<"$test_root/target") == 0xaaa ]] || fail 'start did not remember the focused window'
+HYPR_ACTIVE=0xbbb "$script" toggle
+expected='toggle
+eval hl.config({ input = { follow_mouse = 0 }, cursor = { no_warps = 1 } })
+dispatch hl.dsp.focus({ window = "address:0xaaa" })
+toggle
+dispatch hl.dsp.focus({ window = "address:0xbbb" })
+eval hl.config({ input = { follow_mouse = 1 }, cursor = { no_warps = 0 } })'
+[[ $(<"$calls") == "$expected" ]] || { cat "$calls" >&2; fail 'stop did not type into the remembered window'; }
+[[ ! -e $test_root/target ]] || fail 'remembered window outlived the dictation'
+
+# A remembered window that has since closed leaves focus alone.
+: >"$calls"
+HYPR_ACTIVE=0xdead "$script" toggle
+HYPR_ACTIVE=0xbbb "$script" toggle
+[[ $(<"$calls") == $'toggle\ntoggle' ]] || fail 'closed window still changed focus'
 
 if "$script" use-source 'bad;source' >/dev/null 2>&1; then
   fail 'unsafe source name was accepted'
