@@ -32,4 +32,15 @@ grep -Fq 'Component.onCompleted: root.refresh()' "$state" ||
 grep -Fq 'minRefreshGap' "$state" ||
   fail 'refresh() has no minimum gap between AUR checks'
 
+# One number on the bar; the pacman/AUR split lives in the hover.
+grep -Fq '"󰚰  " + UpdatesState.totalCount' "$widget" ||
+  fail 'bar label is not the single combined count'
+grep -Fq '"Pacman (" + UpdatesState.repoCount' "$widget" &&
+  grep -Fq '"\nAUR (" + UpdatesState.aurCount' "$widget" ||
+  fail 'hover does not break the count down into pacman and AUR'
+
+# A partial update clears only the side the script reports it upgraded.
+grep -Fq 'if (scope !== "aur")' "$state" && grep -Fq 'if (scope !== "repo")' "$state" ||
+  fail 'a partial update still clears both counts'
+
 printf 'updates widget: ok\n'

@@ -16,6 +16,8 @@ chmod +x "$fixture/checkupdates" "$fixture/yay"
 # The stubs are only meaningful if the host's real checkupdates/yay/paru are out
 # of reach, so the fixture is the entire PATH and supplies its own bash.
 ln -s "$(command -v bash)" "$fixture/bash"
+ln -s "$(command -v mktemp)" "$fixture/mktemp"
+ln -s "$(command -v rm)" "$fixture/rm"
 
 output=$(PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates")
 [[ $output == '{"repo":2,"aur":1,"total":3,"repoPackages":["core","extra"],"aurPackages":["aur-one"]}' ]]
@@ -69,13 +71,12 @@ mv "$fixture/checkupdates.off" "$fixture/checkupdates"
 # composed upgrade command can be asserted on a host that has neither an AUR
 # helper nor apt.
 script="$repo_root/hypr/.config/hypr/scripts/arch-updates"
-mv "$fixture/yay" "$fixture/paru"
 printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "$ARCH_UPDATES_TEST_LOG"\n' > "$fixture/kitty"
 chmod +x "$fixture/kitty"
 
 run_update_stub() {
   rm -f "$fixture/update.log"
-  ARCH_UPDATES_TEST_LOG="$fixture/update.log" PATH="$fixture" TERMINAL="" "$script" update
+  ARCH_UPDATES_TEST_LOG="$fixture/update.log" PATH="$fixture" TERMINAL="" "$script" update >/dev/null
 }
 
 # Arch: the AUR helper is the upgrade command, and it wins over apt.
@@ -83,8 +84,14 @@ printf '#!/bin/sh\nexit 0\n' > "$fixture/apt"
 chmod +x "$fixture/apt"
 run_update_stub
 grep -Fx 'aur' "$fixture/update.log" >/dev/null
-grep -Fx "$fixture/paru" "$fixture/update.log" >/dev/null
-grep -Fq 'aur) "$2" -Syu' "$fixture/update.log"
+grep -Fx "$fixture/yay" "$fixture/update.log" >/dev/null
+grep -Fq 'aur) "$helper" "$@"' "$fixture/update.log"
+# Unattended: defaults everywhere, and removals (the [y/N] prompts) stay no.
+grep -Fx -- '--noconfirm' "$fixture/update.log" >/dev/null
+grep -Fx -- '--noremovemake' "$fixture/update.log" >/dev/null
+grep -Fx -- '--answerdiff' "$fixture/update.log" >/dev/null
+# The title is what the Hyprland rule uses to put this on workspace 1.
+grep -Fx 'System Update' "$fixture/update.log" >/dev/null
 # The window must stay open on a read rather than exiting the moment yay does.
 grep -Fq 'read -rp "Done. Press Enter to close. "' "$fixture/update.log"
 # The upgrade's exit status has to survive, or the widget cannot tell a failed
@@ -105,12 +112,38 @@ printf '#!/bin/sh\nprintf "updated\\n" > "$ARCH_UPDATES_TEST_LOG"\n' > "$fixture
 printf '#!/bin/sh\nshift 2\n"$@" </dev/null\n' > "$fixture/exec-term"
 chmod +x "$fixture/with space/yay" "$fixture/exec-term"
 ARCH_UPDATES_TEST_LOG="$fixture/executed.log" TERMINAL="$fixture/exec-term" \
-  PATH="$fixture/with space:$fixture:$PATH" "$script" update
+  PATH="$fixture/with space:$fixture:$PATH" "$script" update >/dev/null
 grep -Fxq updated "$fixture/executed.log"
+
+# The prompt: Enter means both, "p" is pacman alone, "a" is the AUR alone, all
+# through yay. The side that ran is printed so the widget only clears that
+# count; a partial update must not zero the other one.
+printf '#!/bin/sh\necho "$@" > "$ARCH_UPDATES_TEST_LOG"\n' > "$fixture/with space/yay"
+printf '#!/bin/sh\nshift 2\nprintf "%%s\\n\\n" "$ARCH_UPDATES_ANSWER" | "$@" >/dev/null\n' > "$fixture/answer-term"
+chmod +x "$fixture/with space/yay" "$fixture/answer-term"
+for case in '|all|-Syu --noconfirm' 'p|repo|-Syu --repo --noconfirm' 'a|aur|-Sua --noconfirm'; do
+  IFS='|' read -r answer want_scope want_args <<< "$case"
+  scope=$(ARCH_UPDATES_ANSWER=$answer ARCH_UPDATES_TEST_LOG="$fixture/executed.log" \
+    TERMINAL="$fixture/answer-term" PATH="$fixture/with space:$fixture:$PATH" \
+    "$script" update)
+  [[ $scope == "$want_scope" && $(<"$fixture/executed.log") == "$want_args"* ]] ||
+    { printf 'FAIL: answer "%s" printed "%s" and ran: %s\n' "$answer" "$scope" "$(<"$fixture/executed.log")" >&2; exit 1; }
+done
+
+# A failed run reports no side, so nothing is cleared.
+[[ -z $(ARCH_UPDATES_TEST_LOG=/dev/null TERMINAL="$fixture/failterm" PATH="$fixture:$PATH" "$script" update 2>/dev/null) ]] ||
+  { printf 'FAIL: failed update still reported an updated side\n' >&2; exit 1; }
+
+# yay only: paru on its own is not used as the AUR helper.
+mv "$fixture/yay" "$fixture/paru"
+run_update_stub
+! grep -Fx aur "$fixture/update.log" >/dev/null ||
+  { printf 'FAIL: paru was used as the AUR helper\n' >&2; exit 1; }
+mv "$fixture/paru" "$fixture/yay"
 
 # Debian: with no AUR helper, apt takes over. This branch never runs on the
 # Arch machines, so the stub is the only thing that will catch a typo in it.
-rm "$fixture/paru"
+rm "$fixture/yay"
 run_update_stub
 grep -Fx apt "$fixture/update.log" >/dev/null
 grep -Fq 'apt) sudo apt update && sudo apt full-upgrade' "$fixture/update.log"
@@ -127,7 +160,7 @@ printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "$ARCH_UPDATES_TEST_LOG"\n' > "$fixtur
 chmod +x "$fixture/myterm"
 rm -f "$fixture/update.log"
 ARCH_UPDATES_TEST_LOG="$fixture/update.log" PATH="$fixture" TERMINAL=myterm \
-  "$script" update
+  "$script" update >/dev/null
 [[ -s $fixture/update.log ]]
 rm "$fixture/myterm"
 
@@ -155,7 +188,6 @@ calls="$cache/calls"
 : > "$calls"
 printf '#!/bin/sh\nprintf "checkupdates\\n" >> "%s"\nprintf "core 1 -> 2\\n"\n' "$calls" > "$fixture/checkupdates"
 printf '#!/bin/sh\nprintf "yay\\n" >> "%s"\nprintf "aur-one 1 -> 2\\n"\n' "$calls" > "$fixture/yay"
-rm -f "$fixture/paru"
 chmod +x "$fixture/checkupdates" "$fixture/yay"
 
 run_cached() {

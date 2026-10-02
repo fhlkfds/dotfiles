@@ -71,13 +71,7 @@ aur_updates() {
 }
 
 aur_helper() {
-  if command -v yay >/dev/null 2>&1; then
-    command -v yay
-  elif command -v paru >/dev/null 2>&1; then
-    command -v paru
-  else
-    return 1
-  fi
+  command -v yay
 }
 
 apt_updates() {
@@ -192,20 +186,29 @@ terminal() {
 # The upgrade needs an interactive terminal so sudo and the AUR helper can
 # prompt, and the window is held open on a read so the log stays readable.
 # Exiting with the upgrade's status lets the widget tell "finished" from
-# "failed" instead of zeroing its count either way.
+# "failed" instead of zeroing its count either way. On success it prints which
+# side was upgraded (all, repo or aur) so the widget only clears that count.
 # ponytail: relies on the terminal forwarding the child exit code; if one does
 # not, the widget just keeps its counts and flags them stale.
+#
+# Unattended: --noconfirm takes every prompt's default, which is yes to the
+# upgrade, replacements and PGP key imports and no to removing conflicting or
+# dependency-broken packages, so a removal aborts instead of happening. Build
+# files are not reviewed and makedepends are kept. No --devel: it would
+# git ls-remote every -git package on each run.
 run_update() {
-  local term manager helper='' update_status
+  local term manager helper='' update_status flags=() scope_file scope
 
   if helper=$(aur_helper); then
     manager=aur
+    flags=(--noconfirm --noremovemake --sudoloop
+           --answerclean None --answerdiff None --answeredit None)
   elif command -v pacman >/dev/null 2>&1; then
     manager=pacman
   elif command -v apt >/dev/null 2>&1; then
     manager=apt
   else
-    notify "No package manager found (yay, paru, pacman, or apt)."
+    notify "No package manager found (yay, pacman, or apt)."
     return 1
   fi
   if ! term=$(terminal); then
@@ -213,24 +216,43 @@ run_update() {
     return 1
   fi
 
+  # The terminal's stdout is not ours, so the chosen side comes back in a file.
+  scope_file=$(mktemp) || return 1
+  # The title is what the Hyprland window rule matches to open this on
+  # workspace 1.
   "$term" --title "System Update" bash -lc '
-    case $1 in
-      aur) "$2" -Syu ;;
-      pacman) sudo pacman -Syu ;;
+    manager=$1 helper=$2 scope_file=$3
+    shift 3
+    scope=all
+    if [[ $manager == aur ]]; then
+      read -rp "Update [B]oth, [p]acman only, or [a]UR only? " choice
+      case ${choice,,} in
+        p*) scope=repo; set -- -Syu --repo "$@" ;;
+        a*) scope=aur; set -- -Sua "$@" ;;
+        *) set -- -Syu "$@" ;;
+      esac
+    fi
+    printf "%s" "$scope" > "$scope_file"
+    case $manager in
+      aur) "$helper" "$@" ;;
+      pacman) sudo pacman -Syu --noconfirm ;;
       apt) sudo apt update && sudo apt full-upgrade ;;
     esac
     status=$?
     printf "\n"
     read -rp "Done. Press Enter to close. " _
     exit $status
-  ' _ "$manager" "$helper"
+  ' _ "$manager" "$helper" "$scope_file" "${flags[@]}"
   update_status=$?
+  scope=$(<"$scope_file")
+  rm -f "$scope_file"
   # The upgrade queried the repositories. Keep the attempt recent so a
   # subsequent count cannot immediately repeat the request.
   if ((cache_ttl > 0)); then
     rm -f "$cache_payload" 2>/dev/null || true
     mark_attempt 1
   fi
+  ((update_status == 0)) && printf '%s\n' "${scope:-all}"
   return "$update_status"
 }
 

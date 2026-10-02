@@ -526,6 +526,7 @@ Scope {
 
           RecordIcon { barScale: panel.barScale }
           ModeIndicators { screenName: panel.modelData.name; barScale: panel.barScale }
+          UpdatesIcon { barScale: panel.barScale }
         }
 
         // The media panel anchors to the centered clock and opens through the

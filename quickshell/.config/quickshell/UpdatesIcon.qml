@@ -7,6 +7,9 @@ Item {
   property real barScale: 1.0
   function s(n) { return Theme.fs(n * root.barScale) }
 
+  // A notification, not a permanent fixture: nothing pending, nothing shown.
+  visible: UpdatesState.totalCount > 0 || UpdatesState.updating
+
   implicitWidth: label.implicitWidth + root.s(16)
   implicitHeight: label.implicitHeight + root.s(6)
 
@@ -55,7 +58,7 @@ Item {
       width: parent.width - 20
       horizontalAlignment: Text.AlignLeft
       wrapMode: Text.Wrap
-      text: "Packages (" + UpdatesState.repoCount + "): "
+      text: "Pacman (" + UpdatesState.repoCount + "): "
             + (UpdatesState.repoPackages.length > 0
               ? UpdatesState.repoPackages.join(", ")
               : "None")

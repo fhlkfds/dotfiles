@@ -107,16 +107,23 @@ Singleton {
   Process {
     id: updateProc
     command: [root.script, "update"]
-    stdout: StdioCollector {}
+    stdout: StdioCollector { id: updateOutput }
     stderr: StdioCollector { id: updateError }
     onExited: function(code) {
       root.updating = false
       if (code === 0) {
-        root.repoCount = 0
-        root.aurCount = 0
-        root.totalCount = 0
-        root.repoPackages = []
-        root.aurPackages = []
+        // The script prints the side that was upgraded (all, repo or aur). A
+        // pacman-only run leaves the AUR count standing, and the reverse.
+        const scope = updateOutput.text.trim()
+        if (scope !== "aur") {
+          root.repoCount = 0
+          root.repoPackages = []
+        }
+        if (scope !== "repo") {
+          root.aurCount = 0
+          root.aurPackages = []
+        }
+        root.totalCount = root.repoCount + root.aurCount
         root.stale = false
       } else {
         root.stale = true

@@ -14,6 +14,7 @@ fail() {
 for component in \
   'WorkspacesModule {' \
   'ModeIndicators {' \
+  'UpdatesIcon {' \
   'BatteryIcon {' \
   'AppLauncher {' \
   'BluetoothIcon {' \
@@ -24,7 +25,7 @@ for component in \
   grep -Fq "$component" "$bar" || fail "bar does not mount $component"
 done
 
-for removed in 'UpdatesIcon {' 'KeyboardLayoutWidget {' 'WeatherForecastPopup {' \
+for removed in 'KeyboardLayoutWidget {' 'WeatherForecastPopup {' \
                'ClipboardIcon {' 'DisplayIcon {' 'AgentIcon {'; do
   ! grep -Fq "$removed" "$bar" || fail "bar still mounts $removed"
 done

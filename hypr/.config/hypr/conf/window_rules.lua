@@ -49,6 +49,9 @@ hl.window_rule({ match = { class = "^(org.kde.neochat)$" }, workspace = "7 silen
 hl.window_rule({ match = { class = "^(Spotify|spotify)$" }, workspace = "9 silent" })
 hl.window_rule({ match = { class = "^([Bb]rave-browser|helium|firefox)$" }, workspace = "2 silent" })
 hl.window_rule({ match = { class = "^t3code$" }, workspace = "4 silent" })
+-- The updater terminal from the bar's update count (scripts/arch-updates).
+-- Not silent: it asks a question, so follow it there.
+hl.window_rule({ match = { title = "^System Update$" }, workspace = "1" })
 
 hl.window_rule({
     name = "ascii-screensaver",
