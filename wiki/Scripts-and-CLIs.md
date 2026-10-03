@@ -136,7 +136,7 @@ Under `hypr/.config/hypr/scripts/`.
 | `shell-reload.sh` | manual, `dots deploy` | reloads Hyprland, then stops Quickshell and relaunches it with `--daemonize` |
 | `bluetooth-control` | Quickshell | JSON adapter/device state and validated control commands |
 | `network-control` | Quickshell | `nmcli` wrapper: Wi-Fi, DNS, IPv4, QR |
-| `arch-updates` | Quickshell | `count` (JSON) and `update` (Kitty window) |
+| `arch-updates` | Quickshell | `count` (JSON) and `update` (Kitty window on workspace 1, `yay` only) |
 | `set-monitor-scale.sh` | Quickshell | validated, atomic scale persistence |
 | `auto-monitor-profile.sh`, `capture-monitor-profile.sh`, `monitor-profile-menu.sh`, `hypr-monitor-watch.py` | see [Monitors](Monitors-and-Workspaces.md) | |
 

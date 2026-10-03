@@ -14,6 +14,7 @@ fail() {
 for component in \
   'WorkspacesModule {' \
   'ModeIndicators {' \
+  'UpdatesIcon {' \
   'BatteryIcon {' \
   'AppLauncher {' \
   'BluetoothIcon {' \
@@ -24,10 +25,17 @@ for component in \
   grep -Fq "$component" "$bar" || fail "bar does not mount $component"
 done
 
-for removed in 'UpdatesIcon {' 'KeyboardLayoutWidget {' 'WeatherForecastPopup {' \
+for removed in 'KeyboardLayoutWidget {' 'WeatherForecastPopup {' \
                'ClipboardIcon {' 'DisplayIcon {' 'AgentIcon {'; do
   ! grep -Fq "$removed" "$bar" || fail "bar still mounts $removed"
 done
+
+# The update count sits on the far side of the mode pills, not against the clock.
+awk '
+  /UpdatesIcon \{/ { updates = NR }
+  /ModeIndicators \{/ { modes = NR }
+  END { exit !(updates && modes && updates < modes) }
+' "$bar" || fail 'update count is not left of the mode pills'
 
 awk '
   /id: trayIsland/ { in_tray = 1 }

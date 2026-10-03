@@ -32,4 +32,31 @@ grep -Fq 'Component.onCompleted: root.refresh()' "$state" ||
 grep -Fq 'minRefreshGap' "$state" ||
   fail 'refresh() has no minimum gap between AUR checks'
 
+# One number on the bar; the pacman/AUR split lives in the hover.
+grep -Fq '"󰚰  " + UpdatesState.totalCount' "$widget" ||
+  fail 'bar label is not the single combined count'
+grep -Fq '"Pacman (" + UpdatesState.repoCount' "$widget" &&
+  grep -Fq '"\nAUR (" + UpdatesState.aurCount' "$widget" ||
+  fail 'hover does not break the count down into pacman and AUR'
+
+# Hidden on a clean zero, but a failed check must stay visible or a missing
+# checkupdates looks like an up-to-date system.
+grep -Fq 'UpdatesState.totalCount > 0 || UpdatesState.updating || UpdatesState.stale' "$widget" ||
+  fail 'a failed check with no count hides the widget'
+grep -Fq '"󰚰  !"' "$widget" ||
+  fail 'a failed check with no count has no visible marker'
+
+# A partial update clears only the side the script reports it upgraded.
+grep -Fq 'if (scope !== "aur")' "$state" && grep -Fq 'if (scope !== "repo")' "$state" ||
+  fail 'a partial update still clears both counts'
+
+node "$repo_root/tests/updates-widget.logic.test.js" "$state"
+
+# The workspace rule must not capture unrelated applications with this title.
+for rules in "$repo_root/hypr/.config/hypr/conf/window_rules.lua" \
+             "$repo_root/hypr/.config/hypr/conf/windows-rules.conf"; do
+  grep -F 'title' "$rules" | grep -F 'System Update' | grep -Fq 'class' ||
+    fail 'updater workspace rule matches unrelated application titles'
+done
+
 printf 'updates widget: ok\n'
