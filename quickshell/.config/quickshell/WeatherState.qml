@@ -18,6 +18,12 @@ Singleton {
   property real longitude: -87.6298
   property string timezone: "America/Chicago"
   property bool savedLocation: false
+  // The night-light panel saves a place name with its location; weather.json
+  // has none, so fall back to the city in the timezone id.
+  property string place: ""
+  readonly property string locationName: place !== ""
+    ? place.split(",")[0]
+    : timezone.substring(timezone.lastIndexOf("/") + 1).replace(/_/g, " ")
 
   function applyLocation(c) {
     if (!c || !isFinite(c.latitude) || !isFinite(c.longitude))
@@ -59,6 +65,8 @@ Singleton {
           root.savedLocation = true
         else if (root.applyLocation(loc))
           root.savedLocation = true
+        if (root.savedLocation && typeof loc.place === "string")
+          root.place = loc.place
       } catch (e) {}
     }
   }
@@ -70,9 +78,9 @@ Singleton {
   property double lastFetchMs: 0
   readonly property int refreshIntervalMs: 15 * 60 * 1000
 
-  property var current: null      // { temp, feels, humidity, code, wind, isDay, precip }
+  property var current: null      // { temp, feels, humidity, code, wind, isDay, precip, uv }
   property var hourly: []         // [{ time, temp, precipProb, code }]
-  property var daily: []          // [{ date, code, tMax, tMin, precipMax, sunrise, sunset }]
+  property var daily: []          // [{ date, code, tMax, tMin, precipMax, sunrise, sunset, uvMax }]
 
   readonly property bool hasData: current !== null
 
@@ -96,10 +104,10 @@ Singleton {
       "--data-urlencode", "latitude=" + root.latitude,
       "--data-urlencode", "longitude=" + root.longitude,
       "--data-urlencode", "current=temperature_2m,apparent_temperature,"
-        + "relative_humidity_2m,weather_code,wind_speed_10m,is_day,precipitation",
+        + "relative_humidity_2m,weather_code,wind_speed_10m,is_day,precipitation,uv_index",
       "--data-urlencode", "hourly=temperature_2m,precipitation_probability,weather_code",
       "--data-urlencode", "daily=weather_code,temperature_2m_max,temperature_2m_min,"
-        + "precipitation_probability_max,sunrise,sunset",
+        + "precipitation_probability_max,sunrise,sunset,uv_index_max",
       "--data-urlencode", "temperature_unit=fahrenheit",
       "--data-urlencode", "wind_speed_unit=mph",
       "--data-urlencode", "timezone=" + root.timezone,
@@ -142,7 +150,8 @@ Singleton {
           code: c.weather_code,
           wind: c.wind_speed_10m,
           isDay: c.is_day === 1,
-          precip: c.precipitation
+          precip: c.precipitation,
+          uv: c.uv_index
         }
 
         const hs = []
@@ -168,7 +177,8 @@ Singleton {
               tMin: d.daily.temperature_2m_min[j],
               precipMax: d.daily.precipitation_probability_max[j],
               sunrise: d.daily.sunrise[j],
-              sunset: d.daily.sunset[j]
+              sunset: d.daily.sunset[j],
+              uvMax: d.daily.uv_index_max ? d.daily.uv_index_max[j] : null
             })
           }
         }
@@ -309,6 +319,16 @@ Singleton {
     }
     const h = parseInt(iso.substring(11, 13), 10)
     return h >= 6 && h < 20
+  }
+
+  // WHO UV index bands.
+  function uvLabel(uv) {
+    if (!isFinite(uv)) return "--"
+    if (uv < 3) return "Low"
+    if (uv < 6) return "Moderate"
+    if (uv < 8) return "High"
+    if (uv < 11) return "Very high"
+    return "Extreme"
   }
 
   function fmtTemp(t) {

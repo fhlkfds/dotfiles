@@ -40,8 +40,8 @@ Workspace buttons switch to their numbered workspace. Other interactions include
   automatic-screensaver-disabled, and error states; click to open the modes panel.
 - Clipboard: clipboard-history panel.
 - Battery: charge percentage and state; hidden entirely when no laptop battery is present.
-- Clock: calendar on left click, time-format cycle on right click, timezone cycle
-  on middle click.
+- Clock and weather: the dashboard (overview, media, system, weather) on left
+  click. Also reachable over IPC via the `dashboard` target's `toggle` call.
 
 ### Panels and data sources
 
@@ -52,6 +52,7 @@ Workspace buttons switch to their numbered workspace. Other interactions include
 | Audio | Quickshell PipeWire API; default output/input switching and live per-application playback controls |
 | Media | Quickshell MPRIS; recent/pinned players; lyrics from `lrclib.net` |
 | Display | Hyprland monitor model, `ddcutil`, monitor-scale helper |
+| Dashboard | `/proc`, `/sys`, `df`, `lspci`, `nvidia-smi` while the GPU is awake, MPRIS, cava, Open-Meteo |
 | Clipboard | `cliphist`, `wl-copy`, local image preview/index state |
 | Keybindings | live `hyprctl binds -j`; destructive entries are not invoked from UI |
 | Theme | Hyprland theme generator |
@@ -59,7 +60,7 @@ Workspace buttons switch to their numbered workspace. Other interactions include
 | Web apps | shell backend creating/removing launchers |
 
 IPC targets let keybindings toggle network, Bluetooth, display, media, clipboard,
-keybindings, theme, wallpaper, and web-app panels.
+dashboard, keybindings, theme, wallpaper, and web-app panels.
 
 ### Battery monitoring
 

@@ -73,7 +73,8 @@ SVG icons are repainted with that colour so they read on light themes. Clicking
 a cell switches to it.
 
 **Centre** — the clock is the anchor. The indicator row grows left, so changing
-it does not nudge the time. The clock opens the calendar.
+it does not nudge the time. Clicking the clock, or the weather beside it, opens
+the [clock dashboard](#clock-dashboard).
 
 | Position | Widget |
 | --- | --- |
@@ -126,6 +127,41 @@ still clears the island on both sides.
   installation or startup waits for RDP, then goes solid accent when RDP is
   ready. Disappears when the VM stops.
 
+## Clock dashboard
+
+`DashboardPanel.qml` drops a four-tab panel under the bar clock. Clicking the
+time or the weather opens it on **Overview**; clicking again, clicking outside,
+or Escape closes it. Left/Right (or Tab), the number keys 1–4, and the mouse
+wheel over the tab strip switch tabs. `quickshell ipc call dashboard toggle`
+opens it on the focused monitor.
+
+| Tab | Shows |
+| --- | --- |
+| Overview | clock with ISO week and day of year, current weather and the next few hours, a month calendar with US federal holidays, the next holiday countdown, now playing with a spectrum, and CPU / memory / GPU / disk / uptime rings |
+| Media | the active MPRIS player over its blurred cover, a radial spectrum round the art, a seekable wave timeline, transport and volume, and synced lyrics |
+| System | hostname and kernel, CPU with history, per-core bars, temperature, clock and load; memory and swap; root filesystem; GPU with history, VRAM and power; network rates and totals; a Mission Center button |
+| Weather | conditions, humidity, wind, rain, UV, sunrise and sunset; a 24-hour temperature curve with rain chance; seven days of ranges on a shared scale |
+
+It is built to feel instant. Every page is created with the bar and kept
+alive, so opening only maps the window and switching tabs only flips
+`visible`. The window is one fixed size for every tab, so a switch never
+resizes the Wayland surface, and nothing fades or grows on open or close; the
+tab underline is the one animation. The wave timeline is drawn once and slid
+sideways rather than repainted.
+
+A closed dashboard costs nothing. `SysState` polls `/proc` and `/sys` only
+while it is open (once a second, `df` every 30 s), the media position ticks
+only while a timeline is on screen, and each page stops its spectrum bindings
+and animations whenever it is not the visible tab. Reopening shows the last
+readings at once and refreshes them within a second.
+
+Temperatures come from `k10temp`, `zenpower` or `coretemp`, and from `amdgpu`
+for an AMD card. An NVIDIA card is read through `nvidia-smi`, but only while
+it is awake: a hybrid laptop's dGPU that is runtime-suspended shows as asleep
+rather than being woken to draw a graph. Hardware that exposes nothing reads as
+unavailable, never as a made-up number. Holidays are computed locally
+(`Holidays.js`), so the calendar needs no network.
+
 ## Desktop clock
 
 `DesktopClock.qml` is a separate full-screen layer per output on the
@@ -168,6 +204,7 @@ publish its queue over MPRIS, and ignores MPRIS volume on Linux.
 | Audio | Quickshell's PipeWire API |
 | Media | Quickshell MPRIS; recent and pinned players; lyrics from `lrclib.net` |
 | Display | Hyprland's monitor model, `ddcutil`, and `set-monitor-scale.sh` |
+| Dashboard | `/proc`, `/sys`, `df`, `lspci`, `nvidia-smi` while the GPU is awake, MPRIS, cava, Open-Meteo |
 | Clipboard | `cliphist`, `wl-copy`, plus a local image preview index |
 | Keybindings | live `hyprctl binds -j`; destructive entries are not invokable from the UI |
 | Theme | the Hyprland theme generator |
@@ -185,8 +222,8 @@ Every panel is reachable over `quickshell ipc call <target> <function>`, which i
 how the keybindings toggle them without spawning anything:
 
 ```text
-audio      bar        bluetooth   clipboard   display
-keybinds   media      modes       network     notifications
+audio      bar        bluetooth   clipboard   dashboard
+display    keybinds   media       modes       network     notifications
 theme      videoDownload           visualizer
 wallpaper  webapps
 ```
@@ -218,7 +255,8 @@ dropdown.
 | --- | --- |
 | Bar shell | `Bar.qml`, `WorkspacesModule.qml`, `IconButton.qml`, `Card.qml` |
 | Clock and calendar | `ClockState.qml`, `ClockWidget.qml`, `DesktopClock.qml`, `CalendarGrid.qml`, `CalendarPopup.qml`, `TimezonePopup.qml`, `DateTimeCard.qml` |
-| System metrics (unmounted since the dashboard drawer was removed) | `SysState.qml`, `MediaTab.qml`, `PerfTab.qml`, `WorkspacesTab.qml`, `WeatherTab.qml`, `MetricCard.qml`, `Gauge.qml`, `HeroGauge.qml`, `ProfileCard.qml` |
+| Clock dashboard | `DashboardState.qml`, `DashboardPanel.qml`, `DashboardView.qml`, `DashOverview.qml`, `DashMedia.qml`, `DashSystem.qml`, `DashWeather.qml`, `DashCard.qml`, `WaveProgress.qml`, `Sparkline.qml`, `Gauge.qml`, `Holidays.js`, `SysState.qml` |
+| Unmounted (the old dashboard drawer's pages) | `MediaTab.qml`, `PerfTab.qml`, `WorkspacesTab.qml`, `WeatherTab.qml`, `MetricCard.qml`, `HeroGauge.qml`, `ProfileCard.qml` |
 | Network | `NetworkState/Icon/Panel.qml`, `SpeedTestOverlay.qml`, `SpeedTestGauge.qml` |
 | Disk speed test | `DiskState.qml`, `DiskSpeedOverlay.qml` (reuses `SpeedTestGauge.qml`) |
 | Audio and media | `AudioState/Icon/Panel.qml`, `AudioPanelContent.qml`, `VolumeSlider.qml`, `MediaState/Icon/Panel.qml`, `MediaPreviewCard.qml`, `LyricsState.qml`, `LyricsView.qml`, `SpotifyState.qml`, `DesktopNowPlaying.qml`, `DesktopNowPlayingCard.qml` |

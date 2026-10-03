@@ -45,28 +45,27 @@ awk '
 ' "$bar" || fail 'battery is not in the right tray island'
 [[ $(grep -Fc 'BatteryIcon {' "$bar") == 1 ]] || fail 'bar mounts battery more than once'
 
-# The clock-anchored dashboard drawer was removed; clicking the clock opens the calendar.
-for removed in \
-  'DashboardPanel' \
-  'DashboardState' \
-  'DashTab'; do
+# Clicking the clock (time and weather) opens the tabbed dashboard, not the
+# old drawer or the bare calendar.
+for removed in 'DashTab' 'CalendarPopup {'; do
   if grep -Fq "$removed" "$bar"; then
     fail "bar still references removed $removed"
   fi
 done
+grep -Fq 'DashboardPanel {' "$bar" || fail 'bar does not mount the clock dashboard'
 
 grep -Fq '"hh:mm:ss AP"' "$bar" || fail 'center clock is not fixed to 12-hour hh:mm:ss AP'
 grep -Fq '"dddd, MMMM d"' "$bar" || fail 'center clock does not show the date under the time'
 grep -Fq '"°F"' "$bar" || fail 'center clock does not show the temperature in Fahrenheit'
 grep -Fq 'anchors.centerIn: parent' "$bar" || fail 'clock has no centered anchor'
-! grep -Fq 'onClicked: DashboardState.togglePanel(panel.modelData.name)' "$bar" || fail 'center clock still opens the dashboard'
 awk '
   /id: clockClickGuard/ { in_guard = 1 }
   in_guard && /anchors.fill: clockLabel/ { fills_clock = 1 }
   in_guard && /acceptedButtons: Qt.LeftButton/ { accepts_left_click = 1 }
+  in_guard && /onClicked: DashboardState.togglePanel\(panel.modelData.name\)/ { opens_dashboard = 1 }
   in_guard && /^        }/ { exit }
-  END { exit !(fills_clock && accepts_left_click) }
-' "$bar" || fail 'center clock does not absorb clicks before they reach the bar control'
+  END { exit !(fills_clock && accepts_left_click && opens_dashboard) }
+' "$bar" || fail 'clicking the clock or weather does not open the dashboard on this screen'
 ! grep -Fq 'onDoubleClicked: bar.barTransparent = !bar.barTransparent' "$bar" || fail 'empty-bar clicks still toggle transparency'
 ! grep -Fq 'barTransparent' "$bar" || fail 'bar retains unused transparency state'
 ! grep -Fq 'barAtBottom' "$bar" || fail 'bar position is still movable'
