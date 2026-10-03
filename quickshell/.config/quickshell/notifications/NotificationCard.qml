@@ -1,5 +1,6 @@
 import Quickshell
 import QtQuick
+import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Effects
@@ -52,7 +53,7 @@ Item {
 
   function refreshArtwork() {
     icon.source = ""
-    icon.source = Qt.binding(function() { return root.vinyl ? "" : root.iconSource })
+    icon.source = Qt.binding(function() { return root.visible && !root.vinyl ? root.iconSource : "" })
     vinylArt.refreshArtwork()
   }
 
@@ -136,7 +137,7 @@ Item {
       Layout.preferredWidth: visible ? implicitWidth : 0
       Layout.preferredHeight: visible ? implicitHeight : 0
       Layout.alignment: Qt.AlignVCenter
-      source: root.vinyl ? root.iconSource : ""
+      source: root.visible && root.vinyl ? root.iconSource : ""
       sleeveSize: Theme.fs(NotificationConfig.vinylSize)
     }
 
@@ -155,7 +156,9 @@ Item {
         anchors.centerIn: parent
         width: Math.round(parent.width * 0.6)
         height: width
-        source: root.vinyl ? "" : root.iconSource
+        source: root.visible && !root.vinyl ? root.iconSource : ""
+        sourceSize: Qt.size(Math.max(1, Math.ceil(width * Screen.devicePixelRatio)),
+                            Math.max(1, Math.ceil(height * Screen.devicePixelRatio)))
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         // New loads must read reused files instead of a previous decoded image.
