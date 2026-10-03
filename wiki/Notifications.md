@@ -108,8 +108,8 @@ seconds, and ordinary requests are clamped to 30 seconds.
 A DND bypass requires **both** an allow-listed app name **and** an explicit local
 bypass hint. Urgency alone never bypasses DND.
 
-The former `borderWidths`, `singleLinePadding`, and `glyphGap` options are no
-longer used by the elevated card layout.
+The former per-side `borderWidths`, `singleLinePadding`, and `glyphGap` options
+are still accepted in `config.json` but ignored by the elevated card layout.
 
 ## State
 
@@ -137,7 +137,7 @@ Action buttons appear only when the notification sends actions; the first is
 filled with the accent (the critical colour on critical cards) and the rest
 stay quiet on the surface-alt colour. Actions wrap onto additional rows when
 needed to keep buttons usable. Spotify track cards keep their vinyl
-layout inside the same shell.
+layout and "NOW PLAYING" header inside the same shell.
 
 Theme roles are generated for every palette as `notifications.background`,
 `surface`, `shadow`, `text`, `bodyText`, `actionText`, `criticalActionText`,
@@ -158,6 +158,7 @@ follows the theme and corner radius is Hyprland rounding plus four scaled pixels
 | `NotificationService.qml` | normalisation, DND, routing, lifetimes |
 | `NotificationPersistence.qml` | state, history, and image files via `notificationctl` |
 | `NotificationStack.qml`, `NotificationOverlay.qml` | per-output surface and layout |
+| `NotificationBorder.qml` | elevated shell: surface, radius, and shadow |
 | `NotificationCard.qml`, `NotificationActions.qml` | the card itself |
 | `NotificationConfig.qml` | reads `config.json` |
 | `NotificationLogic.js` | pure logic, unit-tested from Node |
@@ -181,8 +182,10 @@ node quickshell/.config/quickshell/notifications/tests/notification_logic.test.j
 With optional `PySide6` installed, the Python suite also runs the production
 card and stack QML offscreen with fixture services. It checks narrow/scaled
 layouts, action clicks, replay ages, icon fallback, vinyl layout, and per-card
-mask membership without connecting to the desktop. This does not validate
-native Wayland input delivery or GPU shadow rendering.
+mask membership without connecting to the desktop. `tests/swaync-mask.test.sh`
+checks statically that the input mask is built from card slots only, so the
+shadow margin stays click-through. Neither validates native Wayland input
+delivery or GPU shadow rendering.
 
 ## Rolling back to SwayNC
 
