@@ -145,6 +145,12 @@ class ThemeGeneratorTest(unittest.TestCase):
                     (self.root / slug / "stage" / "quickshell-theme.json").read_text()
                 )
                 self.assertEqual(quickshell["colors"]["accent"], accent)
+                for role, fill in (("actionText", accent),
+                                   ("criticalActionText", theme.colors["critical"])):
+                    foreground = quickshell["notifications"][role]
+                    candidates = (theme.colors["background_alt"], theme.colors["foreground_bright"])
+                    self.assertEqual(tl.contrast_ratio(foreground, fill),
+                                     max(tl.contrast_ratio(color, fill) for color in candidates))
                 t3code = json.loads(
                     (self.root / slug / "stage" / "t3code-theme.json").read_text()
                 )

@@ -21,24 +21,16 @@ Singleton {
   readonly property int cardWidth: intValue("cardWidth", 380, 240, 800)
   readonly property int stackGap: intValue("stackGap", 8, 0, 64)
   readonly property int sidePadding: intValue("sidePadding", 12, 0, 64)
-  readonly property int singleLinePadding: intValue("singleLinePadding", 7, 0, 64)
   readonly property int multiLinePadding: intValue("multiLinePadding", 10, 0, 64)
   readonly property int iconSize: intValue("iconSize", 40, 12, 128)
   readonly property int iconGap: intValue("iconGap", 12, 0, 64)
   readonly property int vinylSize: intValue("vinylSize", 64, 24, 160)
-  readonly property int glyphGap: intValue("glyphGap", 8, 0, 64)
   readonly property int closeSize: intValue("closeSize", 18, 12, 48)
   readonly property int countdownHeight: intValue("countdownHeight", 2, 1, 8)
   readonly property int animationMs: intValue("animationMs", 130, 0, 1000)
   readonly property int closeFadeMs: intValue("closeFadeMs", 100, 0, 1000)
   readonly property bool debug: boolValue("debug", false)
   readonly property var dndBypassApps: Array.isArray(values.dndBypassApps) ? values.dndBypassApps : []
-  readonly property var borderWidths: {
-    const v = values.borderWidths
-    if (!Array.isArray(v) || v.length !== 4)
-      return []
-    return v.map(function(n) { return Math.max(0, Math.round(Number(n) || 0)) })
-  }
 
   function intValue(name, fallback, minimum, maximum) {
     const n = Number(root.values[name])

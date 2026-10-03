@@ -1,10 +1,11 @@
+import Quickshell
 import QtQuick
 import ".."
 
 Item {
   id: root
   required property string ownerScreen
-  property alias inputItem: column
+  property var inputRegions: []
 
   implicitWidth: column.implicitWidth
   implicitHeight: column.implicitHeight
@@ -15,9 +16,18 @@ Item {
 
     Repeater {
       model: NotificationService.popupModel
+      onItemAdded: function(index, item) {
+        root.inputRegions = root.inputRegions.concat([item.inputRegion])
+      }
+      onItemRemoved: function(index, item) {
+        root.inputRegions = root.inputRegions.filter(function(region) {
+          return region !== item.inputRegion
+        })
+      }
 
       delegate: Item {
         id: slot
+        property Region inputRegion: Region { item: slot.visible ? slot : null }
         required property string key
         required property string app
         required property string desktopEntry
@@ -94,6 +104,8 @@ Item {
           actionsJson: slot.actionsJson
           glyph: slot.glyph
           urgency: slot.urgency
+          replay: slot.replay
+          timestamp: slot.timestamp
           expiring: slot.lifetime > 0
           remainingFraction: slot.lifetime > 0 ? slot.remainingMs / slot.lifetime : 1
           onCloseRequested: NotificationService.dismissKey(slot.key)

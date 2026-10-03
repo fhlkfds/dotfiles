@@ -120,19 +120,13 @@ Singleton {
     const value = root.notificationTheme[key]
     return (typeof value === "string" && value.length > 0) ? value : fallback
   }
-  function notificationNum(key, fallback) {
-    const value = root.notificationTheme[key]
-    if (typeof value === "number") return value
-    const parsed = parseFloat(value)
-    return isNaN(parsed) ? fallback : parsed
-  }
   readonly property color notificationBackground: notificationCol("background", root.background)
   readonly property color notificationText: notificationCol("text", root.foregroundBright)
   readonly property color notificationBodyText: notificationCol("bodyText", root.foreground)
-  readonly property color notificationBorder1: notificationCol("border1", root.borderActive1)
-  readonly property color notificationBorder2: notificationCol("border2", root.borderActive2)
-  readonly property real notificationBorderAlpha: notificationNum("borderAlpha", 1.0)
-  readonly property real notificationBorderAngle: notificationNum("borderAngle", 45)
+  readonly property color notificationSurface: notificationCol("surface", root.surfaceColor)
+  readonly property color notificationShadow: notificationCol("shadow", root.shadowColor)
+  readonly property color notificationActionText: notificationCol("actionText", root.onAccent)
+  readonly property color notificationCriticalActionText: notificationCol("criticalActionText", root.onAccent)
   readonly property color notificationCountdown: notificationCol("countdown", root.accent)
   readonly property color notificationClose: notificationCol("close", root.muted)
   readonly property int notificationRadius: fs(Math.max(0, root.hyprRounding))

@@ -27,7 +27,8 @@ appearing, but they bypass Quickshell's DND and history.
 
 The full-screen layer-shell surfaces use the **overlay** layer, request no
 keyboard focus and no exclusion zone, and have an input mask made only from the
-card stack. Transparent space is therefore click-through.
+individual visible card rectangles. Space between cards and shadows outside
+those rectangles are therefore click-through.
 
 The Quickshell bar is authoritative, so top-anchored notifications clear
 `Theme.barHeight` plus the normal outer gap. Notifications with no output
@@ -96,16 +97,19 @@ seconds, and ordinary requests are clamped to 30 seconds.
 | `ordinaryMaxTimeoutMs` | 30000 |
 | `cardWidth` | 380 |
 | `stackGap`, `sidePadding` | 8, 12 |
-| `iconSize`, `iconGap`, `glyphGap`, `closeSize` | 40, 12, 8, 18 |
+| `iconSize`, `iconGap`, `closeSize` | 40, 12, 18 |
+| `multiLinePadding` | 10 — vertical padding for all cards |
 | `countdownHeight` | 2 |
 | `vinylSize` | 64 — album sleeve size on Spotify track cards (record + live progress bar from `MediaState`) |
 | `animationMs`, `closeFadeMs` | 130, 100 |
-| `borderWidths` | `[]` — per side, `[top, right, bottom, left]` |
 | `debug` | `false` |
 | `dndBypassApps` | `Do Not Disturb`, `Night Light`, `Capture`, `Battery`, `Web Apps` |
 
 A DND bypass requires **both** an allow-listed app name **and** an explicit local
 bypass hint. Urgency alone never bypasses DND.
+
+The former `borderWidths`, `singleLinePadding`, and `glyphGap` options are no
+longer used by the elevated card layout.
 
 ## State
 
@@ -125,13 +129,23 @@ writes use fsync plus rename, and orphaned images are swept.
 
 ## Theming
 
-Theme roles are generated for every palette as `notifications.background`,
-`text`, `bodyText`, `border1`, `border2`, `countdown`, and `close`. The QML
-contains no notification palette of its own, and corner radius follows the
-generated Hyprland rounding.
+Cards are the theme's surface colour raised off the wallpaper by a soft shadow:
+a small uppercase app label, a round icon badge on the window background
+colour, the title and body, and a short countdown line along the bottom edge.
+Replayed history cards also show their age (`now`, `5m`, `3h`) in the header.
+Action buttons appear only when the notification sends actions; the first is
+filled with the accent (the critical colour on critical cards) and the rest
+stay quiet on the surface-alt colour. Actions wrap onto additional rows when
+needed to keep buttons usable. Spotify track cards keep their vinyl
+layout inside the same shell.
 
-Per-side borders are configured as `[top, right, bottom, left]` — for example
-`[2, 2, 2, 6]` for a thicker left edge.
+Theme roles are generated for every palette as `notifications.background`,
+`surface`, `shadow`, `text`, `bodyText`, `actionText`, `criticalActionText`,
+`countdown`, and `close`. Action foregrounds are selected for contrast against
+their fill. The QML contains no notification palette of its own; shadow opacity
+follows the theme and corner radius is Hyprland rounding plus four scaled pixels.
+
+![Notification cards across themes](../docs/notification-cards.png)
 
 ## Implementation
 
@@ -144,7 +158,7 @@ Per-side borders are configured as `[top, right, bottom, left]` — for example
 | `NotificationService.qml` | normalisation, DND, routing, lifetimes |
 | `NotificationPersistence.qml` | state, history, and image files via `notificationctl` |
 | `NotificationStack.qml`, `NotificationOverlay.qml` | per-output surface and layout |
-| `NotificationCard.qml`, `NotificationActions.qml`, `NotificationBorder.qml` | the card itself |
+| `NotificationCard.qml`, `NotificationActions.qml` | the card itself |
 | `NotificationConfig.qml` | reads `config.json` |
 | `NotificationLogic.js` | pure logic, unit-tested from Node |
 | `config.json` | user settings |
@@ -163,6 +177,12 @@ QT_QPA_PLATFORM=offscreen quickshell -p quickshell/.config/quickshell/Notificati
 python3 -m unittest discover -s quickshell/.config/quickshell/notifications/tests -p 'test_*.py'
 node quickshell/.config/quickshell/notifications/tests/notification_logic.test.js
 ```
+
+With optional `PySide6` installed, the Python suite also runs the production
+card and stack QML offscreen with fixture services. It checks narrow/scaled
+layouts, action clicks, replay ages, icon fallback, vinyl layout, and per-card
+mask membership without connecting to the desktop. This does not validate
+native Wayland input delivery or GPU shadow rendering.
 
 ## Rolling back to SwayNC
 

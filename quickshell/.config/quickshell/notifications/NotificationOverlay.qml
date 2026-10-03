@@ -19,11 +19,15 @@ PanelWindow {
   WlrLayershell.layer: WlrLayer.Overlay
   WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
-  mask: Region { item: stack.inputItem }
+  mask: Region { regions: stack.inputRegions }
 
   NotificationStack {
     id: stack
     ownerScreen: window.output.name
+    // Region observes its item's geometry, not ancestor movement. Rebuild when
+    // screen size, positioning, or stack height moves the anchored stack.
+    onXChanged: if (window.mask) window.mask.changed()
+    onYChanged: if (window.mask) window.mask.changed()
     anchors.top: window.atTop ? parent.top : undefined
     anchors.bottom: window.atTop ? undefined : parent.bottom
     anchors.left: window.atRight ? undefined : parent.left

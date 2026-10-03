@@ -114,6 +114,19 @@ function isMediaNotification(app, image) {
   return String(app || "").toLowerCase() === "spotify" && String(image || "").length > 0
 }
 
+// Age shown on replayed history cards: "now" under a minute, then minutes,
+// hours, days. Live cards show nothing, so this only runs for replays.
+function ageLabel(timestampMs, nowMs) {
+  var now = finiteNumber(nowMs, Date.now())
+  var timestamp = finiteNumber(timestampMs, now)
+  if (timestamp <= 0) return "now"
+  var seconds = Math.max(0, Math.floor((now - timestamp) / 1000))
+  if (seconds < 60) return "now"
+  if (seconds < 3600) return Math.floor(seconds / 60) + "m"
+  if (seconds < 86400) return Math.floor(seconds / 3600) + "h"
+  return Math.floor(seconds / 86400) + "d"
+}
+
 function localImagePath(value) {
   var text = String(value || "")
   if (text.indexOf("file://") === 0) {
@@ -146,6 +159,7 @@ if (typeof module !== "undefined") {
     updateRoles: updateRoles,
     shouldBypassDnd: shouldBypassDnd,
     localImagePath: localImagePath,
+    ageLabel: ageLabel,
     isMediaNotification: isMediaNotification,
     persistableEntry: persistableEntry,
     validEntry: validEntry
