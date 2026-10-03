@@ -22,6 +22,15 @@ ln -s "$(command -v rm)" "$fixture/rm"
 output=$(PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates")
 [[ $output == '{"repo":2,"aur":1,"total":3,"repoPackages":["core","extra"],"aurPackages":["aur-one"]}' ]]
 
+# yay 13 appends the update's age. Rejecting that failed the whole check, so
+# the bar showed "!" over hundreds of pending repo updates. The synthetic
+# [ignored] line also checks compatibility with other trailing annotations;
+# yay 13 itself omits ignored packages from its query output.
+printf '#!/bin/sh\nprintf "terraform-bin 1.16.3-1.0 -> 1.16.5-1.0 [15h44m]\\nbrave-bin 1:1.95.104-1 -> 1:1.96.61-1 [1d1h]\\nheld 1-1 -> 2-1 [ignored]\\n"\n' > "$fixture/yay"
+output=$(PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates")
+[[ $output == '{"repo":2,"aur":3,"total":5,"repoPackages":["core","extra"],"aurPackages":["terraform-bin","brave-bin","held"]}' ]] ||
+  { printf 'FAIL: annotated yay output was rejected: %s\n' "$output" >&2; exit 1; }
+
 # Exit 2 is checkupdates reporting a clean system, not a failure.
 printf '#!/bin/sh\nexit 2\n' > "$fixture/checkupdates"
 printf '#!/bin/sh\nexit 1\n' > "$fixture/yay"
@@ -56,10 +65,29 @@ if PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates" >/dev/nul
   exit 1
 fi
 printf '#!/bin/sh\nprintf "error: request failed\\n"\nexit 1\n' > "$fixture/yay"
-if PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates" >/dev/null 2>&1; then
+if PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates" >/dev/null 2>"$fixture/err"; then
   printf 'FAIL: AUR diagnostic counted as a package\n' >&2
   exit 1
 fi
+# The rejected line reaches the widget's log, so the next format change is
+# diagnosable without rerunning the AUR query by hand.
+grep -Fq 'unexpected yay output: error: request failed' "$fixture/err"
+rm "$fixture/err"
+# Brackets belong only to complete trailing annotations. Keep the same token
+# count for malformed versions, so rejection cannot just depend on extra words.
+printf '#!/bin/sh\nprintf "%%s\\n" "$ARCH_UPDATES_TEST_LINE"\n' > "$fixture/yay"
+for line in 'aur-one [x] 1 -> 2' 'aur-one [x] -> 2' 'aur-one 1 -> [2]' \
+            'aur-one 1 -> 2 [nested[x]' 'aur-one 1 -> 2 [15h44m' \
+            'aur-one 1 -> 2 [15h44m]]' 'aur-one 1 -> 2 [15h44m] diagnostic'; do
+  if output=$(ARCH_UPDATES_TEST_LINE="$line" PATH="$fixture" \
+    "$repo_root/hypr/.config/hypr/scripts/arch-updates" 2>"$fixture/err"); then
+    printf 'FAIL: malformed annotated line counted as a package: %s\n' "$line" >&2
+    exit 1
+  fi
+  [[ -z $output ]]
+  grep -Fq "unexpected yay output: $line" "$fixture/err"
+done
+rm "$fixture/err"
 printf '#!/bin/sh\nprintf "aur-one 1 -> 2\\n"\nprintf "warning: orphan package\\n" >&2\n' > "$fixture/yay"
 output=$(PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates")
 [[ $output == '{"repo":0,"aur":1,"total":1,"repoPackages":[],"aurPackages":["aur-one"]}' ]]

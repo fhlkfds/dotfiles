@@ -17,11 +17,12 @@ function fixture(stale = false) {
   };
   const context = {
     root, countProc: { running: false }, updateProc: { running: false },
+    countOutput: { text: "" }, countError: { text: "" },
     pollTimer: { restarts: 0, restart() { this.restarts++; } },
     console: { warn() {} }, Date
   };
   vm.createContext(context);
-  for (const name of ["refresh", "update", "handleUpdate"]) {
+  for (const name of ["refresh", "update", "handleCount", "handleUpdate"]) {
     const start = source.indexOf("  function " + name + "(");
     assert.ok(start >= 0, "missing QML handler: " + name);
     const end = source.indexOf("\n  }\n", start);
@@ -30,6 +31,38 @@ function fixture(stale = false) {
     root[name] = context[name];
   }
   return context;
+}
+
+// The script's JSON must restore the count after a failed AUR check. A later
+// failure (including malformed JSON) preserves the displayed count and names.
+for (const payload of [
+  { repo: 2, aur: 3, total: 5, repoPackages: ["core", "extra"], aurPackages: ["terraform-bin", "brave-bin", "held"] },
+  { repo: 0, aur: 0, total: 0, repoPackages: [], aurPackages: [] }
+]) {
+  const { root, countOutput, pollTimer } = fixture(true);
+  countOutput.text = JSON.stringify(payload) + "\n";
+  root.handleCount(0);
+  assert.equal(root.repoCount, payload.repo);
+  assert.equal(root.aurCount, payload.aur);
+  assert.equal(root.totalCount, payload.total);
+  assert.equal(JSON.stringify(root.repoPackages), JSON.stringify(payload.repoPackages));
+  assert.equal(JSON.stringify(root.aurPackages), JSON.stringify(payload.aurPackages));
+  assert.equal(root.stale, false);
+  assert.equal(pollTimer.restarts, 1);
+}
+
+for (const [code, output] of [[1, ""], [0, ""], [0, "not JSON"]]) {
+  const { root, countOutput, countError, pollTimer } = fixture();
+  countOutput.text = output;
+  countError.text = 'unexpected yay output: error: request failed\n';
+  root.handleCount(code);
+  assert.equal(root.totalCount, 5);
+  assert.equal(root.repoCount, 2);
+  assert.equal(root.aurCount, 3);
+  assert.equal(root.repoPackages.length, 2);
+  assert.equal(root.aurPackages.length, 1);
+  assert.equal(root.stale, true);
+  assert.equal(pollTimer.restarts, 1);
 }
 
 for (const stale of [false, true]) {
