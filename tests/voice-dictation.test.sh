@@ -210,6 +210,15 @@ flock -x 8
 flock -u 8
 exec 8>&-
 
+# A busy daemon can outlive the wrapper (closed target, timeout, interruption).
+# Repeated presses must not send another injection action in either stage.
+for state in processing injecting; do
+  printf '%s' "$state" >"$HYPRVOICE_STATE"
+  : >"$calls"
+  "$script" toggle
+  [[ ! -s $calls ]] || fail "repeat press toggled Hyprvoice during $state"
+done
+
 # TERM during delayed typing runs the same restoration trap.
 printf idle >"$HYPRVOICE_STATE"
 HYPR_ACTIVE=0xaaa "$script" toggle

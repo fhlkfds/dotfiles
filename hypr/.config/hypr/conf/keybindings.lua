@@ -1,6 +1,13 @@
 local cfg = require("conf/variables")
 local mod = "SUPER"
 
+-- Hyprvoice's synthetic typing must never become desktop shortcuts when a
+-- physical modifier is held. Keep normal keyboard input enabled on these
+-- devices; disable only shortcut matching, including global shell shortcuts.
+for _, name in ipairs({ "ydotoold-virtual-device", "hl-virtual-keyboard-wtype", "hl-virtual-keyboard" }) do
+    hl.device({ name = name, keybinds = false })
+end
+
 local function bind(keys, description, dispatcher, flags)
     flags = flags or {}
     flags.description = description
@@ -166,7 +173,7 @@ exec(mod .. " + CTRL + ALT + W", "stop Windows VM", "$HOME/.local/bin/windows-vm
 exec(mod .. " + SHIFT + ALT + W", "default browser private window", cfg.scripts_dir .. "/default-browser-private")
 app_exec(mod .. " + S", "spotify", "spotify")
 app_exec(mod .. " + O", "obsidian", "obsidian")
-exec(mod .. " + R", "voice dictation", cfg.scripts_dir .. "/voice-dictation toggle")
+exec(mod .. " + R", "voice dictation", cfg.scripts_dir .. "/voice-dictation toggle", { release = true })
 bind(mod .. " + F", "toggle window floating / tiling", hl.dsp.window.float({ action = "toggle" }))
 exec(mod .. " + SHIFT + L", "cycle window layout", window_layout .. " cycle")
 app_exec(mod .. " + SHIFT + H", "hermes", "hermes")

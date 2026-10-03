@@ -252,6 +252,7 @@ toggle() {
   case $(hyprvoice_status) in
     idle) start_dictation ;;
     transcribing) finish_dictation ;;
+    processing|injecting) return 0 ;;
     *) exec "$hyprvoice_bin" toggle ;;
   esac
 }
