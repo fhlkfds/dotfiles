@@ -505,20 +505,32 @@ first one is slow.
    then undefined and only its disk is kept.
 3. Each create, including the first, clones that disk with `backing_store` and
    boots it with an answer disc that sets the computer name (the VM name cut to
-   15 characters) and creates the account as a local administrator. Windows
-   setup runs to the sign-in screen without any clicks in a few minutes.
+   15 characters, with trailing hyphens removed) and creates the account as a
+   local administrator. The resulting computer name cannot contain only digits.
+   The answer file configures Windows setup to reach the sign-in screen without
+   clicks; completion still needs validation with a real Windows guest.
 
 Rofi asks for the Windows username, pre-filled with the host `$USER`, between
 the VM name and the password. It must be up to 20 letters, digits, `.`, `_` or
-`-`, not a built-in account or group such as `Administrator` or `Users`, and
-not the computer name.
+`-`, cannot end in `.`, cannot be the restricted name `NONE` or a built-in
+account or group such as `Administrator` or `Users`, and cannot be the computer
+name. The dry run uses the host username and applies the same Windows checks.
 There is no SSH key prompt and no Microsoft account. Windows takes the password
 only in a reversible encoding, so it is on a 0644 answer disc in
-`$XDG_CACHE_HOME/vm-presets/` only until the clone starts. The running clone
-keeps that disc, readable inside Windows, until it is first powered off, because
-ejecting it at the first reboot stopped OOBE at the region page. The disc is
-removed from the saved VM definition at once and its file is deleted on the
-host. A clone disk must be at least as large as its base image.
+`$XDG_CACHE_HOME/vm-presets/` until clone creation exits. The running clone
+retains its open disc across normal guest reboots. The disc is required at the
+initial boot (`startup_policy=requisite`), removed from the saved VM definition,
+and its file is deleted on the host. If removing it from the saved definition
+fails, creation fails and cleans up that clone rather than leaving a reference
+to a deleted required ISO. The base-build answer disc and temporary XML are
+deleted after the base shuts down and is undefined, before cloning.
+
+Leave the clone running until the sign-in screen appears. Power-off, host
+restart, or save/restore loses the open answer disc. A restored VM can start
+without it, but setup may require manual recovery if it had not finished.
+Windows normally caches answer files across setup passes; the observed region
+page alone does not establish why unattended setup stopped. A clone disk must
+be at least as large as its base image.
 Device encryption is turned off in the base because every clone gets a new TPM.
 
 To rebuild the base from a newer ISO, delete every Windows 11 clone first,
