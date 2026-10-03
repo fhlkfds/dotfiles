@@ -36,8 +36,8 @@ git clone <repository-url> ~/dotfiles
 cd ~/dotfiles
 ```
 
-The repository must live at `~/dotfiles`. The `wallpaper` package's alternate
-target, the Ansible playbook, and several comments all assume that path.
+The repository must live at `~/dotfiles`. The wallpaper sync helper, the
+Ansible playbook, and several comments all assume that path.
 
 ## Before you stow
 

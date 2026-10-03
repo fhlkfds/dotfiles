@@ -43,7 +43,7 @@ machine() {
 run_sync() {
   local name=$1 home=$test_root/$1
   HOME=$home DOTS_REPO=$home/dotfiles WALLPAPER_SYNC_HOST=$name \
-    WALLPAPER_SYNC_SETTLE=0 XDG_RUNTIME_DIR=$test_root \
+    WALLPAPER_SYNC_SETTLE=${WALLPAPER_TEST_SETTLE:-0} XDG_RUNTIME_DIR=$test_root \
     WALLPAPER_TEST_NOTES=$notes PATH="$stub_bin:$PATH" "$sync"
 }
 
@@ -143,5 +143,145 @@ if run_sync other 2>/dev/null; then fail 'unknown entries did not stop migration
 [[ -d $(pics other) && ! -L $(pics other) && -L $(pics other)/notes/link ]] ||
   fail 'migration changed a directory it refused'
 grep -Fq 'still has entries' "$notes" || fail 'refused migration was not reported'
+
+# Hidden directories and tracked edits must obey the same exclusions as new files.
+mkdir -p "$(pics desk)/.private"
+printf 'private\n' > "$(pics desk)/.private/image.jpg"
+run_sync desk
+remote_has .private/image.jpg && fail 'hidden-directory image was published'
+truncate -s 110M "$(pics desk)/b.png"
+run_sync desk
+[[ $(git -C "$test_root/remote.git" cat-file -s main:wallpaper/b.png) == 2 ]] ||
+  fail 'oversized tracked edit was published'
+[[ $(stat -c %s "$(pics desk)/b.png") == 115343360 ]] || fail 'excluded local edit was lost'
+printf 'b\n' > "$(pics desk)/b.png"
+
+# A remote image with a skipped oversized local name must not overwrite it.
+truncate -s 110M "$(pics desk)/large-clash.png"
+printf 'small remote image\n' > "$(pics laptop)/large-clash.png"
+run_sync laptop
+run_sync desk
+[[ $(<"$(pics desk)/large-clash.png") == 'small remote image' &&
+  $(stat -c %s "$(pics desk)/large-clash-desk.png") == 115343360 ]] ||
+  fail 'incoming image overwrote an excluded oversized addition'
+rm "$(pics desk)/large-clash-desk.png"
+
+# Refusal must happen before moving images or removing existing Stow links.
+machine mixed
+mkdir -p "$(pics mixed)"
+ln -s "$test_root/mixed/dotfiles/wallpaper/b.png" "$(pics mixed)/b.png"
+printf 'keep\n' > "$(pics mixed)/keep.jpg"
+printf 'private notes\n' > "$(pics mixed)/notes.txt"
+if run_sync mixed 2>/dev/null; then fail 'regular non-wallpaper did not stop migration'; fi
+[[ -L $(pics mixed)/b.png && -f $(pics mixed)/keep.jpg && -f $(pics mixed)/notes.txt ]] ||
+  fail 'refused migration partially changed the folder'
+remote_has notes.txt && fail 'migration published non-wallpaper data'
+
+# Older Stow installs can fold the entire wallpaper directory into one link.
+machine folded
+mkdir -p "$test_root/folded/Pictures"
+ln -s "$test_root/folded/dotfiles/wallpaper" "$(pics folded)"
+run_sync folded
+[[ $(readlink "$(pics folded)") == "$test_root/folded/Pictures/.wallpaper-sync/wallpaper" ]] ||
+  fail 'folded Stow directory was not migrated'
+
+# An existing host suffix must never discard a new image.
+run_sync laptop
+printf 'old suffix\n' > "$(pics desk)/repeat-laptop.jpg"
+printf 'desk image\n' > "$(pics desk)/repeat.jpg"
+printf 'laptop image\n' > "$(pics laptop)/repeat.jpg"
+run_sync desk
+run_sync laptop
+[[ $(<"$(pics laptop)/repeat.jpg") == 'desk image' &&
+  $(<"$(pics laptop)/repeat-laptop.jpg") == 'old suffix' &&
+  $(<"$(pics laptop)/repeat-laptop-2.jpg") == 'laptop image' ]] ||
+  fail 'occupied host suffix lost a wallpaper'
+
+# A failed upload leaves a commit locally. Another machine may use its name
+# before the next run, or between fetch and push.
+run_sync desk
+cat > "$test_root/desk/dotfiles/.git/hooks/pre-push" <<'HOOK'
+#!/usr/bin/env bash
+exit 1
+HOOK
+chmod +x "$test_root/desk/dotfiles/.git/hooks/pre-push"
+printf 'offline desk\n' > "$(pics desk)/offline.jpg"
+if run_sync desk 2>/dev/null; then fail 'failed upload reported success'; fi
+rm "$test_root/desk/dotfiles/.git/hooks/pre-push"
+printf 'online laptop\n' > "$(pics laptop)/offline.jpg"
+run_sync laptop
+run_sync desk
+[[ $(<"$(pics desk)/offline.jpg") == 'online laptop' &&
+  $(<"$(pics desk)/offline-desk.jpg") == 'offline desk' ]] ||
+  fail 'retry of a committed name clash lost an image'
+
+# The bounded settling wait must defer an ongoing copy, never publish it.
+machine busy
+run_sync busy
+printf 'in progress\n' > "$(pics busy)/copy.jpg"
+# Model a copy preserving old mtimes: ctime must still keep the wait active.
+find "$(readlink "$(pics busy)")" -exec touch -t 200001010000 {} +
+sleep_bin=$test_root/sleep-bin
+mkdir -p "$sleep_bin"
+cat > "$sleep_bin/sleep" <<'STUB'
+#!/usr/bin/env bash
+touch -t 200001010000 "$WALLPAPER_TEST_COPY"
+STUB
+chmod +x "$sleep_bin/sleep"
+if WALLPAPER_TEST_SETTLE=30 WALLPAPER_TEST_COPY="$(pics busy)/copy.jpg" \
+  PATH="$sleep_bin:$PATH" run_sync busy 2>/dev/null; then fail 'ongoing copy was not deferred'; fi
+remote_has copy.jpg && fail 'ongoing copy was published'
+
+# Repository overrides inherited from a hook/shell must not redirect Git.
+before=$(git -C "$test_root/desk/dotfiles" rev-parse HEAD)
+GIT_DIR="$test_root/desk/dotfiles/.git" GIT_WORK_TREE="$test_root/desk/dotfiles" \
+  GIT_INDEX_FILE="$test_root/desk/dotfiles/.git/index" run_sync folded
+[[ $(git -C "$test_root/desk/dotfiles" rev-parse HEAD) == "$before" &&
+  $(git -C "$test_root/desk/dotfiles" status --porcelain) == ' M hypr/config' ]] ||
+  fail 'inherited Git environment changed the dotfiles checkout'
+
+# An interrupted --no-checkout setup must not be interpreted as deleting images.
+machine interrupted
+git -C "$test_root/interrupted/dotfiles" worktree add -q --no-checkout --detach \
+  "$test_root/interrupted/Pictures/.wallpaper-sync" origin/main
+before=$(git -C "$test_root/remote.git" rev-parse main)
+if run_sync interrupted 2>/dev/null; then fail 'incomplete worktree was reused'; fi
+[[ $(git -C "$test_root/remote.git" rev-parse main) == "$before" ]] ||
+  fail 'incomplete setup pushed deletions'
+
+# An excluded tracked edit can conflict during autostash application. Report
+# failure and preserve the stash and unresolved index across subsequent runs.
+machine excluded
+run_sync excluded
+truncate -s 110M "$(pics excluded)/b.png"
+printf 'changed remotely\n' > "$(pics laptop)/b.png"
+run_sync laptop
+if run_sync excluded >"$test_root/excluded.log" 2>&1; then fail 'autostash conflict reported success'; fi
+excluded_tree=$test_root/excluded/Pictures/.wallpaper-sync
+[[ $(git -C "$excluded_tree" status --porcelain) == *'UU wallpaper/b.png'* ]] ||
+  fail 'autostash conflict was silently cleared'
+[[ $(git -C "$excluded_tree" cat-file -s stash:wallpaper/b.png) == 115343360 ]] ||
+  fail 'autostash lost the excluded edit'
+if run_sync excluded 2>/dev/null; then fail 'unresolved autostash conflict was silently reset'; fi
+[[ $(git -C "$excluded_tree" status --porcelain) == *'UU wallpaper/b.png'* ]] ||
+  fail 'subsequent run erased the unresolved index'
+
+# Empty repositories and removing the final wallpaper must remain usable.
+git -C "$seed" rm -qr wallpaper
+git -C "$seed" commit -qm 'empty wallpaper library'
+git clone -q --bare "$seed" "$test_root/empty-remote.git"
+git clone -q "$test_root/empty-remote.git" "$test_root/empty/dotfiles"
+run_sync empty
+printf 'last\n' > "$(pics empty)/last.jpg"
+run_sync empty
+git clone -q "$test_root/empty-remote.git" "$test_root/empty-receiver/dotfiles"
+run_sync empty-receiver
+rm "$(pics empty)/last.jpg"
+run_sync empty
+run_sync empty
+run_sync empty-receiver
+run_sync empty-receiver
+[[ ! -e $(pics empty)/last.jpg ]] || fail 'final image deletion was not preserved'
+[[ -d $(pics empty-receiver) ]] || fail 'remote deletion left a dangling Wallpapers symlink'
 
 printf 'wallpaper-sync tests passed\n'

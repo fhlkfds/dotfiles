@@ -7,6 +7,7 @@ Description=Pull wallpapers added or removed on other machines
 [Timer]
 OnActiveSec=0
 OnUnitActiveSec=15min
+AccuracySec=5s
 
 [Install]
 WantedBy=timers.target

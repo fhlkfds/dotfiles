@@ -275,16 +275,22 @@ anything.
 nothing to run by hand. `~/Pictures/Wallpapers` is a symlink to the
 `wallpaper/` directory of a sparse worktree at `~/Pictures/.wallpaper-sync`,
 detached at `origin/main`. Hyprland's autostart starts `wallpaper-sync.path`,
-which pushes within seconds of a wallpaper being added or deleted, and
+which pushes after a top-level change and a 30-second quiet period, and
 `wallpaper-sync.timer`, which pulls at login and every 15 minutes. Each change
 is committed as `wallpaper: sync from <host>` and pushed straight to `main`;
 the branch checked out in `~/dotfiles` is never touched.
 
 - Deleting a wallpaper on one machine deletes it on all of them.
 - A different image under a name another machine already pushed is kept as
-  `<name>-<host>.<ext>`; the same image is not duplicated.
+  `<name>-<host>.<ext>` (then `-2`, `-3`, etc. if needed); the same image is not duplicated.
 - Partial downloads (`*.part`, `*.crdownload`, hidden files) and files over
-  50 MB stay local.
+  50 MB stay local, including oversized edits of tracked files. Only recognized
+  image/video extensions are uploaded.
+- Changes inside existing subdirectories are picked up by the 15-minute timer;
+  the path watch covers the top-level directory. Copies still changing after
+  two minutes are deferred to a later run.
+- Conflicting edits to an existing image stop with a notification for manual
+  resolution; both different additions with the same filename are kept.
 - Pushing runs unattended, so the SSH key for `origin` must be loaded in an
   agent the user systemd manager can see, or have no passphrase. Failures are
   in `journalctl --user -u wallpaper-sync`.
@@ -293,7 +299,8 @@ the branch checked out in `~/dotfiles` is never touched.
 
 The first run on a machine replaces an existing `~/Pictures/Wallpapers`: links
 the old `stow wallpaper` made are removed, and any other images in it are added
-as new wallpapers. To sync now instead of at next login:
+as new wallpapers. A folder containing unrelated files or links is refused
+before its contents are changed. To sync now instead of at next login:
 
 ```bash
 systemctl --user start wallpaper-sync.timer wallpaper-sync.path
