@@ -33,18 +33,24 @@ is_enabled() {
 # toggles such as gaps and zoom; a runtime hl.config() of screen_shader makes
 # Hyprland recompile just the shader. hyprland.lua reads the state file at login.
 #
-# A screen_shader change alone only damages each monitor once and schedules no
-# frame, so a double-buffered output alternates shaded and unshaded buffers
-# (flicker, a partly shaded box) until something repaints it (issue #115).
-# Re-setting border_size to its current value is a no-op that trips Hyprland's
-# window-state refresh, which forces full frames on every monitor.
+# A screen_shader refresh damages each monitor, but does not force repeated
+# full frames. Re-setting border_size to its current value triggers Hyprland's
+# window-state refresh, requesting two full frames and scheduling each monitor
+# without changing the configured border width (issue #115).
 apply_shader() {
-  local expression
-  expression="hl.config({ decoration = { screen_shader = [==[$1]==] }, general = { border_size = hl.get_config(\"general.border_size\") } })"
+  local expression response delimiter='=='
+  # A HOME path can contain the closing delimiter of a Lua long string.
+  while [[ "$1" == *"]$delimiter]"* ]]; do
+    delimiter+='='
+  done
+  expression="hl.config({ decoration = { screen_shader = [${delimiter}[$1]${delimiter}] }, general = { border_size = assert(hl.get_config(\"general.border_size\")) } })"
   if [[ "$dry_run" -eq 1 ]]; then
     printf '+ %q eval %q\n' "$hyprctl_command" "$expression"
   else
-    "$hyprctl_command" eval "$expression" >/dev/null
+    if ! response=$("$hyprctl_command" eval "$expression" 2>&1) || [[ "$response" != ok ]]; then
+      printf 'night-light: could not apply shader: %s\n' "${response:-hyprctl returned no response}" >&2
+      return 1
+    fi
   fi
 }
 
@@ -78,6 +84,15 @@ set_disabled() {
   apply_shader ""
   printf 'night-light: off\n'
 }
+
+# Serialize the state decision and IPC together: overlapping toggles otherwise
+# can apply their shaders in the opposite order to their state-file updates.
+# Keep desired state on IPC failure so hyprland.lua can apply it at next login.
+if [[ "$action" != status && "$dry_run" -eq 0 ]]; then
+  mkdir -p -- "${state_file%/*}"
+  exec {state_lock}>"${state_file}.lock"
+  flock -x "$state_lock"
+fi
 
 case "$action" in
   status)
