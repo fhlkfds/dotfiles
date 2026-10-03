@@ -41,7 +41,7 @@ save_selection() {
   mkdir -p -- "$(dirname -- "$config")"
   tmp=$(mktemp "${config}.XXXXXX")
   # Keep other settings, such as pause_media.
-  jq --arg mode "$selected_mode" --arg source "$source" \
+  jq -e --arg mode "$selected_mode" --arg source "$source" \
     '(objects // {}) + {mode: $mode, source: $source}' "$config" >"$tmp" 2>/dev/null ||
     jq -n --arg mode "$selected_mode" --arg source "$source" \
       '{mode: $mode, source: $source}' >"$tmp"
@@ -183,8 +183,13 @@ focus_window() {
   "$hyprctl_bin" -q dispatch "hl.dsp.focus({ window = \"address:$1\" })"
 }
 
-# Pause playing MPRIS media (browsers, Spotify, ...) so it does not bleed into
-# the microphone, remembering which players so stopping resumes only those.
+# Include the instance in status checks because bare selectors also match
+# instances of the same application.
+media_status() {
+  "$playerctl_bin" -p "$1" -f '{{status}} {{playerInstance}}' status 2>/dev/null
+}
+
+# Pause playing MPRIS media without recording failed pause requests.
 pause_media() {
   local players tmp player
   pause_media_enabled && command -v "$playerctl_bin" >/dev/null 2>&1 || return 0
@@ -192,27 +197,47 @@ pause_media() {
     sed -n 's/^Playing //p') || true
   [[ -n $players ]] || return 0
   tmp=$(mktemp "$paused_media_file.XXXXXX") || return 0
-  printf '%s\n' "$players" >"$tmp"
-  mv -fT -- "$tmp" "$paused_media_file" || { rm -f -- "$tmp"; return 0; }
+  mv -fT -- "$tmp" "$paused_media_file" 2>/dev/null || { rm -f -- "$tmp"; return 0; }
   while IFS= read -r player; do
-    "$playerctl_bin" -p "$player" pause >/dev/null 2>&1 || true
+    valid_name "$player" && [[ $player != playerctld ]] || continue
+    # A bare selector can match another instance after the original closes.
+    [[ $(media_status "$player" || true) == "Playing $player" ]] || continue
+    [[ $start_interrupted == false ]] || exit 1
+    if "$playerctl_bin" -p "$player" pause >/dev/null 2>&1; then
+      printf '%s\n' "$player" >>"$paused_media_file" || {
+        "$playerctl_bin" -p "$player" play >/dev/null 2>&1 || true
+        return 0
+      }
+    fi
+    [[ $start_interrupted == false ]] || exit 1
   done <<<"$players"
 }
 
 resume_media() {
   local player
+  if [[ -L $paused_media_file ]]; then
+    rm -f -- "$paused_media_file"
+    return 0
+  fi
   [[ -f $paused_media_file ]] || return 0
   while IFS= read -r player; do
-    [[ -z $player ]] || "$playerctl_bin" -p "$player" play >/dev/null 2>&1 || true
+    valid_name "$player" && [[ $player != playerctld ]] || continue
+    # Respect stopped/playing media and skip a different replacement instance.
+    [[ $(media_status "$player" || true) == "Paused $player" ]] || continue
+    "$playerctl_bin" -p "$player" play >/dev/null 2>&1 || true
   done <"$paused_media_file"
-  rm -f -- "$paused_media_file"
+  rm -f -- "$paused_media_file" || true
 }
 
-# Stop listening and resume media, even when Hyprvoice fails.
+# A failed stop that is still listening must stay quiet and remain retryable.
 stop_listening() {
   local status=0
   "$hyprvoice_bin" toggle || status=$?
+  if (( status != 0 )) && [[ $(hyprvoice_status || true) == transcribing ]]; then
+    return "$status"
+  fi
   resume_media
+  rm -f -- "$target_file"
   return "$status"
 }
 
@@ -220,12 +245,27 @@ stop_listening() {
 # while speaking.
 start_dictation() {
   local tmp
+  # EXIT on errexit runs after Bash has unwound function-local variables.
+  start_interrupted=false
+  start_requested=false
+  rm -f -- "$paused_media_file" 2>/dev/null || true
   tmp=$(mktemp "$target_file.XXXXXX") || exec "$hyprvoice_bin" toggle
   active_window >"$tmp" || true
   mv -fT -- "$tmp" "$target_file" || rm -f -- "$tmp"
-  rm -f -- "$paused_media_file"
+  trap '
+    if [[ $start_requested == false || $(hyprvoice_status || true) != transcribing ]]; then
+      resume_media
+      rm -f -- "$target_file"
+    fi
+  ' EXIT
+  # Defer exit until a successful pause has been recorded for cleanup.
+  trap 'start_interrupted=true' INT TERM HUP
   pause_media
-  "$hyprvoice_bin" toggle || { resume_media; exit 1; }
+  [[ $start_interrupted == false ]] || exit 1
+  start_requested=true
+  "$hyprvoice_bin" toggle
+  [[ $start_interrupted == false ]] || exit 1
+  trap - EXIT INT TERM HUP
 }
 
 # Hyprvoice types into whatever has keyboard focus, and follow_mouse hands
@@ -234,7 +274,6 @@ start_dictation() {
 finish_dictation() {
   local target follow warps
   target=$(cat -- "$target_file" 2>/dev/null || true)
-  rm -f -- "$target_file"
   if [[ ! $target =~ ^0x[[:xdigit:]]+$ ]] || ! window_open "$target" ||
     ! follow=$(option_value input:follow_mouse) || ! warps=$(option_value cursor:no_warps); then
     stop_listening
@@ -280,10 +319,11 @@ choose() {
 }
 
 toggle() {
-  local source=$1 dry_run=$2 fallback=$3 label=$4
+  local dry_run=$1
   if [[ $dry_run == true ]]; then
-    printf 'action=would-toggle device=%s\n' "$source"
-    [[ $fallback == false ]] || printf 'notification=Using %s microphone\n' "$label"
+    resolve_source
+    printf 'action=would-toggle device=%s\n' "$resolved_source"
+    [[ $used_fallback == false ]] || printf 'notification=Using %s microphone\n' "$resolved_label"
     return
   fi
   command -v "$hyprvoice_bin" >/dev/null 2>&1 ||
@@ -293,11 +333,15 @@ toggle() {
   # Drop repeated shortcut presses while a focus transaction is still running.
   exec 9>"$target_file.lock"
   flock -n 9 || return 0
-  sync_hyprvoice_config "$source"
-  [[ $fallback == false ]] || notify_fallback "$label"
   # While listening Hyprvoice reports "transcribing"; a toggle then types it.
   case $(hyprvoice_status) in
-    idle) start_dictation ;;
+    idle)
+      # Stopping must still work if the selected microphone was unplugged.
+      resolve_source
+      sync_hyprvoice_config "$resolved_source"
+      [[ $used_fallback == false ]] || notify_fallback "$resolved_label"
+      start_dictation
+      ;;
     transcribing) finish_dictation ;;
     processing|injecting) return 0 ;;
     *) exec "$hyprvoice_bin" toggle ;;
@@ -312,11 +356,10 @@ usage() {
 case ${1:-} in
   toggle)
     [[ -z ${3:-} && ( -z ${2:-} || ${2:-} == --dry-run ) ]] || usage
-    resolve_source
     if [[ ${2:-} == --dry-run ]]; then
-      toggle "$resolved_source" true "$used_fallback" "$resolved_label"
+      toggle true
     else
-      toggle "$resolved_source" false "$used_fallback" "$resolved_label"
+      toggle false
     fi
     ;;
   resolve-source) [[ $# -eq 1 ]] || usage; resolve_source; printf '%s\n' "$resolved_source" ;;

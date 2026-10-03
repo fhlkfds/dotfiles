@@ -18,10 +18,26 @@ These scripts are below `hypr/.config/hypr/scripts/`.
 | `files-here.sh` | `SUPER+SHIFT+ALT+F` | discovers a focused terminal's current directory and opens Nautilus there | terminal APIs, `hyprctl`, Nautilus |
 | `night-light.sh` | `SUPER+CTRL+N` | toggles Hyprsunset between 1000 K and 6500 K; delegates to `desktop-mode` when installed and otherwise controls Hyprsunset directly | `hyprctl`, `hyprsunset`; optional `desktop-mode` |
 | `night-light-schedule.py` | `SUPER+SHIFT+N` panel; `night-light-schedule.timer` every minute | turns the night light on and off at set times or at local sunset/sunrise (offline sun calculation), with optional offsets; a manual toggle holds until the next scheduled change | `python3`, `night-light.sh`, systemd user timer; network only for Detect location |
-| `voice-dictation` | `SUPER+R` (on release); `SUPER+SHIFT+A` → Voice dictation → Choose microphone… | resolves the microphone and toggles Hyprvoice; pauses playing media while listening and resumes only those players on stop (`"pause_media": false` in `~/.config/hypr/voice-dictation.json` disables it); stopping types into the window focused at the start, then returns focus; repeat presses during processing/injection are ignored, and dictation keyboards cannot trigger desktop shortcuts | `hyprvoice`, `hyprctl`, `pw-dump`, `wpctl`, `jq`, `python3`; optional Rofi, `playerctl`, and notifications |
+| `voice-dictation` | `SUPER+R` (on release); `SUPER+SHIFT+A` → Voice dictation → Choose microphone… | resolves the microphone when starting Hyprvoice; pauses playing MPRIS media while listening and resumes only recorded players that are still paused on stop (`"pause_media": false` in `~/.config/hypr/voice-dictation.json` disables it); stopping types into the window focused at the start, then returns focus; repeat presses during processing/injection are ignored, and dictation keyboards cannot trigger desktop shortcuts | `hyprvoice`, `hyprctl`, `pw-dump`, `wpctl`, `jq`, `python3`; optional Rofi, `playerctl`, and notifications |
 | `spotify-notify.sh` | autostart | watches Spotify metadata and sends track-change notifications | `playerctl`, `curl`, notification command |
 | `clipboard-store.sh` | `wl-paste --watch` | filters sensitive MIME/app metadata, then stores text/images in cliphist | `wl-paste`, `hyprctl`, `jq`, `cliphist` |
 | `clipboard-wipe.sh` | manual | clears clipboard/history data | `wl-copy`, `cliphist` |
+
+Dictation media control is best effort and excludes the `playerctld` proxy.
+Only successful pause requests are remembered; stopped, already-playing,
+unavailable, and different replacement instances are skipped on resume.
+Startup aborts restore playback unless Hyprvoice has already begun listening.
+If an interrupted start or a failed stop/focus operation leaves Hyprvoice
+listening, media stays paused and the target window is kept for the next stop
+attempt. Stopping does not require the selected microphone to remain connected.
+Microphone selection preserves other settings in a valid configuration and
+recovers from an empty or invalid settings file.
+
+The private media list lives beside `voice-dictation-target` in
+`$XDG_RUNTIME_DIR`, falling back to the user cache. An old list is discarded on
+the next start, so an uncatchable termination can leave media paused. Media that
+does not expose MPRIS pause/play cannot be controlled, and a player restarted
+with the identical MPRIS instance name cannot be distinguished from the old one.
 
 `hypr/.config/hypr/scripts/lib/terminals.sh` is sourced by clipboard and
 file-manager helpers. It centralizes terminal-class detection and terminal-specific
