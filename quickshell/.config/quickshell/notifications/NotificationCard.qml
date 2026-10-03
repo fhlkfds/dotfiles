@@ -150,6 +150,8 @@ Item {
         source: root.iconSource
         fillMode: Image.PreserveAspectFit
         asynchronous: true
+        // Senders reuse one file for different images; never show a stale copy.
+        cache: false
         smooth: true
         visible: status === Image.Ready
       }

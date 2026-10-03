@@ -54,6 +54,8 @@ Item {
         source: root.source
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
+        // Senders may rewrite one art file per track; never show a stale copy.
+        cache: false
         smooth: true
         visible: false
       }
@@ -108,6 +110,7 @@ Item {
     source: root.source
     fillMode: Image.PreserveAspectCrop
     asynchronous: true
+    cache: false
     smooth: true
     visible: false
   }

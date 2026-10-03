@@ -12,7 +12,7 @@ import unittest
 
 try:
     from PySide6.QtCore import QPointF, QUrl, Qt
-    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtGui import QGuiApplication, QImage
     from PySide6.QtQuick import QQuickItem, QQuickView
     from PySide6.QtTest import QTest
 except ImportError:
@@ -94,6 +94,12 @@ Item {
       summary: "Fixture", body: "", image: "", actionsJson: "[]", glyph: "", urgency: 2,
       expireTimeout: 0, timestamp: Date.now(), screenName: screen, deadline: 0, replay: false,
       restored: false, closing: false, closeReason: ""})
+  }
+  function addArt(key, app, image) {
+    addEntry(key, "test")
+    NotificationService.popupModel.setProperty(NotificationService.popupModel.count - 1, "app", app)
+    NotificationService.popupModel.setProperty(NotificationService.popupModel.count - 1, "image", image)
+    NotificationService.popupModel.setProperty(NotificationService.popupModel.count - 1, "body", "Track\\nArtist")
   }
   function removeEntry() { NotificationService.popupModel.remove(0) }
   NotificationCard { id: card; x: 50; y: 50 }
@@ -182,6 +188,26 @@ Item {
         self.root.removeEntry()
         QTest.qWait(30)
         self.assertEqual(len(stack.property("inputRegions").toVariant()), 2)
+
+    def test_reused_image_path_shows_current_file(self):
+        # Senders may rewrite one file for every notification. Each new card
+        # must show what is in the file now, not what an older card loaded.
+        stack = self.root.property("stackItem")
+        art = Path(self.temp.name) / "art.png"
+        url = QUrl.fromLocalFile(str(art)).toString()
+        for app in ("Spotify", "Fixture"):
+            with self.subTest(app=app):
+                QImage(8, 8, QImage.Format_RGB32).save(str(art))
+                self.root.addArt(app + "1", app, url)
+                QTest.qWait(100)
+                QImage(16, 16, QImage.Format_RGB32).save(str(art))
+                self.root.addArt(app + "2", app, url)
+                QTest.qWait(100)
+                widths = {i.property("sourceSize").width() for i in self.items(stack)
+                          if i.property("source") == QUrl(url) and i.property("progress") == 1}
+                self.assertEqual(widths, {8, 16})
+                self.root.removeEntry()
+                self.root.removeEntry()
 
 
 if __name__ == "__main__":
