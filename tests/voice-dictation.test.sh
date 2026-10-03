@@ -84,8 +84,20 @@ cat >"$test_root/bin/notify-send" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$VOICE_DICTATION_NOTIFICATIONS"
 SH
+# Players come from MEDIA_STATUS lines ("Playing spotify"); none by default.
+cat >"$test_root/bin/playerctl" <<'SH'
+#!/usr/bin/env bash
+if [[ $* == '-a -i playerctld -f {{status}} {{playerInstance}} status' ]]; then
+  [[ -n ${MEDIA_STATUS:-} ]] || { printf 'No players found\n' >&2; exit 1; }
+  printf '%s\n' "$MEDIA_STATUS"
+elif [[ $# == 3 && $1 == -p && $3 =~ ^(pause|play)$ ]]; then
+  printf '%s %s\n' "$2" "$3" >>"$VOICE_DICTATION_CALLS"
+else
+  exit 2
+fi
+SH
 chmod +x "$test_root/bin/wpctl" "$test_root/bin/pw-dump" "$test_root/bin/hyprvoice" \
-  "$test_root/bin/notify-send" "$test_root/bin/hyprctl"
+  "$test_root/bin/notify-send" "$test_root/bin/hyprctl" "$test_root/bin/playerctl"
 
 config="$test_root/voice-dictation.json"
 hyprvoice_config="$test_root/hyprvoice/config.toml"
@@ -232,6 +244,68 @@ done
 kill -TERM "$dictation_pid"
 if wait "$dictation_pid"; then fail 'interrupted dictation reported success'; fi
 [[ $(tail -n2 "$calls") == "$restored" ]] || fail 'TERM left settings changed'
+
+# Playing media pauses before listening starts and only those players resume
+# once listening stops, without waiting for the text to be typed.
+playing=$'Playing spotify\nPaused firefox.instance_1_2\nPlaying chromium.instance42'
+printf idle >"$HYPRVOICE_STATE"
+: >"$calls"
+HYPR_ACTIVE=0xaaa MEDIA_STATUS="$playing" "$script" toggle
+[[ $(<"$calls") == $'spotify pause\nchromium.instance42 pause\ntoggle' ]] ||
+  { cat "$calls" >&2; fail 'start did not pause playing media first'; }
+: >"$calls"
+HYPR_ACTIVE=0xbbb HYPRVOICE_STAGES=$'injecting\nidle' "$script" toggle
+expected='eval hl.config({ input = { follow_mouse = 0 }, cursor = { no_warps = true } })
+dispatch hl.dsp.focus({ window = "address:0xaaa" })
+toggle
+spotify play
+chromium.instance42 play
+injecting
+idle
+dispatch hl.dsp.focus({ window = "address:0xbbb" })
+eval hl.config({ input = { follow_mouse = 1 }, cursor = { no_warps = false } })'
+[[ $(<"$calls") == "$expected" ]] || { cat "$calls" >&2; fail 'stop did not resume only the paused media'; }
+[[ ! -e $VOICE_DICTATION_TARGET.media ]] || fail 'paused media list outlived the dictation'
+
+# Media resumes on the fallback stop path and when Hyprvoice fails either way.
+for case in fallback stop-fail start-fail; do
+  printf idle >"$HYPRVOICE_STATE"
+  start_env=() stop_env=(HYPR_ACTIVE=0xbbb)
+  case $case in
+    fallback) start_env=(HYPR_ACTIVE=0xdead) ;;
+    stop-fail) stop_env+=(HYPRVOICE_TOGGLE_FAIL=1) ;;
+    start-fail) start_env=(HYPRVOICE_TOGGLE_FAIL=1) ;;
+  esac
+  : >"$calls"
+  if env HYPR_ACTIVE=0xaaa MEDIA_STATUS='Playing spotify' "${start_env[@]}" "$script" toggle; then
+    [[ $case != start-fail ]] || fail 'failed start reported success'
+    if env "${stop_env[@]}" "$script" toggle; then
+      [[ $case != stop-fail ]] || fail 'failed stop reported success'
+    fi
+  fi
+  grep -Fxq 'spotify play' "$calls" || fail "$case did not resume media"
+  [[ $case != fallback ]] || ! grep -Fq dispatch "$calls" || fail 'fallback stop changed focus'
+  [[ ! -e $VOICE_DICTATION_TARGET.media ]] || fail "$case left the paused media list behind"
+done
+
+# A list left by an interrupted dictation never resumes stale players.
+printf 'stale-player\n' >"$VOICE_DICTATION_TARGET.media"
+printf idle >"$HYPRVOICE_STATE"
+: >"$calls"
+HYPR_ACTIVE=0xaaa "$script" toggle
+HYPR_ACTIVE=0xbbb "$script" toggle
+! grep -Fq stale-player "$calls" || fail 'stale paused media was resumed'
+
+# "pause_media": false leaves media alone and survives choosing a microphone.
+jq '. + {pause_media: false}' "$config" >"$config.tmp" && mv "$config.tmp" "$config"
+"$script" use-default-output
+[[ $(jq -r .pause_media "$config") == false ]] || fail 'choosing a microphone dropped pause_media'
+printf idle >"$HYPRVOICE_STATE"
+: >"$calls"
+HYPR_ACTIVE=0xaaa MEDIA_STATUS="$playing" "$script" toggle
+HYPR_ACTIVE=0xbbb "$script" toggle
+! grep -Eq ' (pause|play)$' "$calls" || fail 'pause_media=false still controlled media'
+"$script" use-source alsa_input.webcam
 
 # Atomic writes replace a target symlink without touching its destination.
 printf 'keep me\n' >"$test_root/victim"

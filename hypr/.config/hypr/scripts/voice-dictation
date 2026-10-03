@@ -9,7 +9,9 @@ hyprvoice_bin=${HYPRVOICE:-hyprvoice}
 notify_send=${NOTIFY_SEND:-notify-send}
 gdbus=${GDBUS:-gdbus}
 hyprctl_bin=${HYPRCTL:-hyprctl}
+playerctl_bin=${PLAYERCTL:-playerctl}
 target_file=${VOICE_DICTATION_TARGET:-"${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/voice-dictation-target"}
+paused_media_file="$target_file.media"
 
 resolved_source=
 resolved_label=
@@ -28,12 +30,21 @@ selected_source() {
   jq -r '.source // empty' "$config" 2>/dev/null
 }
 
+# On unless voice-dictation.json sets "pause_media": false.
+pause_media_enabled() {
+  [[ -r $config ]] || return 0
+  [[ $(jq -r '.pause_media != false' "$config" 2>/dev/null) != false ]]
+}
+
 save_selection() {
   local selected_mode=$1 source=${2:-} tmp
   mkdir -p -- "$(dirname -- "$config")"
   tmp=$(mktemp "${config}.XXXXXX")
-  jq -n --arg mode "$selected_mode" --arg source "$source" \
-    '{mode: $mode, source: $source}' >"$tmp"
+  # Keep other settings, such as pause_media.
+  jq --arg mode "$selected_mode" --arg source "$source" \
+    '(objects // {}) + {mode: $mode, source: $source}' "$config" >"$tmp" 2>/dev/null ||
+    jq -n --arg mode "$selected_mode" --arg source "$source" \
+      '{mode: $mode, source: $source}' >"$tmp"
   mv -f -- "$tmp" "$config"
 }
 
@@ -172,6 +183,39 @@ focus_window() {
   "$hyprctl_bin" -q dispatch "hl.dsp.focus({ window = \"address:$1\" })"
 }
 
+# Pause playing MPRIS media (browsers, Spotify, ...) so it does not bleed into
+# the microphone, remembering which players so stopping resumes only those.
+pause_media() {
+  local players tmp player
+  pause_media_enabled && command -v "$playerctl_bin" >/dev/null 2>&1 || return 0
+  players=$("$playerctl_bin" -a -i playerctld -f '{{status}} {{playerInstance}}' status 2>/dev/null |
+    sed -n 's/^Playing //p') || true
+  [[ -n $players ]] || return 0
+  tmp=$(mktemp "$paused_media_file.XXXXXX") || return 0
+  printf '%s\n' "$players" >"$tmp"
+  mv -fT -- "$tmp" "$paused_media_file" || { rm -f -- "$tmp"; return 0; }
+  while IFS= read -r player; do
+    "$playerctl_bin" -p "$player" pause >/dev/null 2>&1 || true
+  done <<<"$players"
+}
+
+resume_media() {
+  local player
+  [[ -f $paused_media_file ]] || return 0
+  while IFS= read -r player; do
+    [[ -z $player ]] || "$playerctl_bin" -p "$player" play >/dev/null 2>&1 || true
+  done <"$paused_media_file"
+  rm -f -- "$paused_media_file"
+}
+
+# Stop listening and resume media, even when Hyprvoice fails.
+stop_listening() {
+  local status=0
+  "$hyprvoice_bin" toggle || status=$?
+  resume_media
+  return "$status"
+}
+
 # Remember the window holding the text box, so the mouse is free to wander
 # while speaking.
 start_dictation() {
@@ -179,7 +223,9 @@ start_dictation() {
   tmp=$(mktemp "$target_file.XXXXXX") || exec "$hyprvoice_bin" toggle
   active_window >"$tmp" || true
   mv -fT -- "$tmp" "$target_file" || rm -f -- "$tmp"
-  exec "$hyprvoice_bin" toggle
+  rm -f -- "$paused_media_file"
+  pause_media
+  "$hyprvoice_bin" toggle || { resume_media; exit 1; }
 }
 
 # Hyprvoice types into whatever has keyboard focus, and follow_mouse hands
@@ -191,7 +237,8 @@ finish_dictation() {
   rm -f -- "$target_file"
   if [[ ! $target =~ ^0x[[:xdigit:]]+$ ]] || ! window_open "$target" ||
     ! follow=$(option_value input:follow_mouse) || ! warps=$(option_value cursor:no_warps); then
-    exec "$hyprvoice_bin" toggle
+    stop_listening
+    exit
   fi
   return_to=$(active_window || true)
   restore_config="hl.config({ input = { follow_mouse = $follow }, cursor = { no_warps = $warps } })"
@@ -199,7 +246,7 @@ finish_dictation() {
   trap 'exit 1' INT TERM HUP
   "$hyprctl_bin" -q eval 'hl.config({ input = { follow_mouse = 0 }, cursor = { no_warps = true } })'
   focus_window "$target"
-  "$hyprvoice_bin" toggle
+  stop_listening
   # ponytail: polls every 0.1s for at most two minutes; an LLM step slower than
   # that gets its focus back early.
   for _ in {1..1200}; do
