@@ -10,18 +10,27 @@ while IFS='|' read -r artist title album arturl; do
   [ -z "${title:-}" ] && continue
 
   icon=""
-  tmpfile="$CACHE_DIR/current.jpg"
 
   case "${arturl:-}" in
     file://*)
       icon="${arturl#file://}"
       ;;
     http://*|https://*)
-      if curl --fail --location --silent --show-error \
+      # One file per art URL: the notification cards cache images by path, so
+      # a shared file would show the first track's art on every later card.
+      artfile="$CACHE_DIR/$(printf '%s' "$arturl" | sha1sum | cut -d' ' -f1).jpg"
+      if [ -s "$artfile" ]; then
+        touch "$artfile"
+        icon="$artfile"
+      elif curl --fail --location --silent --show-error \
         --proto '=http,https' --proto-redir '=http,https' \
-        --connect-timeout 3 --max-time 5 "$arturl" -o "$tmpfile"; then
-        icon="$tmpfile"
+        --connect-timeout 3 --max-time 5 "$arturl" -o "$artfile.part" &&
+        mv -f "$artfile.part" "$artfile"; then
+        icon="$artfile"
+      else
+        rm -f "$artfile.part"
       fi
+      find "$CACHE_DIR" -maxdepth 1 -type f -mtime +7 -delete
       ;;
   esac
 
