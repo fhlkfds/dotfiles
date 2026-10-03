@@ -61,6 +61,7 @@ python3 -m unittest tests.test_theme_generator
 | `omakub-bar-layout.test.sh` | the bar still mounts the expected component set |
 | `audio-panel.test.sh` | shared audio helper behavior and headless panel rendering |
 | `desktop-now-playing.test.sh` | the Spotify-only desktop card against stand-in players: Spotify filtering, hide/show on stop and pause, controls, time text, the record pausing under windows, and the card clearing the clock on narrow outputs |
+| `spotify-notify.test.sh` | track-change notifications with stub `playerctl`, `curl`, and `notify-send`: each track gets its own art file, and repeated art is reused, not downloaded again |
 | `omakub-toggles.test.sh` | the toggles menu |
 | `bluetooth-control.test.sh`, `network-control.test.sh` | the Quickshell panel backends |
 | `browser-native-tools.test.sh` | both native hosts, with mocked clipboard, downloader, notification, player, and OSD commands |
