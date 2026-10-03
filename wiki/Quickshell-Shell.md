@@ -112,7 +112,9 @@ still clears the island on both sides.
   asks for both, pacman, or AUR (Enter = both) and runs it through `yay`
   unattended: prompt defaults throughout, so package removals are declined and
   abort rather than happen. `paru` is not used. A partial update only clears
-  the count for the side it upgraded.
+  the count for the side it upgraded; an existing failed-check marker remains
+  until both sides are verified. Cancelling the menu or entering an invalid
+  choice runs nothing, and failed upgrades preserve the counts.
 - **Battery**: shows charge percentage and state; hidden when no laptop battery
   is present. Clicking opens the battery panel.
 - **Windows VM icon**: appears while the container runs. Pulses amber while

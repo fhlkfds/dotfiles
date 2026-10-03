@@ -218,7 +218,7 @@ sudo pacman -S --needed btop libheif localsend pacman-contrib
 ```
 
 The update indicator uses `checkupdates` from `pacman-contrib` for repository
-packages and either `yay` or `paru` for AUR packages. The `desktop-apps` setup
+packages and `yay` for AUR packages. The `desktop-apps` setup
 group installs `pacman-contrib`. Without it, the count fails with an error and
 the bar keeps its last known number flagged as stale instead of reporting zero
 repository updates.

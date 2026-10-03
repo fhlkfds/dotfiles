@@ -56,17 +56,25 @@ repo_updates() {
   esac
 }
 
-# AUR helpers exit non-zero when there is simply nothing to upgrade, so their
-# status carries no signal; only the output is counted.
+# yay can exit 1 with no updates. Diagnostics are not package names, and a
+# failed request must not turn into either a fake package or a clean zero.
 aur_updates() {
-  local helper output status
+  local helper output status error_file error line
 
   helper=$1
-  output=$("$helper" -Qua 2>&1)
+  error_file=$(mktemp) || return 1
+  output=$("$helper" -Qua 2>"$error_file")
   status=$?
-  if ((status != 0)) && [[ $output == *"status 429"* ]]; then
-    return 2
+  error=$(<"$error_file")
+  rm -f "$error_file"
+  if ((status != 0)) && { ((status != 1)) || [[ -n $error ]]; }; then
+    printf '%s\n' "$error" >&2
+    return 1
   fi
+  while IFS= read -r line; do
+    [[ -z $line ]] && continue
+    [[ $line =~ ^[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+\-\>[[:space:]]+[^[:space:]]+$ ]] || return 1
+  done <<< "$output"
   printf '%s' "$output"
 }
 
@@ -134,7 +142,7 @@ compute_count() {
     fi
     repo_output=$(repo_updates) || { printf '{"error":"sync failed"}\n' >&2; return 1; }
     if helper=$(aur_helper); then
-      aur_output=$(aur_updates "$helper") || { printf '{"error":"AUR check rate limited"}\n' >&2; return 1; }
+      aur_output=$(aur_updates "$helper") || { printf '{"error":"AUR check failed"}\n' >&2; return 1; }
     fi
   elif command -v apt >/dev/null 2>&1; then
     repo_output=$(apt_updates) || { printf '{"error":"apt check failed"}\n' >&2; return 1; }
@@ -185,19 +193,17 @@ terminal() {
 
 # The upgrade needs an interactive terminal so sudo and the AUR helper can
 # prompt, and the window is held open on a read so the log stays readable.
-# Exiting with the upgrade's status lets the widget tell "finished" from
-# "failed" instead of zeroing its count either way. On success it prints which
-# side was upgraded (all, repo or aur) so the widget only clears that count.
-# ponytail: relies on the terminal forwarding the child exit code; if one does
-# not, the widget just keeps its counts and flags them stale.
+# The child records the manager's status separately: Kitty's exit status does
+# not reliably reflect its child's. Only a completed successful upgrade prints
+# its scope (all, repo or aur) so the widget clears the appropriate count.
 #
 # Unattended: --noconfirm takes every prompt's default, which is yes to the
 # upgrade, replacements and PGP key imports and no to removing conflicting or
 # dependency-broken packages, so a removal aborts instead of happening. Build
 # files are not reviewed and makedepends are kept. No --devel: it would
 # git ls-remote every -git package on each run.
-run_update() {
-  local term manager helper='' update_status flags=() scope_file scope
+run_update() (
+  local term manager helper='' update_status flags=() result_file scope manager_status term_args
 
   if helper=$(aur_helper); then
     manager=aur
@@ -216,45 +222,60 @@ run_update() {
     return 1
   fi
 
-  # The terminal's stdout is not ours, so the chosen side comes back in a file.
-  scope_file=$(mktemp) || return 1
+  # The terminal's stdout and exit status are not the manager's. A result is
+  # written only after the manager finishes; an empty file means cancellation
+  # or a terminal that never ran its child.
+  result_file=$(mktemp) || return 1
+  trap 'rm -f "$result_file"' EXIT
+  term_args=(--title "System Update")
+  case ${term##*/} in
+    alacritty) term_args+=(-e) ;;
+    ghostty) term_args=(--gtk-single-instance=false --title="System Update" -e) ;;
+  esac
   # The title is what the Hyprland window rule matches to open this silently
   # on workspace 1.
-  "$term" --title "System Update" bash -lc '
-    manager=$1 helper=$2 scope_file=$3
+  "$term" "${term_args[@]}" bash -c '
+    manager=$1 helper=$2 result_file=$3
     shift 3
-    scope=all
+    scope=repo
     if [[ $manager == aur ]]; then
-      read -rp "Update [B]oth, [p]acman only, or [a]UR only? " choice
+      read -rp "Update [B]oth, [p]acman only, or [a]UR only? " choice || exit 1
       case ${choice,,} in
-        p*) scope=repo; set -- -Syu --repo "$@" ;;
-        a*) scope=aur; set -- -Sua "$@" ;;
-        *) set -- -Syu "$@" ;;
+        p|pacman) scope=repo; set -- -Syu --repo "$@" ;;
+        a|aur) scope=aur; set -- -Sua "$@" ;;
+        ""|b|both) scope=all; set -- -Syu "$@" ;;
+        *) printf "Invalid update choice.\n" >&2; exit 1 ;;
       esac
     fi
-    printf "%s" "$scope" > "$scope_file"
     case $manager in
       aur) "$helper" "$@" ;;
       pacman) sudo pacman -Syu --noconfirm ;;
       apt) sudo apt update && sudo apt full-upgrade ;;
     esac
     status=$?
+    printf "%s %d\n" "$scope" "$status" > "$result_file" || exit 1
     printf "\n"
     read -rp "Done. Press Enter to close. " _
     exit $status
-  ' _ "$manager" "$helper" "$scope_file" "${flags[@]}"
+  ' _ "$manager" "$helper" "$result_file" "${flags[@]}" >&2
   update_status=$?
-  scope=$(<"$scope_file")
-  rm -f "$scope_file"
+  scope=''
+  manager_status=''
+  read -r scope manager_status < "$result_file" || true
+  if [[ $scope =~ ^(all|repo|aur)$ && $manager_status =~ ^[0-9]+$ ]] && ((manager_status <= 255)); then
+    update_status=$manager_status
+  elif ((update_status == 0)); then
+    update_status=1
+  fi
   # The upgrade queried the repositories. Keep the attempt recent so a
   # subsequent count cannot immediately repeat the request.
   if ((cache_ttl > 0)); then
     rm -f "$cache_payload" 2>/dev/null || true
     mark_attempt 1
   fi
-  ((update_status == 0)) && printf '%s\n' "${scope:-all}"
+  ((update_status == 0)) && printf '%s\n' "$scope"
   return "$update_status"
-}
+)
 
 case ${1:-count} in
   update) run_update ;;

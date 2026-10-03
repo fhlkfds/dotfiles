@@ -53,7 +53,10 @@ hl.window_rule({ match = { class = "^t3code$" }, workspace = "4 silent" })
 -- Silent like the rest: it runs in the background on workspace 1 while the bar
 -- shows an ellipsis. Go there when the sudo prompt or the both/pacman/AUR
 -- question needs an answer.
-hl.window_rule({ match = { title = "^System Update$" }, workspace = "1 silent" })
+hl.window_rule({
+    match = { class = "^(kitty|foot|Alacritty|com.mitchellh.ghostty)$", title = "^System Update$" },
+    workspace = "1 silent",
+})
 
 hl.window_rule({
     name = "ascii-screensaver",

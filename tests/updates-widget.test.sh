@@ -50,4 +50,13 @@ grep -Fq '"󰚰  !"' "$widget" ||
 grep -Fq 'if (scope !== "aur")' "$state" && grep -Fq 'if (scope !== "repo")' "$state" ||
   fail 'a partial update still clears both counts'
 
+node "$repo_root/tests/updates-widget.logic.test.js" "$state"
+
+# The workspace rule must not capture unrelated applications with this title.
+for rules in "$repo_root/hypr/.config/hypr/conf/window_rules.lua" \
+             "$repo_root/hypr/.config/hypr/conf/windows-rules.conf"; do
+  grep -F 'title' "$rules" | grep -F 'System Update' | grep -Fq 'class' ||
+    fail 'updater workspace rule matches unrelated application titles'
+done
+
 printf 'updates widget: ok\n'

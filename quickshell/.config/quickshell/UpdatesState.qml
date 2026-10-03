@@ -57,7 +57,9 @@ Singleton {
 
   Process {
     id: countProc
-    command: [root.script, "count"]
+    // Launch the interpreter so a missing/undeployed script exits with an
+    // error; Process otherwise emits no exited signal when it cannot start.
+    command: ["bash", root.script, "count"]
     stdout: StdioCollector { id: countOutput }
     stderr: StdioCollector { id: countError }
     onExited: function(code) {
@@ -106,38 +108,47 @@ Singleton {
 
   Process {
     id: updateProc
-    command: [root.script, "update"]
+    command: ["bash", root.script, "update"]
     stdout: StdioCollector { id: updateOutput }
     stderr: StdioCollector { id: updateError }
     onExited: function(code) {
-      root.updating = false
-      if (code === 0) {
-        // The script prints the side that was upgraded (all, repo or aur). A
-        // pacman-only run leaves the AUR count standing, and the reverse.
-        const scope = updateOutput.text.trim()
-        if (scope !== "aur") {
-          root.repoCount = 0
-          root.repoPackages = []
-        }
-        if (scope !== "repo") {
-          root.aurCount = 0
-          root.aurPackages = []
-        }
-        root.totalCount = root.repoCount + root.aurCount
-        root.stale = false
-      } else {
-        root.stale = true
-        // Without this a failed or never-launched update is indistinguishable
-        // from a click that did nothing.
-        const detail = updateError.text.trim()
-        console.warn("UpdatesState: update failed (exit", code + "):", detail)
-        root.notify("Update failed (exit " + code + ")")
-      }
-      // yay has already queried AUR during the update. Do not immediately
-      // start another request; the regular poll also gives 429 responses time
-      // to clear.
-      pollTimer.restart()
+      root.handleUpdate(code, updateOutput.text, updateError.text)
     }
+  }
+
+  function handleUpdate(code, output, error) {
+    root.updating = false
+    const scope = output.trim()
+    if (code === 0 && (scope === "all" || scope === "repo" || scope === "aur")) {
+      // The script prints the side that was upgraded (all, repo or aur). A
+      // pacman-only run leaves the AUR count standing, and the reverse.
+      if (scope !== "aur") {
+        root.repoCount = 0
+        root.repoPackages = []
+      }
+      if (scope !== "repo") {
+        root.aurCount = 0
+        root.aurPackages = []
+      }
+      root.totalCount = root.repoCount + root.aurCount
+      // A partial upgrade cannot establish whether the untouched side is
+      // current after a failed check.
+      if (scope === "all")
+        root.stale = false
+    } else {
+      root.stale = true
+      // Without this a failed or never-launched update is indistinguishable
+      // from a click that did nothing.
+      const detail = error.trim()
+      console.warn("UpdatesState: update failed (exit", code + "):", detail)
+      root.notify(code === 0 ? "Update failed (missing completion result)"
+                            : "Update failed (exit " + code + ")")
+    }
+    // yay has already queried AUR during the update. Do not immediately
+    // start another request; the regular poll also gives 429 responses time
+    // to clear.
+    root.lastAttempt = Date.now()
+    pollTimer.restart()
   }
 
   Timer {

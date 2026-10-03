@@ -339,13 +339,17 @@ AUR only (Enter is both) and runs the choice through `yay` with `--noconfirm`:
 prompt defaults throughout, so package removals are declined and the run aborts
 instead. Only the side that was upgraded has its count cleared. `yay` is the
 only AUR helper the script uses; without it the script falls back to plain
-`pacman`, then `apt`.
+`pacman`, then `apt`, which clear only the repository count. Closing the menu
+without an answer cancels the update; an invalid choice also runs nothing.
+Failures keep the previous counts even when the terminal exits successfully.
 
 A failed repository or AUR check exits non-zero rather than reporting zero
 updates. The indicator keeps its last known counts, stays visible (showing `!`
 when it has no count at all), notes `Last check failed` in the hover, and waits
 for the next 90-minute poll. `checkupdates` from `pacman-contrib` is required;
 without it every check fails.
+After a partial upgrade, an earlier failed check remains flagged until a full
+upgrade or a successful check verifies both sides.
 
 ## Waybar: removed
 

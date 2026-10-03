@@ -19,7 +19,7 @@ Item {
   Rectangle {
     anchors.fill: parent
     radius: Theme.radiusCell
-    color: UpdatesState.totalCount > 0 ? Theme.accent : "transparent"
+    color: UpdatesState.totalCount > 0 && !UpdatesState.stale ? Theme.accent : "transparent"
   }
 
   Text {
@@ -34,7 +34,7 @@ Item {
         : "󰚰  " + UpdatesState.totalCount
     font.family: Theme.glyphFamily
     font.pixelSize: root.s(14)
-    color: UpdatesState.totalCount > 0 ? Theme.onAccent : Theme.textMuted
+    color: UpdatesState.totalCount > 0 && !UpdatesState.stale ? Theme.onAccent : Theme.textMuted
   }
 
   MouseArea {
@@ -46,7 +46,7 @@ Item {
   }
 
   PopupWindow {
-    visible: mouse.containsMouse
+    visible: root.visible && mouse.containsMouse
     anchor.item: root
     anchor.edges: Edges.Bottom
     anchor.gravity: Edges.Bottom
