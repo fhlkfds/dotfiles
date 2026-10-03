@@ -34,8 +34,17 @@ grep -Fq 'WlrKeyboardFocus.None' "$window" \
   || fail 'turntable can take keyboard focus'
 # The controls live in the media panel; the desktop must stay clickable.
 grep -Fq 'mask: Region {}' "$window" || fail 'turntable swallows desktop clicks'
-grep -Fq 'visible: scene.opacity > 0' "$window" \
-  || fail 'turntable is not unmapped once it has faded out'
+grep -Fq 'anchors { top: true; bottom: true; left: true; right: true }' "$window" \
+  || fail 'turntable does not fill the screen'
+# Background-layer surfaces stack in map order: the turntable must stay mapped
+# and be created before the clock, or the room would cover the clock.
+! grep -Eq '^\s*visible:' "$window" || fail 'turntable window unmaps itself'
+awk '
+  /DesktopTurntable \{/ && !clock { turntable = 1 }
+  /DesktopClock \{/ { clock = 1 }
+  END { exit !turntable }
+' "$shell" || fail 'shell creates the clock before the turntable'
+test -f "$shell_dir/turntable/wood.jpg" || fail 'turntable wood texture is missing'
 grep -Fq 'spinAllowed: !panel.covered' "$window" \
   || fail 'record keeps spinning under application windows'
 

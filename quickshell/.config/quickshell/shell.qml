@@ -6,20 +6,21 @@ Scope {
   readonly property var batteryState: BatteryState
 
   Bar {}
-  Variants {
-    model: Quickshell.screens
-
-    DesktopClock {
-      required property var modelData
-      output: modelData
-    }
-  }
-  // The Turntable on every monitor's desktop: the playing album as a record,
-  // faded out while no allowed player has a track.
+  // The Turntable on every monitor's desktop: the playing album in a room,
+  // faded out while no allowed player has a track. Created before the clock,
+  // so the clock maps later and stacks above it on the background layer.
   Variants {
     model: Quickshell.screens
 
     DesktopTurntable {
+      required property var modelData
+      output: modelData
+    }
+  }
+  Variants {
+    model: Quickshell.screens
+
+    DesktopClock {
       required property var modelData
       output: modelData
     }

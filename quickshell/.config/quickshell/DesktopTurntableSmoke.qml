@@ -70,7 +70,13 @@ Scope {
 
   // The scene needs a visible parent, or Qt reports it as invisible and the
   // spin assertions would depend on scene start-up order.
-  Item { id: host; visible: true; DesktopTurntableScene { id: scene } }
+  Item {
+    id: host
+    visible: true
+    width: 1920
+    height: 1080
+    DesktopTurntableScene { id: scene; anchors.fill: parent }
+  }
 
   function check(name, condition) {
     if (condition) console.log("ok   " + name)
@@ -136,26 +142,25 @@ Scope {
     check("a paused spotify with a track beats an idle instance", state.player === spotify)
     spotify.playbackState = MprisPlaybackState.Playing
 
-    // Desktop ultrawide, the rotated DP-4 (logically 1024x1280), the laptop
-    // panel and a plain 1080p screen, at every framing.
-    const screens = [[2560, 1080], [1024, 1280], [2256, 1504], [1920, 1080]]
-    const framings = ["wide", "mid", "close"]
-    var clear = true
-    for (var i = 0; i < screens.length; i++) {
-      for (var f = 0; f < framings.length; f++) {
-        state.framing = framings[f]
-        const w = screens[i][0], h = screens[i][1]
-        const u = scene.unitFor(w, h)
-        if (u * 1.65 > w || (h + u) / 2 > h - scene.clockBand)
-          clear = false
-      }
-    }
-    check("scene fits every screen and stays clear of the clock", clear)
-    state.framing = "wide"; const wide = scene.unitFor(2256, 1504)
-    state.framing = "mid"; const mid = scene.unitFor(2256, 1504)
-    state.framing = "close"; const close = scene.unitFor(2256, 1504)
-    check("framing grows from wide to close", wide < mid && mid < close)
-    state.framing = "mid"
+    // Each new cover pushes the last one onto the pile: newest first, four at
+    // most, never the one playing, and no repeats.
+    state.playersOverride = [spotify]
+    state.recentCovers = []
+    const covers = ["a", "b", "c", "b", "d", "e", "f"]
+    for (var i = 0; i < covers.length; i++)
+      spotify.trackArtUrl = "file:///covers/" + covers[i] + ".jpg"
+    check("the pile keeps the last four covers, newest first",
+      state.recentCovers.map(function (u) { return u.slice(-5, -4) }).join("") === "edbc")
+    spotify.trackArtUrl = "file:///covers/e.jpg"
+    check("the cover playing again leaves the pile",
+      state.recentCovers.indexOf("file:///covers/e.jpg") === -1
+      && state.recentCovers[0] === "file:///covers/f.jpg")
+    spotify.trackArtUrl = ""
+    check("a track without art leaves the pile alone", state.recentCovers.length === 4)
+    spotify.trackArtUrl = Quickshell.env("TURNTABLE_ART") || ""
+
+    check("the scene fills its window",
+      scene.k > 0 && scene.r(1300) <= host.width + 0.5 && scene.r(724) <= host.height + 0.5)
 
     // Paused past the timeout fades out; checked once the timer has had time.
     state.playersOverride = [spotify]
@@ -207,9 +212,7 @@ Scope {
       }
 
       DesktopTurntableScene {
-        id: shotScene
-        anchors.centerIn: parent
-        unit: unitFor(shotWindow.width, shotWindow.height)
+        anchors.fill: parent
       }
 
       Timer {

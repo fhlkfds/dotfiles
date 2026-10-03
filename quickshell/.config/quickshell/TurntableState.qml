@@ -1,5 +1,6 @@
 pragma Singleton
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Mpris
 import QtQuick
 
@@ -19,8 +20,6 @@ Singleton {
   // "youtube" catches pear-desktop (YouTube Music); a browser is never matched,
   // because its bus name and identity are the browser's, not the site's.
   property var allowedPlayers: ["spotify", "youtube", "pear", "cider"]
-  // "wide", "mid" or "close": how much of the screen the scene takes.
-  property string framing: "mid"
   // Paused this long counts as finished, and the Turntable fades out.
   property int pauseTimeout: 5 * 60 * 1000
 
@@ -99,6 +98,41 @@ Singleton {
     repeat: true
     running: root.isPaused && root.player.trackTitle !== ""
     onTriggered: root.pausedOut = true
+  }
+
+  // Covers played before this one, newest first, for the pile on the desk.
+  // Session-only, like MediaState's stamps.
+  property var recentCovers: []
+  property string lastCover: ""
+
+  onTrackArtUrlChanged: {
+    if (trackArtUrl === "")
+      return
+    if (lastCover !== "" && lastCover !== trackArtUrl) {
+      const current = trackArtUrl
+      const previous = lastCover
+      recentCovers = [previous].concat(recentCovers.filter(function (u) {
+        return u !== previous && u !== current
+      })).slice(0, 4)
+    }
+    lastCover = trackArtUrl
+  }
+
+  // The current wallpaper, hung in the frame on the wall. hypr-wallpaper-picker
+  // writes {"path": ...} here whenever it applies one.
+  property string wallpaper: ""
+
+  FileView {
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state")
+          + "/hyprland-desktop/wallpaper/current"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      try {
+        root.wallpaper = JSON.parse(text()).path || ""
+      } catch (e) {}
+    }
   }
 
   onIsPlayingChanged: if (isPlaying) pausedOut = false

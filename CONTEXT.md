@@ -65,14 +65,14 @@ one that most recently started playing, unless one is pinned from the panel.
 Music, Cider. A browser is never an allowed player, so a video tab cannot reach
 the desktop.
 
-**Turntable** — the album artwork drawn over the wallpaper on every screen: a
-record whose label is the cover art, with the sleeve beside it and a caption of
-title and artist. It follows the allowed player that most recently started
-playing, which need not be the active player. It is not a panel; the panel is
-where the controls live.
+**Turntable** — the room that replaces the wallpaper while music plays: a desk
+at night under a glass lamp, the record turning on a turntable with the cover
+art as its label, the sleeve on a stand beside it, recently played covers in a
+pile, and the wallpaper hung in a frame on the wall. It follows the allowed
+player that most recently started playing, which need not be the active
+player. It is not a panel; the panel is where the controls live.
 
 **Paused** — a track is loaded but not moving. The Turntable stays and freezes.
 
 **Idle** — no allowed player has a track, or the last one has been paused long
-enough to count as finished. The Turntable fades out and only the wallpaper
-remains.
+enough to count as finished. The Turntable fades out and the wallpaper returns.

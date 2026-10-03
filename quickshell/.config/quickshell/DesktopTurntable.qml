@@ -3,13 +3,15 @@ import Quickshell.Hyprland
 import Quickshell.Wayland
 import QtQuick
 
-// The Turntable above the wallpaper and below application windows, one per
-// output, centred. It fades in when an allowed player has a track and out
-// when it goes idle, leaving the wallpaper as it was.
+// The Turntable over the wallpaper and below application windows, one per
+// output, filling the screen. It fades in when an allowed player has a track
+// and out when it goes idle, leaving the wallpaper as it was.
 //
-// The window is sized to the scene rather than the whole screen so the spinning
-// record repaints a smaller surface, and its empty input mask makes it click-
-// through like the desktop clock: the controls live in the media panel.
+// The window stays mapped while faded out: background-layer surfaces stack in
+// the order they map, so mapping only while playing would put the room on top
+// of the desktop clock. shell.qml creates it before the clock for the same
+// reason. Its empty input mask makes it click-through like the clock; the
+// controls live in the media panel.
 PanelWindow {
   id: panel
   required property var output
@@ -23,10 +25,7 @@ PanelWindow {
     && monitor.activeWorkspace.toplevels !== null
     && monitor.activeWorkspace.toplevels.values.length > 0
 
-  // Stays mapped until the fade-out has finished.
-  visible: scene.opacity > 0
-  implicitWidth: scene.width + scene.shadowPad * 2
-  implicitHeight: scene.height + scene.shadowPad * 2
+  anchors { top: true; bottom: true; left: true; right: true }
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
   mask: Region {}
@@ -35,9 +34,7 @@ PanelWindow {
   WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
   DesktopTurntableScene {
-    id: scene
-    anchors.centerIn: parent
-    unit: unitFor(panel.output.width, panel.output.height)
+    anchors.fill: parent
     spinAllowed: !panel.covered
   }
 }

@@ -135,34 +135,38 @@ it requests no keyboard focus. It draws in the bottom-right corner.
 
 ## Desktop turntable
 
-`DesktopTurntable.qml` draws the Turntable in the middle of every output, on the
-same **background** layer as the clock: a record on a plinth, seen from above,
-whose label is the album art, with the sleeve tucked under its left edge and
-the title and artist beneath it. While playing, the tonearm swings onto the
-record and the platter spins up; on pause both settle back and the record
-freezes. A new cover fades in over the old one once it has loaded.
+`DesktopTurntable.qml` fills every output with the Turntable, a room modelled
+on Vinyl for Mac's "After Hours" scene, on the same **background** layer as the
+clock: a desk against a wall at night, the album's sleeve standing on the left,
+the record turning on a turntable in the middle with the cover as its label, a
+pile of the last four covers played under a ribbed glass lamp on the right,
+and the current wallpaper (from `hypr-wallpaper-picker`'s state file) in a
+backlit frame above. While playing, the tonearm swings onto the record and the
+platter spins up; on pause both settle back and the record freezes. A new cover
+fades in over the old one once it has loaded.
+
+It is drawn in QML from one reference layout scaled to the screen, with a CC0
+wood texture from Poly Haven (`turntable/wood.jpg`); the wall and desk run on
+to the edges of wider or taller outputs.
 
 It follows **allowed players** only, through `TurntableState.qml`: Spotify,
 YouTube Music (pear-desktop) and Cider, whichever most recently started
 playing. A browser is never allowed, so a video tab cannot take the desktop
 over; the bar's media module and its panel still follow any player, so the two
-can show different things. The Turntable fades out, leaving the wallpaper as it
-was, when no allowed player has a track or the last one has been paused for
-five minutes.
+can show different things. The room fades out, giving the wallpaper back, when
+no allowed player has a track or the last one has been paused for five
+minutes. `allowedPlayers` and `pauseTimeout` are plain properties at the top of
+`TurntableState.qml`; Quickshell reloads on save.
 
-The settings are plain properties at the top of `TurntableState.qml`:
-`allowedPlayers`, `framing` (`wide`, `mid`, `close`) and `pauseTimeout`.
-Quickshell reloads on save. Whatever the framing, the scene is capped to fit
-the output and to stay clear of the clock's band.
-
-The window is sized to the scene, not the whole screen, and has an empty input
-mask, so it is click-through like the clock; the controls are in the media
-panel. Like anything on the background layer it is only visible on a workspace
-with no windows over it; the record spins down whenever the monitor's active
-workspace has windows, so a hidden record does not keep the output redrawing.
-On Qt Quick's software renderer, where `MultiEffect` draws nothing, the scene
-drops the round label mask, the shadow and the groove sheen rather than going
-blank.
+The window stays mapped while faded out and `shell.qml` creates it before the
+clock: background-layer surfaces stack in the order they map, so this keeps the
+clock above the room. It has an empty input mask, so it is click-through like
+the clock; the controls are in the media panel. Like anything on the background
+layer it is only visible on a workspace with no windows over it; the record
+spins down whenever the monitor's active workspace has windows, so a hidden
+record does not keep the output redrawing. On Qt Quick's software renderer,
+where `MultiEffect` and `Shape` draw nothing, the room goes without shadows,
+glows and the round label mask rather than going blank.
 
 ## Panels and their backends
 
