@@ -127,7 +127,7 @@ Under `hypr/.config/hypr/scripts/`.
 | `close-all-windows.sh` | `CTRL+ALT+Delete` | closes every address from `hyprctl clients` |
 | `btop-float.sh` | `SUPER+CTRL+T` | floating btop |
 | `default-browser-private` | `SUPER+SHIFT+ALT+W` | resolves the XDG default browser and runs its declared private-window action |
-| `voice-dictation` | `SUPER+R`, lmenu → Voice dictation | picks the dictation microphone, syncs it into Hyprvoice only when it changed, then toggles Hyprvoice; the text goes to the window focused when dictation started |
+| `voice-dictation` | `SUPER+R`, lmenu → Voice dictation | picks and syncs the microphone when starting Hyprvoice; the text goes to the window focused when dictation started; playing MPRIS media pauses while listening and only recorded players still paused resume on stop unless `voice-dictation.json` sets `"pause_media": false` |
 | `spotify-notify.sh` | autostart | track-change notifications |
 | `clipboard-store.sh` | `wl-paste --watch` | filters secrets and excluded apps, then stores in cliphist |
 | `clipboard-wipe.sh` | manual | clears clipboard and history |
@@ -139,6 +139,17 @@ Under `hypr/.config/hypr/scripts/`.
 | `arch-updates` | Quickshell | `count` (JSON) and `update` (Kitty window on workspace 1, `yay` only) |
 | `set-monitor-scale.sh` | Quickshell | validated, atomic scale persistence |
 | `auto-monitor-profile.sh`, `capture-monitor-profile.sh`, `monitor-profile-menu.sh`, `hypr-monitor-watch.py` | see [Monitors](Monitors-and-Workspaces.md) | |
+
+Dictation excludes `playerctld` and remembers only successful pause requests.
+Startup aborts restore playback unless Hyprvoice has already begun listening.
+An interrupted start or failed stop/focus operation that leaves Hyprvoice
+listening keeps media paused and preserves the target window for retry.
+Stopping still works after the selected microphone disconnects. Microphone
+selection preserves `pause_media` and other settings. Player control is best
+effort: unavailable or changed instances are skipped, but a restarted player
+reusing the identical MPRIS name cannot be distinguished. An uncatchable
+termination can leave media paused; stale lists are discarded on the next start.
+See [the script reference](../docs/scripts.md#active-hyprland-helpers).
 
 `scripts/lib/terminals.sh` is a sourced library, not a command. It centralises
 terminal-class detection and terminal-specific cwd queries for the clipboard and
