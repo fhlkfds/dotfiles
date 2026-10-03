@@ -58,6 +58,10 @@ repo_updates() {
 
 # yay can exit 1 with no updates. Diagnostics are not package names, and a
 # failed request must not turn into either a fake package or a clean zero.
+# yay 13 tags each line with the update's age ("pkg 1-1 -> 2-1 [15h44m]") and
+# ignored packages with "[ignored]"; rejecting those failed every check and hid
+# the repo count along with the AUR one.
+aur_update_line='^[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+->[[:space:]]+[^[:space:]]+([[:space:]]+\[[^]]*\])*$'
 aur_updates() {
   local helper output status error_file error line
 
@@ -73,7 +77,10 @@ aur_updates() {
   fi
   while IFS= read -r line; do
     [[ -z $line ]] && continue
-    [[ $line =~ ^[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+\-\>[[:space:]]+[^[:space:]]+$ ]] || return 1
+    [[ $line =~ $aur_update_line ]] || {
+      printf 'unexpected %s output: %s\n' "${helper##*/}" "$line" >&2
+      return 1
+    }
   done <<< "$output"
   printf '%s' "$output"
 }
