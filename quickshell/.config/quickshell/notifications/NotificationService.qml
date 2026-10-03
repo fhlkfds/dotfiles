@@ -24,6 +24,7 @@ Singleton {
   readonly property int visibleCount: popupModel.count
 
   signal stateChanged()
+  signal artworkRefreshRequested(string key)
 
   ListModel {
     id: popupModel
@@ -181,7 +182,14 @@ Singleton {
         changed = true
       }
     }
-    if (!changed) return
+    // A replacement may rewrite its art file without changing the URL or text.
+    // Image.cache controls reuse during loading; it cannot trigger a new load.
+    root.artworkRefreshRequested(key)
+    if (!changed) {
+      // The pixels may have changed even when all persisted fields are equal.
+      persistence.writeActive(current)
+      return
+    }
     const duration = root.durationFor(updated.urgency, updated.expireTimeout)
     popupModel.setProperty(index, "deadline", duration > 0 ? Date.now() + duration : 0)
     const row = popupModel.get(index)

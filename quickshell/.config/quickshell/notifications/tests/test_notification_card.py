@@ -1,13 +1,15 @@
 """Offscreen Qt layout checks; optional PySide6, no desktop services or state.
 
-The card/vinyl/stack are production QML. Only Quickshell, theme/config and media
-singletons are fixtures. This does not test compositor input-region delivery.
+The service/card/vinyl/stack are production QML. Quickshell, theme/config,
+media, native server and persistence are fixtures. No D-Bus or disk state is used.
+This does not test compositor input-region delivery.
 """
 import json
 import os
 from pathlib import Path
 import shutil
 import tempfile
+import time
 import unittest
 
 try:
@@ -36,16 +38,62 @@ class NotificationCardTest(unittest.TestCase):
         (root / "notifications").mkdir()
         (root / "Quickshell").mkdir()
         for name in ("NotificationCard.qml", "NotificationVinyl.qml",
-                     "NotificationStack.qml", "NotificationLogic.js"):
+                     "NotificationStack.qml", "NotificationLogic.js", "NotificationService.qml"):
             shutil.copy(SOURCE / name, root / "notifications" / name)
         (root / "Quickshell/qmldir").write_text(
-            "module Quickshell\nsingleton Quickshell 1.0 Quickshell.qml\nRegion 1.0 Region.qml\n")
+            "module Quickshell\nsingleton Quickshell 1.0 Quickshell.qml\n"
+            "Region 1.0 Region.qml\nSingleton 1.0 Singleton.qml\n")
         (root / "Quickshell/Quickshell.qml").write_text('''pragma Singleton
 import QtQuick
-QtObject { function iconPath(name, fallback) { return "" } }
+QtObject {
+  property var screens: [{name: "test"}, {name: "other"}]
+  property int activeWrites: 0
+  function env(name) { return "" }
+  function iconPath(name, fallback) { return "" }
+}
 ''')
+        (root / "Quickshell/Singleton.qml").write_text(
+            'import QtQuick\nQtObject { default property list<QtObject> children }\n')
         (root / "Quickshell/Region.qml").write_text(
             'import QtQuick\nQtObject { property Item item }\n')
+        (root / "Quickshell/Hyprland").mkdir()
+        (root / "Quickshell/Hyprland/qmldir").write_text(
+            'module Quickshell.Hyprland\nsingleton Hyprland 1.0 Hyprland.qml\n')
+        (root / "Quickshell/Hyprland/Hyprland.qml").write_text('''pragma Singleton
+import QtQuick
+QtObject { property var focusedMonitor: ({name: "test"}) }
+''')
+        (root / "Quickshell/Io").mkdir()
+        (root / "Quickshell/Io/qmldir").write_text(
+            'module Quickshell.Io\nFileView 1.0 FileView.qml\nIpcHandler 1.0 IpcHandler.qml\n')
+        (root / "Quickshell/Io/FileView.qml").write_text('''import QtQuick
+QtObject {
+  property string path
+  property bool atomicWrites
+  property bool watchChanges
+  property bool printErrors
+  signal loaded()
+  signal loadFailed()
+  function text() { return "{}" }
+  function setText(value) {}
+}
+''')
+        (root / "Quickshell/Io/IpcHandler.qml").write_text(
+            'import QtQuick\nQtObject { property string target }\n')
+        (root / "notifications/NotificationPersistence.qml").write_text('''import QtQuick
+import Quickshell
+QtObject {
+  signal operationFailed(string operation, string detail)
+  function initialize(callback) {}
+  function writeActive(entry) { Quickshell.activeWrites++ }
+  function writeHistory(entry) {}
+}
+''')
+        (root / "notifications/NotificationActions.qml").write_text('''import QtQuick
+QtObject { signal focusFailed(string app) }
+''')
+        (root / "notifications/NotificationServer.qml").write_text(
+            'import QtQuick\nQtObject { property var service }\n')
         (root / "qmldir").write_text(
             "singleton Theme 1.0 Theme.qml\nsingleton MediaState 1.0 MediaState.qml\n")
         colors = dict(notificationSurface="#24283b", notificationShadow="#000000",
@@ -73,21 +121,18 @@ QtObject { property bool isPlaying: false; property bool hasTrack: true; propert
             "singleton NotificationService 1.0 NotificationService.qml\n")
         (root / "notifications/NotificationConfig.qml").write_text(
             'pragma Singleton\nimport QtQuick\nQtObject {\n'
-            + ''.join(f'property int {k}: {v}\n' for k, v in config.items() if type(v) is int) + '}')
-        (root / "notifications/NotificationService.qml").write_text('''pragma Singleton
-import QtQuick
-QtObject {
-  property ListModel popupModel: ListModel { dynamicRoles: true }
-  function screenFor(name) { return name }
-  function durationFor(urgency, requested) { return 0 }
-}
-''')
+            + ''.join(f'property var {k}: {json.dumps(v)}\n' for k, v in config.items()) + '}')
         (root / "fixture.qml").write_text('''import QtQuick
+import Quickshell
 import "notifications"
 Item {
   width: 1200; height: 1200
   property Item cardItem: card
   property Item stackItem: stack
+  property var nativeEntry
+  property int activeWrites: Quickshell.activeWrites
+  signal nativeHintsChanged()
+  function imageFailed(item) { return item.status === Image.Error }
   function resizeCard(width, scale) { NotificationConfig.cardWidth = width; Theme.fontScale = scale }
   function addEntry(key, screen) {
     NotificationService.popupModel.append({key: key, app: "Fixture", desktopEntry: "", appIcon: "",
@@ -95,11 +140,28 @@ Item {
       expireTimeout: 0, timestamp: Date.now(), screenName: screen, deadline: 0, replay: false,
       restored: false, closing: false, closeReason: ""})
   }
-  function addArt(key, app, image) {
+  function addArt(key, app, image, useAppIcon) {
     addEntry(key, "test")
     NotificationService.popupModel.setProperty(NotificationService.popupModel.count - 1, "app", app)
-    NotificationService.popupModel.setProperty(NotificationService.popupModel.count - 1, "image", image)
+    NotificationService.popupModel.setProperty(NotificationService.popupModel.count - 1,
+      useAppIcon ? "appIcon" : "image", image)
     NotificationService.popupModel.setProperty(NotificationService.popupModel.count - 1, "body", "Track\\nArtist")
+  }
+  function receiveArt(app, image, useAppIcon) {
+    nativeEntry = {id: 7, appName: app, summary: "Now Playing", body: "First track",
+      image: useAppIcon ? "" : image, appIcon: useAppIcon ? image : "", urgency: 2,
+      hints: {revision: 0}, hintsChanged: nativeHintsChanged,
+      closed: {connect: function(callback) {}}}
+    NotificationService.receive(nativeEntry)
+  }
+  function replaceArt(body) {
+    nativeEntry.body = body
+    nativeEntry.hints = {revision: nativeEntry.hints.revision + 1}
+    nativeHintsChanged()
+  }
+  function replaceArtSource(image, useAppIcon) {
+    nativeEntry[useAppIcon ? "appIcon" : "image"] = image
+    replaceArt(nativeEntry.body)
   }
   function removeEntry() { NotificationService.popupModel.remove(0) }
   NotificationCard { id: card; x: 50; y: 50 }
@@ -189,25 +251,92 @@ Item {
         QTest.qWait(30)
         self.assertEqual(len(stack.property("inputRegions").toVariant()), 2)
 
+    def save_art(self, path, size):
+        image = QImage(size, size, QImage.Format_RGB32)
+        image.fill(0xffff0000 if size == 8 else 0xff0000ff)
+        self.assertTrue(image.save(str(path)))
+
+    def art_images(self, card, app):
+        names = ("notificationSleeveImage", "notificationLabelImage") if app == "Spotify" else (
+            "notificationBadgeImage",)
+        images = {item.objectName(): item for item in self.items(card) if item.objectName() in names}
+        self.assertEqual(set(images), set(names))
+        return images.values()
+
+    def assert_art_size(self, card, app, size):
+        images = list(self.art_images(card, app))
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if all(image.property("progress") == 1 and
+                   image.property("sourceSize").width() == size for image in images):
+                return
+            QTest.qWait(10)
+        self.fail(f"Images did not finish loading {size}px art: " + repr({image.objectName():
+                  (image.property("progress"), image.property("sourceSize").width())
+                  for image in images}))
+
+    def stack_cards(self):
+        stack = self.root.property("stackItem")
+        return [item for item in self.items(stack) if item.property("iconSource") is not None]
+
     def test_reused_image_path_shows_current_file(self):
         # Senders may rewrite one file for every notification. Each new card
         # must show what is in the file now, not what an older card loaded.
-        stack = self.root.property("stackItem")
         art = Path(self.temp.name) / "art.png"
         url = QUrl.fromLocalFile(str(art)).toString()
         for app in ("Spotify", "Fixture"):
-            with self.subTest(app=app):
-                QImage(8, 8, QImage.Format_RGB32).save(str(art))
-                self.root.addArt(app + "1", app, url)
-                QTest.qWait(100)
-                QImage(16, 16, QImage.Format_RGB32).save(str(art))
-                self.root.addArt(app + "2", app, url)
-                QTest.qWait(100)
-                widths = {i.property("sourceSize").width() for i in self.items(stack)
-                          if i.property("source") == QUrl(url) and i.property("progress") == 1}
-                self.assertEqual(widths, {8, 16})
-                self.root.removeEntry()
-                self.root.removeEntry()
+            for use_app_icon in (False, True):
+                with self.subTest(app=app, use_app_icon=use_app_icon):
+                    self.save_art(art, 8)
+                    self.root.addArt(app + "1", app, url, use_app_icon)
+                    first = self.stack_cards()[0]
+                    self.assert_art_size(first, app, 8)
+                    self.save_art(art, 16)
+                    self.root.addArt(app + "2", app, url, use_app_icon)
+                    second = self.stack_cards()[1]
+                    self.assert_art_size(second, app, 16)
+                    self.assert_art_size(first, app, 8)
+                    self.root.removeEntry()
+                    self.root.removeEntry()
+
+    def test_replacement_reloads_reused_image_path(self):
+        art = Path(self.temp.name) / "replacement.png"
+        url = QUrl.fromLocalFile(str(art)).toString()
+        for app in ("Spotify", "Fixture"):
+            for use_app_icon in (False, True):
+                with self.subTest(app=app, use_app_icon=use_app_icon):
+                    self.save_art(art, 8)
+                    self.root.receiveArt(app, url, use_app_icon)
+                    card = self.stack_cards()[0]
+                    self.assert_art_size(card, app, 8)
+                    # A native hints change can refresh identical displayed text.
+                    for size, body in ((16, "Second track"), (8, "Second track")):
+                        self.save_art(art, size)
+                        writes = self.root.property("activeWrites")
+                        self.root.replaceArt(body)
+                        self.assertIs(self.stack_cards()[0], card)
+                        self.assert_art_size(card, app, size)
+                        self.assertEqual(self.root.property("activeWrites"), writes + 1)
+                    # Reloading must preserve the binding for a later, new URL.
+                    other_art = Path(self.temp.name) / "other.png"
+                    self.save_art(other_art, 16)
+                    self.root.replaceArtSource(QUrl.fromLocalFile(str(other_art)).toString(), use_app_icon)
+                    self.assert_art_size(card, app, 16)
+                    self.root.removeEntry()
+
+    def test_replacement_recovers_missing_image(self):
+        art = Path(self.temp.name) / "initially-missing.png"
+        url = QUrl.fromLocalFile(str(art)).toString()
+        self.root.receiveArt("Fixture", url, False)
+        card = self.stack_cards()[0]
+        image = next(iter(self.art_images(card, "Fixture")))
+        deadline = time.monotonic() + 2
+        while not self.root.imageFailed(image) and time.monotonic() < deadline:
+            QTest.qWait(10)
+        self.assertTrue(self.root.imageFailed(image), "missing file must fail before recovery")
+        self.save_art(art, 16)
+        self.root.replaceArt("First track")
+        self.assert_art_size(card, "Fixture", 16)
 
 
 if __name__ == "__main__":
