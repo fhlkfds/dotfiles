@@ -35,8 +35,9 @@ chmod +x "$test_root/bin/hyprctl-fixture"
 export NIGHT_LIGHT_STATE_FILE="$test_root/state/night-light-shader"
 export NIGHT_LIGHT_HYPRCTL="$test_root/bin/hyprctl-fixture"
 export NIGHT_LIGHT_FIXTURE_CALLS="$test_root/calls"
-on_call="eval hl.config({ decoration = { screen_shader = [==[$HOME/.config/hypr/shaders/night-light.frag]==] } })"
-off_call='eval hl.config({ decoration = { screen_shader = [==[]==] } })'
+full_frames='general = { border_size = hl.get_config("general.border_size") }'
+on_call="eval hl.config({ decoration = { screen_shader = [==[$HOME/.config/hypr/shaders/night-light.frag]==] }, $full_frames })"
+off_call="eval hl.config({ decoration = { screen_shader = [==[]==] }, $full_frames })"
 
 "$night_light" on
 [[ -f "$NIGHT_LIGHT_STATE_FILE" ]] || fail 'on did not enable shader state'

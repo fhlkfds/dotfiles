@@ -32,9 +32,15 @@ is_enabled() {
 # compositor thread (about a second of frozen screen) and resets runtime
 # toggles such as gaps and zoom; a runtime hl.config() of screen_shader makes
 # Hyprland recompile just the shader. hyprland.lua reads the state file at login.
+#
+# A screen_shader change alone only damages each monitor once and schedules no
+# frame, so a double-buffered output alternates shaded and unshaded buffers
+# (flicker, a partly shaded box) until something repaints it (issue #115).
+# Re-setting border_size to its current value is a no-op that trips Hyprland's
+# window-state refresh, which forces full frames on every monitor.
 apply_shader() {
   local expression
-  expression="hl.config({ decoration = { screen_shader = [==[$1]==] } })"
+  expression="hl.config({ decoration = { screen_shader = [==[$1]==] }, general = { border_size = hl.get_config(\"general.border_size\") } })"
   if [[ "$dry_run" -eq 1 ]]; then
     printf '+ %q eval %q\n' "$hyprctl_command" "$expression"
   else
