@@ -65,14 +65,9 @@ Item {
       width: parent.width - 20
       horizontalAlignment: Text.AlignLeft
       wrapMode: Text.Wrap
-      text: "Pacman (" + UpdatesState.repoCount + "): "
-            + (UpdatesState.repoPackages.length > 0
-              ? UpdatesState.repoPackages.join(", ")
-              : "None")
-            + "\nAUR (" + UpdatesState.aurCount + "): "
-            + (UpdatesState.aurPackages.length > 0
-              ? UpdatesState.aurPackages.join(", ")
-              : "None")
+      // Counts only: a full package list can be long enough to cover the screen.
+      text: "Pacman: " + UpdatesState.repoCount
+            + "\nAUR: " + UpdatesState.aurCount
             + (UpdatesState.stale ? "\nLast check failed" : "")
             + (UpdatesState.updating
               ? "\nUpdating…"
