@@ -719,7 +719,8 @@ Theme roles are generated for every palette as `notifications.background`,
 `countdown`, and `close`. Cards show the app name, an icon badge, and any supplied
 actions on a raised surface. Corner radius is the generated Hyprland rounding
 plus four scaled pixels. The old `borderWidths`, `singleLinePadding`, and
-`glyphGap` options are obsolete; cards use `multiLinePadding` and `iconGap`.
+`glyphGap` options are accepted but ignored; cards use `multiLinePadding` and
+`iconGap`.
 
 ### Debugging and validation
 

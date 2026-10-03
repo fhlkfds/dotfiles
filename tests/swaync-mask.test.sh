@@ -25,3 +25,27 @@ grep -Fq 'rm ~/.config/systemd/user/swaync.service' "$repo_root/README.md" ||
   fail 'README rollback does not remove the swaync mask'
 
 printf 'swaync mask: ok\n'
+
+# The elevated card's shadow draws outside the card, so the overlay's input
+# mask must be built from the visible card rectangles alone or the shadow
+# margin would swallow clicks meant for the windows underneath.
+notifications="$repo_root/quickshell/.config/quickshell/notifications"
+grep -Fq 'mask: Region { regions: stack.inputRegions }' "$notifications/NotificationOverlay.qml" ||
+  fail 'overlay mask is not built from the stack input regions'
+grep -Fq 'Region { item: slot.visible ? slot : null }' "$notifications/NotificationStack.qml" ||
+  fail 'stack input region is not the visible card slot'
+grep -Fq 'width: visible ? card.implicitWidth : 0' "$notifications/NotificationStack.qml" &&
+  grep -Fq 'height: visible ? card.implicitHeight : 0' "$notifications/NotificationStack.qml" ||
+  fail 'card slot is not sized to the visible card'
+grep -Eq '^NotificationCard 1.0 NotificationCard.qml$' "$notifications/qmldir" &&
+  grep -Eq '^NotificationBorder \{' "$notifications/NotificationCard.qml" ||
+  fail 'cards are not wrapped in the NotificationBorder shell'
+grep -Fq 'MultiEffect {' "$notifications/NotificationBorder.qml" ||
+  fail 'NotificationBorder has no MultiEffect shadow'
+# A negative margin or explicit size would grow the card, and its mask, by the shadow.
+if grep -Eq 'anchors\.[a-zA-Z]*[mM]argins?: *-|^  (width|height|implicitWidth|implicitHeight):' \
+  "$notifications/NotificationBorder.qml"; then
+  fail 'NotificationBorder extends its geometry for the shadow'
+fi
+
+printf 'notification shadow mask: ok\n'

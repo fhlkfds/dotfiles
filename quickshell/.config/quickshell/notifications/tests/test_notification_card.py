@@ -37,7 +37,7 @@ class NotificationCardTest(unittest.TestCase):
         root = Path(self.temp.name)
         (root / "notifications").mkdir()
         (root / "Quickshell").mkdir()
-        for name in ("NotificationCard.qml", "NotificationVinyl.qml",
+        for name in ("NotificationBorder.qml", "NotificationCard.qml", "NotificationVinyl.qml",
                      "NotificationStack.qml", "NotificationLogic.js", "NotificationService.qml"):
             shutil.copy(SOURCE / name, root / "notifications" / name)
         (root / "Quickshell/qmldir").write_text(
@@ -118,7 +118,8 @@ QtObject { property bool isPlaying: false; property bool hasTrack: true; propert
         config = json.loads((SOURCE / "config.json").read_text())
         (root / "notifications/qmldir").write_text(
             "singleton NotificationConfig 1.0 NotificationConfig.qml\n"
-            "singleton NotificationService 1.0 NotificationService.qml\n")
+            "singleton NotificationService 1.0 NotificationService.qml\n"
+            "NotificationBorder 1.0 NotificationBorder.qml\n")
         (root / "notifications/NotificationConfig.qml").write_text(
             'pragma Singleton\nimport QtQuick\nQtObject {\n'
             + ''.join(f'property var {k}: {json.dumps(v)}\n' for k, v in config.items()) + '}')
@@ -228,11 +229,19 @@ Item {
         QTest.qWait(30)
         self.assertFalse(any(i.isVisible() and i.property("text") == "5m" for i in self.items()))
         self.card.setProperty("app", "Spotify")
+        self.card.setProperty("summary", "Now Playing")
         self.card.setProperty("image", QUrl.fromLocalFile(str(Path(self.temp.name) / "missing-art.png")).toString())
         self.card.setProperty("body", "Track title\nArtist · Album")
         QTest.qWait(30)
         self.assertTrue(self.card.property("vinyl"))
         self.assertTrue(any(i.isVisible() and i.property("text") == "Track title" for i in self.items()))
+        self.assertTrue(any(i.isVisible() and i.property("text") == "NOW PLAYING" for i in self.items()))
+        self.assertFalse(any(i.isVisible() and i.property("text") == "SPOTIFY" for i in self.items()))
+
+    def test_card_sits_in_elevated_shell(self):
+        shadow = next(i for i in self.items() if i.metaObject().className().startswith("QQuickMultiEffect"))
+        self.assertEqual((shadow.width(), shadow.height()), (self.card.width(), self.card.height()))
+        self.assertEqual(self.card.property("cornerRadius"), 12 + 4)
 
     def test_stack_regions_follow_visible_cards(self):
         stack = self.root.property("stackItem")
