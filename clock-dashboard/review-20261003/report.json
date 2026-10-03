@@ -1,0 +1,392 @@
+{
+  "fixture": "Copied production QML, inert IO Process, async-completion fixture FileView, same Qt Quick window",
+  "checks": [
+    {
+      "phase": "dark",
+      "tab": "overview",
+      "page_ids_retained": true,
+      "image": [
+        848,
+        696
+      ],
+      "canvases": {
+        "620346160": {
+          "class": "QQuickCanvasItem_QML_40",
+          "rect": [
+            617,
+            359,
+            152,
+            18
+          ],
+          "dark_accent_pixels": 187,
+          "light_accent_pixels": 0
+        },
+        "620450496": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            85,
+            596,
+            44,
+            44
+          ],
+          "dark_accent_pixels": 96,
+          "light_accent_pixels": 0
+        },
+        "620487776": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            225,
+            596,
+            44,
+            44
+          ],
+          "dark_accent_pixels": 288,
+          "light_accent_pixels": 0
+        },
+        "620510928": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            383,
+            596,
+            44,
+            44
+          ],
+          "dark_accent_pixels": 180,
+          "light_accent_pixels": 0
+        },
+        "620535504": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            504,
+            596,
+            44,
+            44
+          ],
+          "dark_accent_pixels": 65,
+          "light_accent_pixels": 0
+        }
+      }
+    },
+    {
+      "phase": "dark",
+      "tab": "media",
+      "page_ids_retained": true,
+      "image": [
+        848,
+        696
+      ],
+      "canvases": {
+        "620704800": {
+          "class": "QQuickCanvasItem_QML_40",
+          "rect": [
+            326,
+            254,
+            441,
+            22
+          ],
+          "dark_accent_pixels": 215,
+          "light_accent_pixels": 0
+        }
+      }
+    },
+    {
+      "phase": "dark",
+      "tab": "system",
+      "page_ids_retained": true,
+      "image": [
+        848,
+        696
+      ],
+      "canvases": {
+        "620988032": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            52,
+            158,
+            40,
+            40
+          ],
+          "dark_accent_pixels": 133,
+          "light_accent_pixels": 0
+        },
+        "621084352": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            440,
+            189,
+            154,
+            154
+          ],
+          "dark_accent_pixels": 1861,
+          "light_accent_pixels": 0
+        },
+        "621130016": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            638,
+            189,
+            154,
+            154
+          ],
+          "dark_accent_pixels": 386,
+          "light_accent_pixels": 0
+        },
+        "621175632": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            52,
+            419,
+            40,
+            40
+          ],
+          "dark_accent_pixels": 157,
+          "light_accent_pixels": 0
+        }
+      }
+    },
+    {
+      "phase": "dark",
+      "tab": "weather",
+      "page_ids_retained": true,
+      "image": [
+        848,
+        696
+      ],
+      "canvases": {
+        "621480896": {
+          "class": "QQuickCanvasItem_QML_33",
+          "rect": [
+            52,
+            277,
+            744,
+            149
+          ],
+          "dark_accent_pixels": 617,
+          "light_accent_pixels": 0
+        }
+      }
+    },
+    {
+      "phase": "light",
+      "tab": "overview",
+      "page_ids_retained": true,
+      "image": [
+        848,
+        696
+      ],
+      "canvases": {
+        "620346160": {
+          "class": "QQuickCanvasItem_QML_40",
+          "rect": [
+            621,
+            359,
+            152,
+            18
+          ],
+          "dark_accent_pixels": 0,
+          "light_accent_pixels": 187
+        },
+        "620450496": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            85,
+            596,
+            44,
+            44
+          ],
+          "dark_accent_pixels": 0,
+          "light_accent_pixels": 96
+        },
+        "620487776": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            225,
+            596,
+            44,
+            44
+          ],
+          "dark_accent_pixels": 0,
+          "light_accent_pixels": 288
+        },
+        "620510928": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            383,
+            596,
+            44,
+            44
+          ],
+          "dark_accent_pixels": 0,
+          "light_accent_pixels": 180
+        },
+        "620535504": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            504,
+            596,
+            44,
+            44
+          ],
+          "dark_accent_pixels": 0,
+          "light_accent_pixels": 65
+        }
+      }
+    },
+    {
+      "phase": "light",
+      "tab": "media",
+      "page_ids_retained": true,
+      "image": [
+        848,
+        696
+      ],
+      "canvases": {
+        "620704800": {
+          "class": "QQuickCanvasItem_QML_40",
+          "rect": [
+            325,
+            254,
+            441,
+            22
+          ],
+          "dark_accent_pixels": 0,
+          "light_accent_pixels": 386
+        }
+      }
+    },
+    {
+      "phase": "light",
+      "tab": "system",
+      "page_ids_retained": true,
+      "image": [
+        848,
+        696
+      ],
+      "canvases": {
+        "620988032": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            52,
+            158,
+            40,
+            40
+          ],
+          "dark_accent_pixels": 0,
+          "light_accent_pixels": 133
+        },
+        "621084352": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            440,
+            189,
+            154,
+            154
+          ],
+          "dark_accent_pixels": 0,
+          "light_accent_pixels": 1861
+        },
+        "621130016": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            638,
+            189,
+            154,
+            154
+          ],
+          "dark_accent_pixels": 0,
+          "light_accent_pixels": 386
+        },
+        "621175632": {
+          "class": "QQuickCanvasItem_QML_24",
+          "rect": [
+            52,
+            419,
+            40,
+            40
+          ],
+          "dark_accent_pixels": 0,
+          "light_accent_pixels": 157
+        }
+      }
+    },
+    {
+      "phase": "light",
+      "tab": "weather",
+      "page_ids_retained": true,
+      "image": [
+        848,
+        696
+      ],
+      "canvases": {
+        "621480896": {
+          "class": "QQuickCanvasItem_QML_33",
+          "rect": [
+            52,
+            277,
+            744,
+            149
+          ],
+          "dark_accent_pixels": 0,
+          "light_accent_pixels": 700
+        }
+      }
+    },
+    {
+      "phase": "narrow",
+      "tab": "overview",
+      "page_ids_retained": true,
+      "image": [
+        768,
+        538
+      ]
+    },
+    {
+      "phase": "narrow",
+      "tab": "media",
+      "page_ids_retained": true,
+      "image": [
+        768,
+        538
+      ]
+    },
+    {
+      "phase": "narrow",
+      "tab": "system",
+      "page_ids_retained": true,
+      "image": [
+        768,
+        538
+      ]
+    },
+    {
+      "phase": "narrow",
+      "tab": "weather",
+      "page_ids_retained": true,
+      "image": [
+        768,
+        538
+      ]
+    }
+  ],
+  "canvas_live_repaint": "passed for all visible canvases on all four retained pages",
+  "hidden_palette_reload": "passed both palettes on all 4 retained pages after reopening",
+  "narrow_navigation": "all 4 tab click targets reachable; body scrolls horizontally and vertically",
+  "timings_ms": {
+    "environment": "offscreen software renderer, normal Qt window; no Wayland compositor",
+    "20_tab_switches": {
+      "median": 8.158830925822258,
+      "max": 9.005464613437653
+    },
+    "10_opens": {
+      "median": 1.1836234480142593,
+      "max": 1.456882804632187
+    }
+  },
+  "qml_errors": [],
+  "retained_page_ids": {
+    "DashOverview": 620042880,
+    "DashMedia": 620623216,
+    "DashSystem": 620936384,
+    "DashWeather": 621343984
+  }
+}
