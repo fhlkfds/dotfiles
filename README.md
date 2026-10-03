@@ -664,7 +664,7 @@ ordinary requests clamped to 30 seconds.
 
 User settings live in
 `~/.config/quickshell/notifications/config.json`: position, history limit,
-timeouts, 380 px card width, animation timing, border widths, debug logging and
+timeouts, 380 px card width, animation timing, padding, debug logging and
 the audited DND bypass allow-list. A bypass requires both an allow-listed app
 name and an explicit local bypass hint; urgency alone never bypasses DND.
 
@@ -685,10 +685,11 @@ Malformed JSON is skipped, filenames are validated, notification text is never
 sent through a shell, writes use fsync plus rename, and orphan images are swept.
 
 Theme roles are generated for every palette as `notifications.background`,
-`text`, `bodyText`, `border1`, `border2`, `countdown`, and `close`. QML contains
-no notification palette; corner radius follows the generated Hyprland rounding.
-Per-side borders are configured as `[top, right, bottom, left]`, for example
-`[2, 2, 2, 6]`.
+`surface`, `shadow`, `text`, `bodyText`, `actionText`, `criticalActionText`,
+`countdown`, and `close`. Cards show the app name, an icon badge, and any supplied
+actions on a raised surface. Corner radius is the generated Hyprland rounding
+plus four scaled pixels. The old `borderWidths`, `singleLinePadding`, and
+`glyphGap` options are obsolete; cards use `multiLinePadding` and `iconGap`.
 
 ### Debugging and validation
 

@@ -125,6 +125,8 @@ Singleton {
   readonly property color notificationBodyText: notificationCol("bodyText", root.foreground)
   readonly property color notificationSurface: notificationCol("surface", root.surfaceColor)
   readonly property color notificationShadow: notificationCol("shadow", root.shadowColor)
+  readonly property color notificationActionText: notificationCol("actionText", root.onAccent)
+  readonly property color notificationCriticalActionText: notificationCol("criticalActionText", root.onAccent)
   readonly property color notificationCountdown: notificationCol("countdown", root.accent)
   readonly property color notificationClose: notificationCol("close", root.muted)
   readonly property int notificationRadius: fs(Math.max(0, root.hyprRounding))

@@ -20,7 +20,10 @@ Item {
   property string image: ""
   property string actionsJson: "[]"
   readonly property var actionItems: {
-    try { return JSON.parse(actionsJson) } catch (e) { return [] }
+    try {
+      const items = JSON.parse(actionsJson)
+      return Array.isArray(items) ? items : []
+    } catch (e) { return [] }
   }
   property string glyph: ""
   property int urgency: 1
@@ -168,6 +171,7 @@ Item {
 
       RowLayout {
         Layout.fillWidth: true
+        Layout.rightMargin: Theme.fs(NotificationConfig.closeSize)
         visible: root.app.length > 0 || root.replay
         spacing: Theme.fs(8)
 
@@ -186,7 +190,6 @@ Item {
 
         Text {
           visible: root.replay
-          Layout.rightMargin: root.hovered ? Theme.fs(NotificationConfig.closeSize) : 0
           text: Logic.ageLabel(root.timestamp, root.nowMs)
           color: Theme.notificationClose
           font.family: Theme.uiFamily
@@ -242,13 +245,16 @@ Item {
   }
 
   // First action is the filled primary; the rest stay quiet on the surface.
-  RowLayout {
+  GridLayout {
     id: buttons
     anchors.top: row.bottom
     anchors.topMargin: Theme.fs(10)
     anchors.left: row.left
     anchors.right: row.right
-    spacing: Theme.fs(8)
+    columnSpacing: Theme.fs(8)
+    rowSpacing: Theme.fs(8)
+    columns: Math.max(1, Math.min(root.actionItems.length,
+      Math.floor((width + columnSpacing) / (Theme.fs(96) + columnSpacing))))
     visible: root.actionItems.length > 0
 
     Repeater {
@@ -260,13 +266,15 @@ Item {
         readonly property bool primary: index === 0
         objectName: "notificationAction-" + modelData.identifier
         Layout.fillWidth: true
+        Layout.preferredWidth: 1
         text: modelData.text
         implicitHeight: Theme.fs(30)
         onClicked: root.actionRequested(modelData.identifier)
         contentItem: Text {
           text: action.text
           textFormat: Text.PlainText
-          color: action.primary ? Theme.notificationBackground : Theme.notificationText
+          color: !action.primary ? Theme.notificationText
+               : root.urgency === 2 ? Theme.notificationCriticalActionText : Theme.notificationActionText
           font.family: Theme.uiFamily
           font.pixelSize: Theme.fs(13)
           font.weight: Font.DemiBold

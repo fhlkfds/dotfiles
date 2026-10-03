@@ -117,7 +117,10 @@ function isMediaNotification(app, image) {
 // Age shown on replayed history cards: "now" under a minute, then minutes,
 // hours, days. Live cards show nothing, so this only runs for replays.
 function ageLabel(timestampMs, nowMs) {
-  var seconds = Math.max(0, Math.floor((finiteNumber(nowMs, 0) - finiteNumber(timestampMs, 0)) / 1000))
+  var now = finiteNumber(nowMs, Date.now())
+  var timestamp = finiteNumber(timestampMs, now)
+  if (timestamp <= 0) return "now"
+  var seconds = Math.max(0, Math.floor((now - timestamp) / 1000))
   if (seconds < 60) return "now"
   if (seconds < 3600) return Math.floor(seconds / 60) + "m"
   if (seconds < 86400) return Math.floor(seconds / 3600) + "h"

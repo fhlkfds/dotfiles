@@ -15,6 +15,12 @@ assert.equal(logic.ageLabel(1000, 1000 + 3 * 3600 * 1000), "3h");
 assert.equal(logic.ageLabel(1000, 1000 + 2 * 86400 * 1000), "2d");
 assert.equal(logic.ageLabel(5000, 1000), "now");
 assert.equal(logic.ageLabel("junk", 1000), "now");
+const now = Date.now();
+for (const timestamp of [undefined, null, 0, -1, "junk", NaN, Infinity])
+  assert.equal(logic.ageLabel(timestamp, now), "now");
+for (const [seconds, label] of [[60, "1m"], [3599, "59m"], [3600, "1h"],
+                               [86399, "23h"], [86400, "1d"]])
+  assert.equal(logic.ageLabel(now - seconds * 1000, now), label);
 
 const notification = {
   id: 7, appName: "NetworkManager", summary: "Wi-Fi connected", body: "Office",

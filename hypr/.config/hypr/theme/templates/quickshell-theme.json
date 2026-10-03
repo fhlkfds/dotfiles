@@ -41,6 +41,8 @@
     "background": "{{ background }}",
     "surface": "{{ surface }}",
     "shadow": "{{ shadow }}",
+    "actionText": "{{ fg_on(accent) }}",
+    "criticalActionText": "{{ fg_on(critical) }}",
     "text": "{{ foreground_bright }}",
     "bodyText": "{{ foreground }}",
     "countdown": "{{ accent }}",
