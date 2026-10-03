@@ -132,6 +132,7 @@ Item {
   property var nativeEntry
   property int activeWrites: Quickshell.activeWrites
   signal nativeHintsChanged()
+  signal nativeBodyChanged()
   function imageFailed(item) { return item.status === Image.Error }
   function resizeCard(width, scale) { NotificationConfig.cardWidth = width; Theme.fontScale = scale }
   function addEntry(key, screen) {
@@ -150,13 +151,15 @@ Item {
   function receiveArt(app, image, useAppIcon) {
     nativeEntry = {id: 7, appName: app, summary: "Now Playing", body: "First track",
       image: useAppIcon ? "" : image, appIcon: useAppIcon ? image : "", urgency: 2,
-      hints: {revision: 0}, hintsChanged: nativeHintsChanged,
+      hints: {revision: 0}, hintsChanged: nativeHintsChanged, bodyChanged: nativeBodyChanged,
       closed: {connect: function(callback) {}}}
     NotificationService.receive(nativeEntry)
   }
   function replaceArt(body) {
+    const bodyChanged = nativeEntry.body !== body
     nativeEntry.body = body
     nativeEntry.hints = {revision: nativeEntry.hints.revision + 1}
+    if (bodyChanged) nativeBodyChanged()
     nativeHintsChanged()
   }
   function replaceArtSource(image, useAppIcon) {
@@ -164,6 +167,7 @@ Item {
     replaceArt(nativeEntry.body)
   }
   function removeEntry() { NotificationService.popupModel.remove(0) }
+  function moveEntry(screen) { NotificationService.popupModel.setProperty(0, "screenName", screen) }
   NotificationCard { id: card; x: 50; y: 50 }
   NotificationStack { id: stack; x: 500; y: 50; ownerScreen: "test" }
 }''')
@@ -251,29 +255,41 @@ Item {
         QTest.qWait(30)
         self.assertEqual(len(stack.property("inputRegions").toVariant()), 2)
 
-    def save_art(self, path, size):
-        image = QImage(size, size, QImage.Format_RGB32)
-        image.fill(0xffff0000 if size == 8 else 0xff0000ff)
+    def save_art(self, path, color):
+        image = QImage(2048, 2048, QImage.Format_RGB32)
+        image.fill(color)
         self.assertTrue(image.save(str(path)))
 
     def art_images(self, card, app):
-        names = ("notificationSleeveImage", "notificationLabelImage") if app == "Spotify" else (
-            "notificationBadgeImage",)
-        images = {item.objectName(): item for item in self.items(card) if item.objectName() in names}
-        self.assertEqual(set(images), set(names))
-        return images.values()
+        name = "notificationSleeveImage" if app == "Spotify" else "notificationBadgeImage"
+        image = next(item for item in self.items(card) if item.objectName() == name)
+        if app == "Spotify":
+            label = next(item for item in self.items(card)
+                         if item.objectName() == "notificationLabelEffect")
+            self.assertEqual(label.property("source"), image)
+        return [image]
 
-    def assert_art_size(self, card, app, size):
-        images = list(self.art_images(card, app))
+    def wait_until(self, predicate):
         deadline = time.monotonic() + 2
-        while time.monotonic() < deadline:
-            if all(image.property("progress") == 1 and
-                   image.property("sourceSize").width() == size for image in images):
-                return
+        while not predicate():
+            self.assertLess(time.monotonic(), deadline, "timed out waiting for artwork")
             QTest.qWait(10)
-        self.fail(f"Images did not finish loading {size}px art: " + repr({image.objectName():
-                  (image.property("progress"), image.property("sourceSize").width())
-                  for image in images}))
+
+    def art_color(self, image):
+        result = image.grabToImage()
+        self.wait_until(lambda: not result.image().isNull())
+        pixels = result.image()
+        return pixels.pixelColor(pixels.width() // 2, pixels.height() // 2).rgba()
+
+    def assert_art_color(self, card, app, color):
+        image = self.art_images(card, app)[0]
+        self.wait_until(lambda: image.property("progress") == 1 and self.art_color(image) == color)
+        size = image.property("sourceSize")
+        self.assertLessEqual(size.width(), image.width() * self.view.devicePixelRatio() + 1)
+        self.assertLessEqual(size.height(), image.height() * self.view.devicePixelRatio() + 1)
+        loaded = [item for item in self.items(card) if item.property("sourceSize") is not None
+                  and item.property("source") != QUrl()]
+        self.assertEqual(loaded, [image], "inactive layouts must not load art")
 
     def stack_cards(self):
         stack = self.root.property("stackItem")
@@ -287,15 +303,15 @@ Item {
         for app in ("Spotify", "Fixture"):
             for use_app_icon in (False, True):
                 with self.subTest(app=app, use_app_icon=use_app_icon):
-                    self.save_art(art, 8)
+                    self.save_art(art, 0xffff0000)
                     self.root.addArt(app + "1", app, url, use_app_icon)
                     first = self.stack_cards()[0]
-                    self.assert_art_size(first, app, 8)
-                    self.save_art(art, 16)
+                    self.assert_art_color(first, app, 0xffff0000)
+                    self.save_art(art, 0xff0000ff)
                     self.root.addArt(app + "2", app, url, use_app_icon)
                     second = self.stack_cards()[1]
-                    self.assert_art_size(second, app, 16)
-                    self.assert_art_size(first, app, 8)
+                    self.assert_art_color(second, app, 0xff0000ff)
+                    self.assert_art_color(first, app, 0xffff0000)
                     self.root.removeEntry()
                     self.root.removeEntry()
 
@@ -305,24 +321,39 @@ Item {
         for app in ("Spotify", "Fixture"):
             for use_app_icon in (False, True):
                 with self.subTest(app=app, use_app_icon=use_app_icon):
-                    self.save_art(art, 8)
+                    self.save_art(art, 0xffff0000)
                     self.root.receiveArt(app, url, use_app_icon)
                     card = self.stack_cards()[0]
-                    self.assert_art_size(card, app, 8)
+                    self.assert_art_color(card, app, 0xffff0000)
                     # A native hints change can refresh identical displayed text.
-                    for size, body in ((16, "Second track"), (8, "Second track")):
-                        self.save_art(art, size)
+                    for color, body in ((0xff0000ff, "Second track"), (0xffff0000, "Second track")):
+                        self.save_art(art, color)
                         writes = self.root.property("activeWrites")
                         self.root.replaceArt(body)
                         self.assertIs(self.stack_cards()[0], card)
-                        self.assert_art_size(card, app, size)
+                        self.assert_art_color(card, app, color)
                         self.assertEqual(self.root.property("activeWrites"), writes + 1)
                     # Reloading must preserve the binding for a later, new URL.
                     other_art = Path(self.temp.name) / "other.png"
-                    self.save_art(other_art, 16)
+                    self.save_art(other_art, 0xff0000ff)
                     self.root.replaceArtSource(QUrl.fromLocalFile(str(other_art)).toString(), use_app_icon)
-                    self.assert_art_size(card, app, 16)
+                    self.assert_art_color(card, app, 0xff0000ff)
                     self.root.removeEntry()
+
+    def test_hidden_cards_do_not_load_art(self):
+        art = Path(self.temp.name) / "hidden.png"
+        self.save_art(art, 0xffff0000)
+        for app in ("Spotify", "Fixture"):
+            with self.subTest(app=app):
+                self.root.addArt("hidden", app, QUrl.fromLocalFile(str(art)).toString(), False)
+                card = self.stack_cards()[0]
+                self.assert_art_color(card, app, 0xffff0000)
+                self.root.moveEntry("other")
+                self.wait_until(lambda: all(item.property("source") == QUrl()
+                                for item in self.items(card) if item.property("sourceSize") is not None))
+                self.root.moveEntry("test")
+                self.assert_art_color(card, app, 0xffff0000)
+                self.root.removeEntry()
 
     def test_replacement_recovers_missing_image(self):
         art = Path(self.temp.name) / "initially-missing.png"
@@ -334,9 +365,9 @@ Item {
         while not self.root.imageFailed(image) and time.monotonic() < deadline:
             QTest.qWait(10)
         self.assertTrue(self.root.imageFailed(image), "missing file must fail before recovery")
-        self.save_art(art, 16)
+        self.save_art(art, 0xff0000ff)
         self.root.replaceArt("First track")
-        self.assert_art_size(card, "Fixture", 16)
+        self.assert_art_color(card, "Fixture", 0xff0000ff)
 
 
 if __name__ == "__main__":

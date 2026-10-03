@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import QtQuick.Effects
 import ".."
 
@@ -12,8 +13,6 @@ Item {
   property bool spinning: MediaState.isPlaying
 
   function refreshArtwork() {
-    labelArt.source = ""
-    labelArt.source = Qt.binding(function() { return root.source })
     sleeve.source = ""
     sleeve.source = Qt.binding(function() { return root.source })
   }
@@ -55,19 +54,6 @@ Item {
       width: Math.round(disc.width * 0.42)
       height: width
 
-      Image {
-        id: labelArt
-        objectName: "notificationLabelImage"
-        anchors.fill: parent
-        source: root.source
-        fillMode: Image.PreserveAspectCrop
-        asynchronous: true
-        // New loads must read reused files instead of a previous decoded image.
-        cache: false
-        smooth: true
-        visible: false
-      }
-
       Rectangle {
         id: labelMask
         anchors.fill: parent
@@ -77,18 +63,20 @@ Item {
       }
 
       MultiEffect {
+        objectName: "notificationLabelEffect"
         anchors.fill: parent
-        source: labelArt
+        // Share the sleeve's pixels so the label cannot load a different track.
+        source: sleeve
         maskEnabled: true
         maskSource: labelMask
-        visible: labelArt.status === Image.Ready
+        visible: sleeve.status === Image.Ready
       }
 
       Rectangle {
         anchors.fill: parent
         radius: width / 2
         color: Theme.accent
-        visible: labelArt.status !== Image.Ready
+        visible: sleeve.status !== Image.Ready
       }
 
       Rectangle {
@@ -117,6 +105,8 @@ Item {
     width: root.sleeveSize
     height: root.sleeveSize
     source: root.source
+    sourceSize: Qt.size(Math.max(1, Math.ceil(width * Screen.devicePixelRatio)),
+                        Math.max(1, Math.ceil(height * Screen.devicePixelRatio)))
     fillMode: Image.PreserveAspectCrop
     asynchronous: true
     cache: false
