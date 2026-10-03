@@ -48,7 +48,6 @@ case $1 in
     printf ' file   cdrom    sda      /cache/netinst.iso\n'
     ;;
   destroy|send-key|change-media) ;;
-  event) exit "${VM_TEST_REBOOT_EXIT:-0}" ;;
   domstate) printf 'shut off (%s)\n' "${VM_TEST_SHUTOFF_REASON:-shutdown}" ;;
   vol-info) printf 'Capacity: %s\n' "${VM_TEST_BASE_CAPACITY:-107374182400}" ;;
   vol-path)
@@ -103,6 +102,7 @@ cat >/dev/null
 printf 'rofi %s\n' "$prompt" >>"$VM_TEST_CALLS"
 case $prompt in
   'VM name') answer=${VM_TEST_NAME-$filter} ;;
+  Username) answer=${VM_TEST_USER-$filter} ;;
   Password) answer=$VM_TEST_PASSWORD ;;
   Confirm) answer=${VM_TEST_CONFIRM-$VM_TEST_PASSWORD} ;;
   'Install host SSH key?') answer=${VM_TEST_SSH:-Yes} ;;
@@ -329,6 +329,7 @@ assert_contains "$calls" 'rofi VM name'
 assert_contains "$calls" 'rofi Password'
 assert_contains "$calls" 'rofi Confirm'
 assert_contains "$calls" 'rofi Install host SSH key?'
+assert_not_contains "$calls" 'rofi Username'
 assert_contains "$calls" 'virt-install --connect qemu:///system --name debian13-docker-2 '
 assert_contains "$calls" "--location $test_root/cache/vm-presets/$iso_name"
 wait_for_call 'virt-manager --connect qemu:///system --show-domain-console debian13-docker-2'
@@ -419,9 +420,15 @@ grep -Fxq win11-base "$domains" && fail 'the base VM is still defined'
 assert_contains "$calls" 'virt-install --connect qemu:///system --name win11-1 --osinfo win11 '
 assert_contains "$calls" 'backing_store=/var/lib/libvirt/images/win11-base.qcow2,backing_format=qcow2'
 assert_contains "$calls" '--import --boot uefi --tpm emulator'
-assert_contains "$calls" '--event reboot --timeout 900'
-assert_contains "$calls" '--eject --live --config'
-assert_contains "$calls" 'win11-1 is finishing Windows setup. Log in as tester'
+assert_contains "$calls" 'device=cdrom,bus=sata,startup_policy=optional --network network=default'
+assert_contains "$calls" 'rofi Username'
+# The running clone keeps the answer disc for every setup pass; only its saved
+# definition drops it.
+grep -Eq '^virsh -c qemu:///system change-media [0-9a-f-]+ .*/\.answers-[0-9a-f-]+\.iso --eject --config$' "$calls" ||
+  fail 'the answer disc was not dropped from the saved definition only'
+assert_not_contains "$calls" '--live'
+assert_not_contains "$calls" ' event '
+assert_contains "$calls" 'then sign in as tester.'
 assert_not_contains "$calls" 'rofi Install host SSH key?'
 wait_for_call 'virt-manager --connect qemu:///system --show-domain-console win11-1'
 assert_contains "$injected/all-discs.xml" 'sysprep.exe /generalize'
@@ -439,13 +446,27 @@ assert_contains "$calls" 'The clone disk cannot be smaller than the Windows base
 grep -Fq 'virt-install' "$calls" && fail 'virt-install ran with a truncated clone disk'
 reset_calls
 
-# Without a setup reboot, do not delete the answer disc under a running VM or
-# report success. Remove only this failed clone and its overlay.
-VM_TEST_REBOOT_EXIT=1 run create win11 --name reboot-failed >/dev/null 2>&1 &&
-  fail 'reported successful setup without a reboot'
-grep -Fxq reboot-failed "$domains" && fail 'left the incomplete clone running'
-assert_contains "$calls" 'Waiting for the Windows setup reboot failed.'
-assert_not_contains "$calls" 'reboot-failed is finishing Windows setup'
+# The prompted username becomes the local account.
+VM_TEST_USER=alice run create win11 --name named-user >/dev/null 2>&1 || fail 'create win11 as alice failed'
+assert_contains "$injected/autounattend.xml" '<Name>alice</Name>'
+assert_contains "$calls" 'then sign in as alice.'
+reset_calls
+
+for bad_user in 'bad user' 'has<xml' 'ends-with-dot.' 'twenty-one-characters' Administrator GUEST Users named-user-2; do
+  VM_TEST_USER=$bad_user run create win11 --name named-user-2 >/dev/null 2>&1 &&
+    fail "the Windows username [$bad_user] was accepted"
+  assert_contains "$calls" 'rofi Username'
+  grep -Eq 'Invalid Windows username|is a built-in Windows account|same as the computer name' "$calls" ||
+    fail "the username [$bad_user] was refused for the wrong reason"
+  grep -Fq 'virt-install' "$calls" && fail "virt-install ran for the username [$bad_user]"
+  grep -Fq 'rofi Password' "$calls" && fail "asked for a password after the username [$bad_user]"
+  reset_calls
+done
+
+VM_TEST_USER=__cancel__ run create win11 >/dev/null 2>&1 || fail 'cancelling the username prompt was an error'
+assert_contains "$calls" 'rofi Username'
+grep -Fq 'rofi Password' "$calls" && fail 'asked for a password after cancelling the username'
+grep -Fq 'virt-install' "$calls" && fail 'virt-install ran after cancelling the username'
 reset_calls
 
 # Later creates only clone.

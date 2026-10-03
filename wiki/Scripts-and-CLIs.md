@@ -505,15 +505,21 @@ first one is slow.
    then undefined and only its disk is kept.
 3. Each create, including the first, clones that disk with `backing_store` and
    boots it with an answer disc that sets the computer name (the VM name cut to
-   15 characters) and creates the user as a local administrator. A clone is
-   ready in a few minutes.
+   15 characters) and creates the account as a local administrator. Windows
+   setup runs to the sign-in screen without any clicks in a few minutes.
 
-There is no SSH key prompt. Windows takes the password only in a reversible
-encoding, so it sits on a 0644 answer disc in `$XDG_CACHE_HOME/vm-presets/`
-until the clone's first reboot, when the disc is ejected and deleted. If that
-reboot cannot be confirmed within 15 minutes, creation fails and removes the
-incomplete clone. A clone disk must be at least as large as its base image. Device
-encryption is turned off in the base because every clone gets a new TPM.
+Rofi asks for the Windows username, pre-filled with the host `$USER`, between
+the VM name and the password. It must be up to 20 letters, digits, `.`, `_` or
+`-`, not a built-in account or group such as `Administrator` or `Users`, and
+not the computer name.
+There is no SSH key prompt and no Microsoft account. Windows takes the password
+only in a reversible encoding, so it is on a 0644 answer disc in
+`$XDG_CACHE_HOME/vm-presets/` only until the clone starts. The running clone
+keeps that disc, readable inside Windows, until it is first powered off, because
+ejecting it at the first reboot stopped OOBE at the region page. The disc is
+removed from the saved VM definition at once and its file is deleted on the
+host. A clone disk must be at least as large as its base image.
+Device encryption is turned off in the base because every clone gets a new TPM.
 
 To rebuild the base from a newer ISO, delete every Windows 11 clone first,
 since each depends on it, then run `virsh -c qemu:///system vol-delete
