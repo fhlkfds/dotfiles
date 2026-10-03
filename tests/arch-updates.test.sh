@@ -16,6 +16,8 @@ chmod +x "$fixture/checkupdates" "$fixture/yay"
 # The stubs are only meaningful if the host's real checkupdates/yay/paru are out
 # of reach, so the fixture is the entire PATH and supplies its own bash.
 ln -s "$(command -v bash)" "$fixture/bash"
+ln -s "$(command -v mktemp)" "$fixture/mktemp"
+ln -s "$(command -v rm)" "$fixture/rm"
 
 output=$(PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates")
 [[ $output == '{"repo":2,"aur":1,"total":3,"repoPackages":["core","extra"],"aurPackages":["aur-one"]}' ]]
@@ -31,6 +33,13 @@ printf '#!/bin/sh\nprintf "aur-one 1 -> 2\\n"\nexit 1\n' > "$fixture/yay"
 output=$(PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates")
 [[ $output == '{"repo":0,"aur":1,"total":1,"repoPackages":[],"aurPackages":["aur-one"]}' ]]
 
+# A crash with no stderr is still a failed check, unlike yay's empty exit 1.
+printf '#!/bin/sh\nexit 139\n' > "$fixture/yay"
+if PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates" >/dev/null 2>&1; then
+  printf 'FAIL: crashed AUR check reported success\n' >&2
+  exit 1
+fi
+
 # AUR throttling must keep the last known widget values rather than claim that
 # there are no updates.
 printf '#!/bin/sh\nprintf "status 429: Rate limit reached\\n" >&2\nexit 1\n' > "$fixture/yay"
@@ -39,6 +48,21 @@ if output=$(PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates" 
   exit 1
 fi
 [[ -z $output ]]
+
+# Network errors and stderr warnings must never become package names.
+printf '#!/bin/sh\nprintf "connection refused\\n" >&2\nexit 1\n' > "$fixture/yay"
+if PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates" >/dev/null 2>&1; then
+  printf 'FAIL: AUR network failure reported success\n' >&2
+  exit 1
+fi
+printf '#!/bin/sh\nprintf "error: request failed\\n"\nexit 1\n' > "$fixture/yay"
+if PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates" >/dev/null 2>&1; then
+  printf 'FAIL: AUR diagnostic counted as a package\n' >&2
+  exit 1
+fi
+printf '#!/bin/sh\nprintf "aur-one 1 -> 2\\n"\nprintf "warning: orphan package\\n" >&2\n' > "$fixture/yay"
+output=$(PATH="$fixture" "$repo_root/hypr/.config/hypr/scripts/arch-updates")
+[[ $output == '{"repo":0,"aur":1,"total":1,"repoPackages":[],"aurPackages":["aur-one"]}' ]]
 
 # A failed sync must not be reported as "zero updates"; the widget keeps its
 # last known count when the script exits non-zero.
@@ -69,13 +93,15 @@ mv "$fixture/checkupdates.off" "$fixture/checkupdates"
 # composed upgrade command can be asserted on a host that has neither an AUR
 # helper nor apt.
 script="$repo_root/hypr/.config/hypr/scripts/arch-updates"
-mv "$fixture/yay" "$fixture/paru"
 printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "$ARCH_UPDATES_TEST_LOG"\n' > "$fixture/kitty"
 chmod +x "$fixture/kitty"
 
 run_update_stub() {
+  local status=0 output
   rm -f "$fixture/update.log"
-  ARCH_UPDATES_TEST_LOG="$fixture/update.log" PATH="$fixture" TERMINAL="" "$script" update
+  output=$(ARCH_UPDATES_TEST_LOG="$fixture/update.log" PATH="$fixture" TERMINAL="${1:-}" "$script" update) || status=$?
+  # A zero-exit terminal that never launches the child is not a successful update.
+  [[ $status == 1 && -z $output ]]
 }
 
 # Arch: the AUR helper is the upgrade command, and it wins over apt.
@@ -83,8 +109,14 @@ printf '#!/bin/sh\nexit 0\n' > "$fixture/apt"
 chmod +x "$fixture/apt"
 run_update_stub
 grep -Fx 'aur' "$fixture/update.log" >/dev/null
-grep -Fx "$fixture/paru" "$fixture/update.log" >/dev/null
-grep -Fq 'aur) "$2" -Syu' "$fixture/update.log"
+grep -Fx "$fixture/yay" "$fixture/update.log" >/dev/null
+grep -Fq 'aur) "$helper" "$@"' "$fixture/update.log"
+# Unattended: defaults everywhere, and removals (the [y/N] prompts) stay no.
+grep -Fx -- '--noconfirm' "$fixture/update.log" >/dev/null
+grep -Fx -- '--noremovemake' "$fixture/update.log" >/dev/null
+grep -Fx -- '--answerdiff' "$fixture/update.log" >/dev/null
+# The title is what the Hyprland rule uses to put this on workspace 1.
+grep -Fx 'System Update' "$fixture/update.log" >/dev/null
 # The window must stay open on a read rather than exiting the moment yay does.
 grep -Fq 'read -rp "Done. Press Enter to close. "' "$fixture/update.log"
 # The upgrade's exit status has to survive, or the widget cannot tell a failed
@@ -102,18 +134,94 @@ ARCH_UPDATES_TTL=600 ARCH_UPDATES_CACHE_DIR="$fixture/update-cache" \
 # The inner shell must execute a helper whose path contains spaces literally.
 mkdir "$fixture/with space"
 printf '#!/bin/sh\nprintf "updated\\n" > "$ARCH_UPDATES_TEST_LOG"\n' > "$fixture/with space/yay"
-printf '#!/bin/sh\nshift 2\n"$@" </dev/null\n' > "$fixture/exec-term"
+printf '#!/bin/sh\nshift 2\nprintf "\\n\\n" | "$@"\n' > "$fixture/exec-term"
 chmod +x "$fixture/with space/yay" "$fixture/exec-term"
 ARCH_UPDATES_TEST_LOG="$fixture/executed.log" TERMINAL="$fixture/exec-term" \
-  PATH="$fixture/with space:$fixture:$PATH" "$script" update
+  PATH="$fixture/with space:$fixture:$PATH" "$script" update >/dev/null
 grep -Fxq updated "$fixture/executed.log"
+
+# The prompt: Enter means both, "p" is pacman alone, "a" is the AUR alone, all
+# through yay. The side that ran is printed so the widget only clears that
+# count; a partial update must not zero the other one.
+printf '#!/bin/sh\necho "$@" > "$ARCH_UPDATES_TEST_LOG"\n' > "$fixture/with space/yay"
+printf '#!/bin/sh\nshift 2\nprintf "%%s\\n\\n" "$ARCH_UPDATES_ANSWER" | "$@" >/dev/null\n' > "$fixture/answer-term"
+chmod +x "$fixture/with space/yay" "$fixture/answer-term"
+for case in '|all|-Syu --noconfirm' 'B|all|-Syu --noconfirm' 'p|repo|-Syu --repo --noconfirm' 'a|aur|-Sua --noconfirm'; do
+  IFS='|' read -r answer want_scope want_args <<< "$case"
+  scope=$(ARCH_UPDATES_ANSWER=$answer ARCH_UPDATES_TEST_LOG="$fixture/executed.log" \
+    TERMINAL="$fixture/answer-term" PATH="$fixture/with space:$fixture:$PATH" \
+    "$script" update)
+  [[ $scope == "$want_scope" && $(<"$fixture/executed.log") == "$want_args"* ]] ||
+    { printf 'FAIL: answer "%s" printed "%s" and ran: %s\n' "$answer" "$scope" "$(<"$fixture/executed.log")" >&2; exit 1; }
+done
+
+# Closing stdin or entering an invalid answer must not start an upgrade.
+printf '#!/bin/sh\nshift 2\n"$@" </dev/null\nexit 0\n' > "$fixture/cancel-term"
+chmod +x "$fixture/cancel-term"
+rm "$fixture/executed.log"
+for answer in eof x potato; do
+  term="$fixture/answer-term"
+  [[ $answer != eof ]] || term="$fixture/cancel-term"
+  if ARCH_UPDATES_ANSWER=$answer ARCH_UPDATES_TEST_LOG="$fixture/executed.log" \
+    TERMINAL="$term" PATH="$fixture/with space:$fixture:$PATH" "$script" update >/dev/null 2>&1; then
+    printf 'FAIL: cancelled or invalid choice reported success\n' >&2
+    exit 1
+  fi
+  [[ ! -e $fixture/executed.log ]]
+done
+
+# Kitty can return zero after a failed child. Use the manager result, and keep
+# terminal stdout out of the scope protocol.
+printf '#!/bin/sh\nexit 42\n' > "$fixture/with space/yay"
+printf '#!/bin/sh\nshift 2\nprintf "\\n\\n" | "$@"\nprintf "terminal diagnostic\\n"\nexit 0\n' > "$fixture/masking-term"
+chmod +x "$fixture/masking-term"
+status=0
+scope=$(TERMINAL="$fixture/masking-term" PATH="$fixture/with space:$fixture:$PATH" "$script" update 2>/dev/null) || status=$?
+[[ $status == 42 && -z $scope ]] || { printf 'FAIL: terminal masked manager failure\n' >&2; exit 1; }
+printf '#!/bin/sh\nexit 0\n' > "$fixture/with space/yay"
+scope=$(TERMINAL="$fixture/masking-term" PATH="$fixture/with space:$fixture:$PATH" "$script" update 2>/dev/null)
+[[ $scope == all ]]
+
+# Different terminal CLIs need their own command separator/title syntax.
+for terminal_name in alacritty ghostty; do
+  printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "$ARCH_UPDATES_TEST_LOG"\n' > "$fixture/$terminal_name"
+  chmod +x "$fixture/$terminal_name"
+  run_update_stub "$terminal_name"
+  grep -Fxq -- '-e' "$fixture/update.log"
+done
+grep -Fxq -- '--title=System Update' "$fixture/update.log"
+grep -Fxq -- '--gtk-single-instance=false' "$fixture/update.log"
+rm "$fixture/alacritty" "$fixture/ghostty"
+
+# A failed run reports no side, so nothing is cleared.
+[[ -z $(ARCH_UPDATES_TEST_LOG=/dev/null TERMINAL="$fixture/failterm" PATH="$fixture:$PATH" "$script" update 2>/dev/null) ]] ||
+  { printf 'FAIL: failed update still reported an updated side\n' >&2; exit 1; }
+
+# yay only: paru on its own is not used as the AUR helper.
+mv "$fixture/yay" "$fixture/paru"
+run_update_stub
+! grep -Fx aur "$fixture/update.log" >/dev/null ||
+  { printf 'FAIL: paru was used as the AUR helper\n' >&2; exit 1; }
+mv "$fixture/paru" "$fixture/yay"
 
 # Debian: with no AUR helper, apt takes over. This branch never runs on the
 # Arch machines, so the stub is the only thing that will catch a typo in it.
-rm "$fixture/paru"
+rm "$fixture/yay"
 run_update_stub
 grep -Fx apt "$fixture/update.log" >/dev/null
 grep -Fq 'apt) sudo apt update && sudo apt full-upgrade' "$fixture/update.log"
+
+# Fallback managers upgrade repository packages only; never clear AUR counts.
+# sudo is a fixture and the whole PATH is isolated from host managers.
+printf '#!/bin/sh\n"$@"\n' > "$fixture/sudo"
+printf '#!/bin/sh\nexit 0\n' > "$fixture/pacman"
+chmod +x "$fixture/sudo" "$fixture/pacman"
+scope=$(TERMINAL="$fixture/masking-term" PATH="$fixture" "$script" update 2>/dev/null)
+[[ $scope == repo ]]
+rm "$fixture/pacman"
+scope=$(TERMINAL="$fixture/masking-term" PATH="$fixture" "$script" update 2>/dev/null)
+[[ $scope == repo ]]
+rm "$fixture/sudo"
 
 # Debian count uses apt's local upgrade listing, not Arch's checkupdates.
 rm "$fixture/checkupdates"
@@ -126,8 +234,7 @@ output=$(PATH="$fixture" "$script" count)
 printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "$ARCH_UPDATES_TEST_LOG"\n' > "$fixture/myterm"
 chmod +x "$fixture/myterm"
 rm -f "$fixture/update.log"
-ARCH_UPDATES_TEST_LOG="$fixture/update.log" PATH="$fixture" TERMINAL=myterm \
-  "$script" update
+run_update_stub myterm
 [[ -s $fixture/update.log ]]
 rm "$fixture/myterm"
 
@@ -155,7 +262,6 @@ calls="$cache/calls"
 : > "$calls"
 printf '#!/bin/sh\nprintf "checkupdates\\n" >> "%s"\nprintf "core 1 -> 2\\n"\n' "$calls" > "$fixture/checkupdates"
 printf '#!/bin/sh\nprintf "yay\\n" >> "%s"\nprintf "aur-one 1 -> 2\\n"\n' "$calls" > "$fixture/yay"
-rm -f "$fixture/paru"
 chmod +x "$fixture/checkupdates" "$fixture/yay"
 
 run_cached() {

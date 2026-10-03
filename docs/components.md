@@ -327,13 +327,29 @@ browser is closed. Fixture tests live in `tests/browser-native-tools.test.sh`.
 
 ## Arch update indicator
 
-The clock's hover tray shows every pending pacman and AUR package from
-`arch-updates`. It refreshes every 90 minutes and after its click-only Kitty
-update window closes. Pending updates use the active theme accent.
+`UpdatesIcon` sits left of the mode pills and shows one combined count of
+pending pacman and AUR packages from `arch-updates`, in the active theme
+accent. It is hidden when a check finds nothing. Hovering lists the pacman and
+AUR packages separately. The count refreshes every 90 minutes and after the
+update window closes.
+
+Clicking opens a `System Update` Kitty window silently on workspace 1 and the
+bar shows an ellipsis while it runs. The window asks for both, pacman only, or
+AUR only (Enter is both) and runs the choice through `yay` with `--noconfirm`:
+prompt defaults throughout, so package removals are declined and the run aborts
+instead. Only the side that was upgraded has its count cleared. `yay` is the
+only AUR helper the script uses; without it the script falls back to plain
+`pacman`, then `apt`, which clear only the repository count. Closing the menu
+without an answer cancels the update; an invalid choice also runs nothing.
+Failures keep the previous counts even when the terminal exits successfully.
 
 A failed repository or AUR check exits non-zero rather than reporting zero
-updates, so the indicator keeps its last known counts, notes `Last check
-failed` in the hover tray, and waits for the next 90-minute poll.
+updates. The indicator keeps its last known counts, stays visible (showing `!`
+when it has no count at all), notes `Last check failed` in the hover, and waits
+for the next 90-minute poll. `checkupdates` from `pacman-contrib` is required;
+without it every check fails.
+After a partial upgrade, an earlier failed check remains flagged until a full
+upgrade or a successful check verifies both sides.
 
 ## Waybar: removed
 

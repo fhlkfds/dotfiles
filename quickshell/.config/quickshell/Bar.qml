@@ -525,6 +525,7 @@ Scope {
           spacing: Theme.fs(3 * panel.barScale)
 
           RecordIcon { barScale: panel.barScale }
+          UpdatesIcon { barScale: panel.barScale }
           ModeIndicators { screenName: panel.modelData.name; barScale: panel.barScale }
         }
 

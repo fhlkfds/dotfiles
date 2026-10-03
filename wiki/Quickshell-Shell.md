@@ -46,7 +46,7 @@ the clock centred, the tray and power hard right.
 | Island | Holds |
 | --- | --- |
 | `leftIsland` | `WorkspacesModule` |
-| `centerIsland` | recording and mode indicators, clock (time with seconds over the date), current weather in °F |
+| `centerIsland` | recording and mode indicators, pending updates, clock (time with seconds over the date), current weather in °F |
 | `trayIsland` | launcher, agent, VM, Bluetooth, network, audio, battery when present |
 | `powerIsland` | the power button, alone, circular |
 
@@ -72,7 +72,7 @@ it does not nudge the time. The clock opens the calendar.
 
 | Position | Widget |
 | --- | --- |
-| left of the clock | `RecordIcon`, `ModeIndicators` |
+| left of the clock | `RecordIcon`, `UpdatesIcon`, `ModeIndicators` |
 | the anchor | the clock itself |
 
 The `MediaPanel` anchors to the clock and opens through the `media` IPC target.
@@ -102,6 +102,19 @@ still clears the island on both sides.
   automatic-screensaver-disabled, and error states. Clicking opens the modes
   panel. They show *observed* state, so an error appears instead of a false
   success.
+- **Updates**: one combined count, hidden when a check finds nothing; hover
+  for the pacman and AUR split and package names. A failed check keeps the icon
+  visible (`!` when there is no count) so a missing `pacman-contrib` or an AUR
+  rate limit cannot pass for an up-to-date system. Checked every 90 minutes
+  through `scripts/arch-updates`, whose shared 10-minute cache keeps every
+  caller from re-querying the mirrors or the AUR. Clicking opens a "System
+  Update" terminal silently on workspace 1 (the bar shows an ellipsis) that
+  asks for both, pacman, or AUR (Enter = both) and runs it through `yay`
+  unattended: prompt defaults throughout, so package removals are declined and
+  abort rather than happen. `paru` is not used. A partial update only clears
+  the count for the side it upgraded; an existing failed-check marker remains
+  until both sides are verified. Cancelling the menu or entering an invalid
+  choice runs nothing, and failed upgrades preserve the counts.
 - **Battery**: shows charge percentage and state; hidden when no laptop battery
   is present. Clicking opens the battery panel.
 - **Windows VM icon**: appears while the container runs. Pulses amber while

@@ -7,13 +7,19 @@ Item {
   property real barScale: 1.0
   function s(n) { return Theme.fs(n * root.barScale) }
 
+  // A notification, not a permanent fixture: a clean check that finds nothing
+  // shows nothing. A failed check is not a clean zero, so it stays visible
+  // (muted) with the failure in the hover; otherwise a missing checkupdates or
+  // an AUR rate limit would look exactly like an up-to-date system.
+  visible: UpdatesState.totalCount > 0 || UpdatesState.updating || UpdatesState.stale
+
   implicitWidth: label.implicitWidth + root.s(16)
   implicitHeight: label.implicitHeight + root.s(6)
 
   Rectangle {
     anchors.fill: parent
     radius: Theme.radiusCell
-    color: UpdatesState.totalCount > 0 ? Theme.accent : "transparent"
+    color: UpdatesState.totalCount > 0 && !UpdatesState.stale ? Theme.accent : "transparent"
   }
 
   Text {
@@ -21,10 +27,14 @@ Item {
     anchors.centerIn: parent
     // An ellipsis while the upgrade terminal is open makes a second click
     // obviously unnecessary, instead of looking like the first one was ignored.
-    text: UpdatesState.updating ? "󰚰  …" : "󰚰  " + UpdatesState.totalCount
+    text: UpdatesState.updating
+      ? "󰚰  …"
+      : UpdatesState.totalCount === 0 && UpdatesState.stale
+        ? "󰚰  !"
+        : "󰚰  " + UpdatesState.totalCount
     font.family: Theme.glyphFamily
     font.pixelSize: root.s(14)
-    color: UpdatesState.totalCount > 0 ? Theme.onAccent : Theme.textMuted
+    color: UpdatesState.totalCount > 0 && !UpdatesState.stale ? Theme.onAccent : Theme.textMuted
   }
 
   MouseArea {
@@ -36,7 +46,7 @@ Item {
   }
 
   PopupWindow {
-    visible: mouse.containsMouse
+    visible: root.visible && mouse.containsMouse
     anchor.item: root
     anchor.edges: Edges.Bottom
     anchor.gravity: Edges.Bottom
@@ -55,7 +65,7 @@ Item {
       width: parent.width - 20
       horizontalAlignment: Text.AlignLeft
       wrapMode: Text.Wrap
-      text: "Packages (" + UpdatesState.repoCount + "): "
+      text: "Pacman (" + UpdatesState.repoCount + "): "
             + (UpdatesState.repoPackages.length > 0
               ? UpdatesState.repoPackages.join(", ")
               : "None")
