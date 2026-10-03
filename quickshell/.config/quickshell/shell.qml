@@ -14,6 +14,16 @@ Scope {
       output: modelData
     }
   }
+  // Spotify-only now-playing card on every monitor's desktop, hidden while
+  // Spotify is closed or has nothing loaded.
+  Variants {
+    model: Quickshell.screens
+
+    DesktopNowPlaying {
+      required property var modelData
+      output: modelData
+    }
+  }
   Notifications.NotificationRoot {}
   VideoDownloadRoot {}
   // Screen-centred Wi-Fi QR share window: one instance per monitor, only the
