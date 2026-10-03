@@ -24,7 +24,9 @@ PanelWindow {
 
   visible: SpotifyState.hasTrack
   anchors { bottom: true; left: true }
-  margins { bottom: Theme.fs(56); left: Theme.fs(56) }
+  // Lifts above the desktop clock when the output is too narrow to share the
+  // bottom edge with it.
+  margins { bottom: card.bottomMargin(output.width); left: card.edgeMargin }
   implicitWidth: card.implicitWidth + Theme.fs(8)
   implicitHeight: card.implicitHeight + Theme.fs(8)
   color: "transparent"

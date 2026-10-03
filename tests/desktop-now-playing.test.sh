@@ -40,8 +40,16 @@ grep -Fq 'anchors { bottom: true; left: true }' "$window" \
 # empty-mask one; the card must stay sized to its contents.
 ! grep -Fq 'top: true' "$window" || fail 'now-playing window stretches to the top edge'
 ! grep -Fq 'right: true' "$window" || fail 'now-playing window stretches to the right edge'
+grep -Fq 'card.bottomMargin(output.width)' "$window" \
+  || fail 'now-playing card does not move clear of the desktop clock on narrow outputs'
 grep -Fq 'spinAllowed: !panel.covered' "$window" \
   || fail 'record keeps spinning under application windows'
+
+# MultiEffect renders nothing on the software backend; the card must not hang
+# its text or art on it there.
+grep -Fq 'GraphicsInfo.api !== GraphicsInfo.Software' "$card" \
+  && grep -Fq 'layer.enabled: root.effects' "$card" \
+  || fail 'now-playing card goes blank on the software renderer'
 
 # Spotify only: the card must not fall back to MediaState's any-player choice.
 grep -Fq 'indexOf("spotify")' "$state" || fail 'SpotifyState does not filter for Spotify'
@@ -56,6 +64,9 @@ if command -v quickshell >/dev/null 2>&1; then
   test_root=$(mktemp -d)
   trap 'rm -rf -- "$test_root"' EXIT
   smoke_log="$test_root/smoke.log"
+  # No session bus: the harness runs on stand-in players and must never be
+  # able to reach a real Spotify.
+  DBUS_SESSION_BUS_ADDRESS="unix:path=$test_root/no-bus" \
   HOME="$test_root" XDG_STATE_HOME="$test_root/state" QT_QPA_PLATFORM=offscreen \
     timeout 60 quickshell -p "$smoke" >"$smoke_log" 2>&1 || true
   grep -Fq 'ok: Desktop now-playing card' "$smoke_log" \

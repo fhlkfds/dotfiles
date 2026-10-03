@@ -30,12 +30,26 @@ Singleton {
     return bus.indexOf("spotify") !== -1 || name.indexOf("spotify") !== -1
   }
 
+  // With more than one Spotify client on the bus (spotifyd next to the desktop
+  // app, say), prefer the one playing, then one with a track loaded, so an idle
+  // instance listed first cannot shadow the one in use.
   readonly property var player: {
     const list = root.players
-    for (var i = 0; i < list.length; i++)
-      if (root.isSpotify(list[i]))
-        return list[i]
-    return null
+    var loaded = null
+    var idle = null
+    for (var i = 0; i < list.length; i++) {
+      const p = list[i]
+      if (!root.isSpotify(p))
+        continue
+      if (p.playbackState === MprisPlaybackState.Playing)
+        return p
+      if (loaded === null && p.trackTitle !== ""
+          && p.playbackState !== MprisPlaybackState.Stopped)
+        loaded = p
+      if (idle === null)
+        idle = p
+    }
+    return loaded !== null ? loaded : idle
   }
 
   // Spotify sits at Stopped with no track right after launch; that is not
@@ -59,19 +73,26 @@ Singleton {
   readonly property real progress: length > 0
     ? Math.max(0, Math.min(1, position / length)) : 0
 
+  function refreshPosition() {
+    try {
+      if (root.player)
+        root.player.positionChanged()
+    } catch (e) {
+      // stand-in players without the signal simply keep their value
+    }
+  }
+
   Timer {
     interval: 1000
     repeat: true
     triggeredOnStart: true
     running: root.isPlaying
-    onTriggered: {
-      try {
-        root.player.positionChanged()
-      } catch (e) {
-        // stand-in players without the signal simply keep their value
-      }
-    }
+    onTriggered: root.refreshPosition()
   }
+
+  // The timer stops with playback; one last read lands the time on where the
+  // track actually paused instead of up to a second before it.
+  onIsPlayingChanged: refreshPosition()
 
   readonly property bool canNext: player !== null && player.canGoNext
   readonly property bool canPrevious: player !== null && player.canGoPrevious

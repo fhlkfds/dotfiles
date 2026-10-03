@@ -17,9 +17,32 @@ Item {
   property bool spinAllowed: true
 
   readonly property int discSize: Theme.fs(132)
-  readonly property bool spinning: media.isPlaying && spinAllowed && visible
-  readonly property string timeText:
-    MediaState.formatTime(media.position) + " / " + MediaState.formatTime(media.length)
+  // MultiEffect draws nothing on Qt Quick's software backend (no GPU, broken
+  // GL, QT_QUICK_BACKEND=software), which would blank the masked art and the
+  // whole shadowed text column. There the card goes without mask and shadow.
+  readonly property bool effects: GraphicsInfo.api !== GraphicsInfo.Software
+  // hasTrack too: Spotify can report Playing with no title between tracks,
+  // which hides the window, and a hidden window must not keep animating.
+  readonly property bool spinning: media.hasTrack && media.isPlaying && spinAllowed && visible
+  readonly property string timeText: media.length > 0
+    ? MediaState.formatTime(media.position) + " / " + MediaState.formatTime(media.length)
+    : MediaState.formatTime(media.position)
+
+  // DesktopClock fills the bottom-right corner: about fs(400) wide and fs(112)
+  // tall at fs(56) from the edges. clockReserve is that plus its margin and a
+  // gap. Where the card would run into it, on a portrait or narrow output or at
+  // a large text scale, the card sits above the clock's band instead.
+  readonly property int edgeMargin: Theme.fs(56)
+  readonly property int clockReserve: Theme.fs(480)
+  readonly property int clockBand: Theme.fs(112 + 24)
+
+  function fitsBesideClock(screenWidth) {
+    return edgeMargin + implicitWidth + clockReserve <= screenWidth
+  }
+
+  function bottomMargin(screenWidth) {
+    return fitsBesideClock(screenWidth) ? edgeMargin : edgeMargin + clockBand
+  }
 
   implicitWidth: discSize + Theme.fs(22) + info.implicitWidth
   implicitHeight: discSize
@@ -46,7 +69,7 @@ Item {
         asynchronous: true
         cache: true
         smooth: true
-        visible: false
+        visible: !root.effects && status === Image.Ready
       }
 
       Rectangle {
@@ -62,7 +85,7 @@ Item {
         source: art
         maskEnabled: true
         maskSource: discMask
-        visible: art.status === Image.Ready
+        visible: root.effects && art.status === Image.Ready
       }
 
       // Placeholder until the art arrives, or when Spotify gives none.
@@ -141,7 +164,7 @@ Item {
 
     // Text sits straight on the wallpaper like the clock, so a soft shadow is
     // what keeps it readable on a bright image.
-    layer.enabled: true
+    layer.enabled: root.effects
     layer.effect: MultiEffect {
       shadowEnabled: true
       shadowColor: Theme.shadowColor

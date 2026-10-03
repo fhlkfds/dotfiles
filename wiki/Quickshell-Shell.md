@@ -136,6 +136,13 @@ the background layer it is only visible on a workspace with no windows over
 it; the record stops spinning whenever the monitor's active workspace has
 windows, so a hidden card does not keep the output redrawing.
 
+Where the output is too narrow for the card and the clock to share the bottom
+edge (a portrait monitor, or a large text scale), the card moves up to sit
+above the clock's band instead of running into it. With more than one Spotify
+client on the bus, the one playing wins. On Qt Quick's software renderer,
+where `MultiEffect` draws nothing, the card drops the round art mask and the
+text shadow rather than going blank.
+
 It deliberately has no queue, sleep timer, or volume control: Spotify does not
 publish its queue over MPRIS, and ignores MPRIS volume on Linux.
 

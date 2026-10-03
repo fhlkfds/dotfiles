@@ -62,6 +62,24 @@ Scope {
     function togglePlaying() { toggleCalls++ }
   }
 
+  // A second, idle Spotify client (spotifyd) that must not shadow the real one.
+  QtObject {
+    id: spotifyd
+    property string dbusName: "org.mpris.MediaPlayer2.spotifyd"
+    property string identity: "Spotifyd"
+    property string trackTitle: ""
+    property string trackArtist: ""
+    property string trackArtUrl: ""
+    property int playbackState: MprisPlaybackState.Stopped
+    property bool lengthSupported: false
+    property real length: 0
+    property bool positionSupported: false
+    property real position: 0
+    property bool canGoNext: false
+    property bool canGoPrevious: false
+    property bool canTogglePlaying: false
+  }
+
   // The card needs a visible parent, or Qt reports it as invisible and the
   // spin assertions would depend on scene start-up order.
   Item { id: host; visible: true; DesktopNowPlayingCard { id: card } }
@@ -108,6 +126,7 @@ Scope {
     spotify.playbackState = MprisPlaybackState.Playing
     spotify.trackTitle = ""
     check("an empty title hides the card", !state.hasTrack)
+    check("record does not spin while the card is hidden", !card.spinning)
     spotify.trackTitle = Quickshell.env("NOW_PLAYING_TITLE") || "Shared Shelter"
 
     spotify.canGoNext = false
@@ -119,6 +138,24 @@ Scope {
     spotify.identity = "spotify"
     check("identity alone is enough to match spotify", state.player === spotify)
     spotify.dbusName = "spotify"
+
+    spotify.lengthSupported = false
+    check("time shows elapsed only when the length is unknown", card.timeText === "0:55")
+    spotify.lengthSupported = true
+
+    state.playersOverride = [spotifyd, spotify]
+    check("an idle spotify instance listed first does not shadow a playing one",
+      state.player === spotify)
+    spotify.playbackState = MprisPlaybackState.Paused
+    check("a paused spotify with a track beats an idle instance", state.player === spotify)
+    spotify.playbackState = MprisPlaybackState.Playing
+    state.playersOverride = [browser, spotify]
+
+    // DP-4 is a rotated 1280x1024 panel, so its logical width is 1024.
+    check("card sits beside the clock on a wide output",
+      card.fitsBesideClock(2560) && card.bottomMargin(2560) === card.edgeMargin)
+    check("card lifts above the clock on a narrow portrait output",
+      !card.fitsBesideClock(1024) && card.bottomMargin(1024) > card.edgeMargin)
 
     if (smoke.failures === 0)
       console.log("ok: Desktop now-playing card")
@@ -152,8 +189,8 @@ Scope {
 
       DesktopNowPlayingCard {
         id: shotCard
-        x: Theme.fs(56) + Theme.fs(4)
-        y: shotWindow.height - Theme.fs(56) - Theme.fs(4) - height
+        x: edgeMargin + Theme.fs(4)
+        y: shotWindow.height - bottomMargin(shotWindow.width) - Theme.fs(4) - height
         width: implicitWidth
         height: implicitHeight
         spinAllowed: false
