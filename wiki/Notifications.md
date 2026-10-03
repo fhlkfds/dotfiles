@@ -2,8 +2,8 @@
 
 Notifications are served and rendered by the persistent Quickshell process.
 Applications talk to `org.freedesktop.Notifications`; one service normalises the
-event, persists it, applies DND, and either places it in the focused monitor's
-top-right stack or writes it silently to history.
+event, persists it, applies DND, and either shows it in the top-right stack of
+every monitor or writes it silently to history.
 
 ```text
 application → Quickshell NotificationServer → NotificationService
@@ -31,9 +31,13 @@ individual visible card rectangles. Space between cards and shadows outside
 those rectangles are therefore click-through.
 
 The Quickshell bar is authoritative, so top-anchored notifications clear
-`Theme.barHeight` plus the normal outer gap. Notifications with no output
-metadata go to Hyprland's focused monitor, and a disconnected output is
-deterministically remapped to the current focused monitor.
+`Theme.barHeight` plus the normal outer gap.
+
+Every card is drawn on every monitor. Each card is still assigned an origin
+monitor, Hyprland's focused monitor when it arrives, and that monitor's copy
+owns the expiry timer, so hovering the card there pauses its deadline. A
+disconnected output is deterministically remapped to the current focused
+monitor.
 
 ## Controls
 
@@ -157,7 +161,7 @@ follows the theme and corner radius is Hyprland rounding plus four scaled pixels
 | `NotificationServer.qml` | owns the `org.freedesktop.Notifications` D-Bus name |
 | `NotificationService.qml` | normalisation, DND, routing, lifetimes |
 | `NotificationPersistence.qml` | state, history, and image files via `notificationctl` |
-| `NotificationStack.qml`, `NotificationOverlay.qml` | per-output surface and layout |
+| `NotificationStack.qml`, `NotificationOverlay.qml` | per-output surface and layout; every output shows every card |
 | `NotificationCard.qml`, `NotificationActions.qml` | the card itself |
 | `NotificationConfig.qml` | reads `config.json` |
 | `NotificationLogic.js` | pure logic, unit-tested from Node |

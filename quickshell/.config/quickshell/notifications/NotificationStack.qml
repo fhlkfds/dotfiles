@@ -47,14 +47,17 @@ Item {
         required property bool closing
         required property string closeReason
 
-        readonly property bool belongsHere: NotificationService.screenFor(screenName) === root.ownerScreen
+        // Every screen shows every card; only the origin screen's copy expires
+        // it, so hovering there is what pauses the real deadline.
+        // ponytail: hover on other screens pauses only their progress bar;
+        // share hover state through NotificationService if that matters.
+        readonly property bool ownsExpiry: NotificationService.screenFor(screenName) === root.ownerScreen
         readonly property real lifetime: NotificationService.durationFor(urgency, expireTimeout)
         property real remainingMs: lifetime
         property real lastTick: Date.now()
 
-        visible: belongsHere
-        width: visible ? card.implicitWidth : 0
-        height: visible ? card.implicitHeight : 0
+        width: card.implicitWidth
+        height: card.implicitHeight
         opacity: closing ? 0 : 1
         x: closing ? Theme.fs(24) : 0
 
@@ -74,13 +77,13 @@ Item {
         Timer {
           interval: 50
           repeat: true
-          running: slot.belongsHere && slot.lifetime > 0 && !card.hovered && !slot.closing
+          running: slot.lifetime > 0 && !card.hovered && !slot.closing
           onRunningChanged: slot.lastTick = Date.now()
           onTriggered: {
             const now = Date.now()
             slot.remainingMs -= Math.max(0, now - slot.lastTick)
             slot.lastTick = now
-            if (slot.remainingMs <= 0) {
+            if (slot.remainingMs <= 0 && slot.ownsExpiry) {
               slot.remainingMs = 0
               NotificationService.expireKey(slot.key)
             }

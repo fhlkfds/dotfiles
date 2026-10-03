@@ -175,10 +175,12 @@ Item {
         QTest.qWait(50)
         regions = stack.property("inputRegions").toVariant()
         self.assertEqual(len(regions), 3)
+        # Every screen shows every card, including ones from another output.
         cards = [r.property("item") for r in regions if r.property("item") is not None]
-        self.assertEqual(len(cards), 2)
+        self.assertEqual(len(cards), 3)
         cards.sort(key=lambda card: card.y())
-        self.assertLess(cards[0].y() + cards[0].height(), cards[1].y())
+        for upper, lower in zip(cards, cards[1:]):
+            self.assertLess(upper.y() + upper.height(), lower.y())
         self.root.removeEntry()
         QTest.qWait(30)
         self.assertEqual(len(stack.property("inputRegions").toVariant()), 2)
