@@ -237,9 +237,8 @@ Search order is intentional:
 
 The backend caches previews, downloads the full selected image, validates it with
 ImageMagick, restarts Hyprpaper, and applies the image in cover mode. By default,
-it reads `~/Pictures/Wallpapers`. Standard Stow deployment of the tracked
-`wallpaper/` package deploys its contents directly into `~/Pictures/Wallpapers`,
-which is the picker's default directory.
+it reads `~/Pictures/Wallpapers`, which `wallpaper-sync` links to the tracked
+`wallpaper/` directory and keeps in sync across machines.
 
 Older `WallpaperSwitch.sh` and `WallpaperEffects.sh` scripts are retained but are
 not used by the current binding.

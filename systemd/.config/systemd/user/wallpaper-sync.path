@@ -1,0 +1,11 @@
+[Unit]
+Description=Push wallpapers as soon as they are added or removed
+
+# ~/Pictures/Wallpapers is a symlink to this directory; wallpaper-sync waits
+# for a copy in progress to finish before committing.
+[Path]
+PathChanged=%h/Pictures/.wallpaper-sync/wallpaper
+Unit=wallpaper-sync.service
+
+[Install]
+WantedBy=paths.target

@@ -1,0 +1,6 @@
+[Unit]
+Description=Sync ~/Pictures/Wallpapers through the dotfiles repository
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/wallpaper-sync

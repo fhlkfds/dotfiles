@@ -269,28 +269,10 @@ Alternative or retained desktop components may be deployed separately:
 stow swaync wofi
 ```
 
-The wallpaper package is unusual. It contains `theme/` and image files
-directly at its package root, and it deploys into `~/Pictures/Wallpapers`
-rather than `$HOME`. `dots` handles both automatically; by hand it is
-`stow --no-folding --target="$HOME/Pictures/Wallpapers" wallpaper`. The
-`--no-folding` matters: without it, a missing target directory is created as a
-single symlink into the repository, so every image later saved there would land
-in your Git checkout. The active picker defaults to
-`~/Pictures/Wallpapers`; create that directory and place your wallpaper files
-there, or set `HYPR_WALLPAPER_DIR` to use another durable location.
-
-If that directory already holds its own copies of the tracked images, plain
-`stow` refuses every one of them ("cannot stow ... over existing target since
-neither a link nor a directory"). Confirm the copies are the same bytes, then
-adopt them so they become links instead of duplicates:
-
-```bash
-stow --adopt --target="$HOME/Pictures/Wallpapers" wallpaper
-git status --short wallpaper   # must be empty: adopt overwrites the repo copy
-```
-
-An empty `git status` proves the adopted files matched what is tracked. If it is
-not empty, `git checkout -- wallpaper` restores the tracked versions.
+The wallpaper package is not stowed. `wallpaper-sync`, started from Hyprland's
+autostart, links `~/Pictures/Wallpapers` to its own worktree at
+`~/Pictures/.wallpaper-sync` and keeps it in sync with `main` on every machine;
+see **Wallpapers** in the root `README.md`. Never stow `wallpaper` into `$HOME`.
 
 The root `README.md`'s “deploy everything” line lists every package, but
 choosing packages explicitly is still preferable on a machine that does not want

@@ -35,13 +35,15 @@ contents into `~`.
 > **`docs/`, `wiki/`, `tests/` and `system/` are not packages — never stow them.**
 > `system/` holds root-owned `/etc` templates that `yubikey-auth` deploys;
 > stowing it would create `~/greetd` and `~/pam.d`.
+> Never stow `wallpaper` either: it would put the images in `~`.
+> `wallpaper-sync` owns `~/Pictures/Wallpapers` (see **Wallpapers** below).
 
 **Deploy the standard packages at once:**
 
 ```bash
 stow ai browser cliphist fastfetch greeter hypr hyprlock kitty modes \
      menu quickshell rofi screensaver security ssh swaync systemd tmux windows \
-     wallpaper wofi xdg zsh
+     wofi xdg zsh
 ```
 
 **Or deploy packages individually:**
@@ -106,8 +108,9 @@ plain SSH connection is already open, reattach its session with
 is replaced with underscores (for example, `server.example.com` becomes
 `server_example_com`). The remote host also needs `tmux` installed.
 
-`btop` and `wallpaper` deploy automatically with `dots deploy`/`dots update`,
-which passes `--no-folding` for them. `neovim` and `obsidian` stay opt-in
+`btop` deploys automatically with `dots deploy`/`dots update`, which passes
+`--no-folding` for it. `wallpaper` is not stowed at all; `wallpaper-sync` owns
+it (see **Wallpapers** below). `neovim` and `obsidian` stay opt-in
 because they write into trees this repository does not own; deploy them without
 directory folding so application-created files stay outside the Git checkout:
 
@@ -268,12 +271,39 @@ the packages and asks before installing anything. On a host with no reader
 every subcommand explains that and exits without installing or touching
 anything.
 
-**Wallpapers** deploy automatically with `dots deploy`/`dots update`. To stow
-them by hand (see the layout note in
-[installation](docs/installation.md#optional-packages) first):
+**Wallpapers** sync between every machine running these dotfiles, with
+nothing to run by hand. `~/Pictures/Wallpapers` is a symlink to the
+`wallpaper/` directory of a sparse worktree at `~/Pictures/.wallpaper-sync`,
+detached at `origin/main`. Hyprland's autostart starts `wallpaper-sync.path`,
+which pushes after a top-level change and a 30-second quiet period, and
+`wallpaper-sync.timer`, which pulls at login and every 15 minutes. Each change
+is committed as `wallpaper: sync from <host>` and pushed straight to `main`;
+the branch checked out in `~/dotfiles` is never touched.
+
+- Deleting a wallpaper on one machine deletes it on all of them.
+- A different image under a name another machine already pushed is kept as
+  `<name>-<host>.<ext>` (then `-2`, `-3`, etc. if needed); the same image is not duplicated.
+- Partial downloads (`*.part`, `*.crdownload`, hidden files) and files over
+  50 MB stay local, including oversized edits of tracked files. Only recognized
+  image/video extensions are uploaded.
+- Changes inside existing subdirectories are picked up by the 15-minute timer;
+  the path watch covers the top-level directory. Copies still changing after
+  two minutes are deferred to a later run.
+- Conflicting edits to an existing image stop with a notification for manual
+  resolution; both different additions with the same filename are kept.
+- Pushing runs unattended, so the SSH key for `origin` must be loaded in an
+  agent the user systemd manager can see, or have no passphrase. Failures are
+  in `journalctl --user -u wallpaper-sync`.
+- The repository is public: every synced wallpaper is published and stays in
+  Git history.
+
+The first run on a machine replaces an existing `~/Pictures/Wallpapers`: links
+the old `stow wallpaper` made are removed, and any other images in it are added
+as new wallpapers. A folder containing unrelated files or links is refused
+before its contents are changed. To sync now instead of at next login:
 
 ```bash
-stow --no-folding --target="$HOME/Pictures/Wallpapers" wallpaper
+systemctl --user start wallpaper-sync.timer wallpaper-sync.path
 ```
 
 **Remove a package:**

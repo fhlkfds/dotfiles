@@ -1,0 +1,272 @@
+#!/usr/bin/env bash
+# Keep ~/Pictures/Wallpapers the same on every machine by syncing it through
+# the dotfiles repository's main branch. Run by wallpaper-sync.timer and
+# wallpaper-sync.path; there is nothing to call by hand.
+#
+# ~/Pictures/Wallpapers is a symlink to the wallpaper/ directory of a sparse
+# worktree at ~/Pictures/.wallpaper-sync, detached at origin/main. Adding or
+# deleting a wallpaper shows up there as a Git change, which is committed,
+# rebased onto origin/main and pushed. The worktree never touches the branch
+# checked out in ~/dotfiles.
+
+set -euo pipefail
+
+# git -C does not override these when invoked from a hook or another worktree.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_PREFIX
+
+repo=${DOTS_REPO:-"$HOME/dotfiles"}
+sync_dir=${WALLPAPER_SYNC_DIR:-"$HOME/Pictures/.wallpaper-sync"}
+wallpaper_dir=${HYPR_WALLPAPER_DIR:-"$HOME/Pictures/Wallpapers"}
+remote=${WALLPAPER_SYNC_REMOTE:-origin}
+branch=${WALLPAPER_SYNC_BRANCH:-main}
+settle=${WALLPAPER_SYNC_SETTLE:-30}
+host=${WALLPAPER_SYNC_HOST:-${HOSTNAME%%.*}}
+[[ $host =~ ^[a-zA-Z0-9_-]+$ ]] || { printf 'Invalid wallpaper sync host\n' >&2; exit 1; }
+upstream=$remote/$branch
+files=$sync_dir/wallpaper
+# GitHub warns above 50 MB and rejects pushes with files above 100 MB.
+max_bytes=$((50 * 1024 * 1024))
+
+# A background unit must never wait on a passphrase prompt: without a key in
+# an agent, fetch and push fail and the next run retries.
+export GIT_SSH_COMMAND=${GIT_SSH_COMMAND:-"ssh -o BatchMode=yes"}
+export GIT_TERMINAL_PROMPT=0
+
+notify() {
+  printf 'wallpaper-sync: %s\n' "$1" >&2
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send "Wallpaper sync" "$1" || true
+  fi
+}
+
+fail() {
+  notify "$1"
+  exit 1
+}
+
+g() { git -C "$sync_dir" "$@"; }
+
+# name.jpg -> name-host.jpg, so a different file with a taken name keeps both.
+host_suffixed() {
+  local dir=${1%/*} base=${1##*/}
+  if [[ $base == ?*.* ]]; then
+    printf '%s/%s-%s.%s\n' "$dir" "${base%.*}" "$host" "${base##*.}"
+  else
+    printf '%s/%s-%s\n' "$dir" "$base" "$host"
+  fi
+}
+
+# Check both the local directory and incoming files, including repeated clashes.
+unique_target() {
+  local path=$1 candidate suffix=2
+  candidate=$(host_suffixed "$path")
+  while [[ -e $sync_dir/$candidate || -L $sync_dir/$candidate ]] ||
+    g cat-file -e "$upstream:$candidate" 2>/dev/null; do
+    if [[ ${path##*/} == ?*.* ]]; then
+      candidate="${path%.*}-$host-$suffix.${path##*.}"
+    else
+      candidate="$path-$host-$suffix"
+    fi
+    suffix=$((suffix + 1))
+  done
+  printf '%s\n' "$candidate"
+}
+
+is_wallpaper() {
+  case ${1,,} in
+    *.jpg|*.jpeg|*.png|*.webp|*.gif|*.bmp|*.avif|*.svg|*.tif|*.tiff|*.heic|*.heif|*.jxl|*.mp4|*.mkv|*.webm) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_excluded() {
+  case $1 in */.*|*.part|*.crdownload|*.tmp|*~) return 0 ;; esac
+  return 1
+}
+
+ensure_worktree() {
+  if [[ -e $sync_dir/.git ]]; then
+    if [[ ! -f $sync_dir/.git ||
+      $(g rev-parse --path-format=absolute --git-common-dir) != \
+        "$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)" ||
+      $(g config --bool core.sparseCheckout) != true ||
+      $(g config --worktree --bool wallpaperSync.initialized) != true ]] ||
+      g symbolic-ref -q HEAD >/dev/null; then
+      fail "$sync_dir is an incomplete or unexpected worktree; inspect it before retrying"
+    fi
+    mkdir -p "$files" || fail "cannot create $files"
+    return
+  fi
+  git -C "$repo" fetch -q "$remote" "$branch" || fail "cannot fetch $upstream"
+  git -C "$repo" worktree add -q --no-checkout --detach "$sync_dir" "$upstream" ||
+    fail "cannot create the wallpaper worktree"
+  g sparse-checkout set wallpaper || fail "cannot configure sparse checkout"
+  g checkout -q || fail "cannot populate the wallpaper worktree"
+  mkdir -p "$files" || fail "cannot create $files"
+  # Persist only after setup completes, so a crash cannot resemble deletions.
+  g config --worktree wallpaperSync.initialized true || fail "cannot mark the wallpaper worktree initialized"
+}
+
+# Machines deployed before this script have a real ~/Pictures/Wallpapers full
+# of Stow links into ~/dotfiles plus any wallpapers added since. Drop the links,
+# move the files into the worktree as new wallpapers, then replace the
+# directory with the symlink.
+adopt_wallpaper_dir() {
+  local repo_real path rel target
+  repo_real=$(realpath -- "$repo")
+  if [[ -L $wallpaper_dir ]]; then
+    [[ $(realpath -m -- "$wallpaper_dir") == "$(realpath -m -- "$files")" ]] && return
+    [[ $(realpath -m -- "$wallpaper_dir") == "$repo_real/wallpaper" ]] ||
+      fail "$wallpaper_dir is a symlink to somewhere else; remove it to start syncing"
+    rm -- "$wallpaper_dir" || fail "cannot remove the old Stow directory link"
+  fi
+  if [[ -d $wallpaper_dir ]]; then
+    # Validate the whole legacy folder before deleting links or moving images.
+    while IFS= read -r -d '' path; do
+      if [[ -L $path ]]; then
+        [[ $(realpath -m -- "$path") == "$repo_real"/wallpaper/* ]] ||
+          fail "$wallpaper_dir still has entries that are not wallpapers; move them out to start syncing"
+      elif [[ -d $path ]]; then
+        continue
+      elif [[ ! -f $path ]] || { ! is_wallpaper "$path" && ! is_excluded "$path"; }; then
+        fail "$wallpaper_dir still has entries that are not wallpapers; move them out to start syncing"
+      fi
+    done < <(find "$wallpaper_dir" -mindepth 1 -print0)
+    while IFS= read -r -d '' path; do
+      rm -- "$path" || fail "cannot remove the old Stow link $path"
+    done < <(find "$wallpaper_dir" -type l -print0)
+    while IFS= read -r -d '' path; do
+      rel=${path#"$wallpaper_dir"/}
+      target=$files/$rel
+      if [[ -e $target ]]; then
+        if cmp -s -- "$path" "$target"; then
+          rm -- "$path" || fail "cannot remove the duplicate wallpaper"
+          continue
+        fi
+        target=$sync_dir/$(unique_target "wallpaper/$rel")
+      fi
+      mkdir -p -- "${target%/*}" || fail "cannot create the migration destination"
+      mv -- "$path" "$target" || fail "cannot migrate $path"
+    done < <(find "$wallpaper_dir" -type f -print0)
+    find "$wallpaper_dir" -depth -type d -empty -delete
+    [[ ! -e $wallpaper_dir ]] ||
+      fail "$wallpaper_dir still has entries that are not wallpapers; move them out to start syncing"
+  fi
+  mkdir -p -- "${wallpaper_dir%/*}"
+  ln -s -- "$files" "$wallpaper_dir" || fail "cannot link $wallpaper_dir"
+}
+
+# Don't commit a file that is still being copied in: wait until nothing in the
+# directory has changed for $settle seconds, up to two minutes.
+wait_for_quiet() {
+  local tries=0
+  while ((settle > 0)) &&
+    [[ -n $(find "$files" \( -newermt "@$(($(date +%s) - settle))" \
+      -o -newerct "@$(($(date +%s) - settle))" \) -print -quit) ]]; do
+    ((tries++ < 12)) || fail "wallpapers are still changing; deferring until the next run"
+    sleep 10
+  done
+}
+
+commit_local() {
+  local path name target
+  g diff --quiet --diff-filter=U || fail "unresolved local edits in $sync_dir; inspect the index and Git stash before retrying"
+  g diff --cached --quiet -- . ':(exclude)wallpaper' ||
+    fail "the sync worktree has staged changes outside wallpaper/"
+  # This worktree's index belongs to the synchronizer. Reapply the filters even
+  # after a previous run stopped with changes staged.
+  g reset -q HEAD -- wallpaper || fail "cannot reset the wallpaper index"
+  while IFS= read -r -d '' path; do
+    name=${path##*/}
+    is_excluded "$path" && continue
+    is_wallpaper "$path" || continue
+    [[ ! -L $sync_dir/$path ]] || continue
+    if [[ -f $sync_dir/$path ]] && (($(stat -c %s -- "$sync_dir/$path") > max_bytes)); then
+      notify "Not syncing $name: it is over 50 MB"
+      # Sparse checkout can replace an untracked incoming-name collision. Keep
+      # the excluded local image too, without staging it.
+      if ! g ls-files --error-unmatch -- "$path" >/dev/null 2>&1 &&
+        g cat-file -e "$upstream:$path" 2>/dev/null; then
+        target=$(unique_target "$path")
+        mv -- "$sync_dir/$path" "$sync_dir/$target" || fail "cannot preserve $path"
+      fi
+      continue
+    fi
+    # Another machine pushed a file with the same name. The same image is
+    # already on its way; a different one is kept under a host-suffixed name.
+    if ! g ls-files --error-unmatch -- "$path" >/dev/null 2>&1 &&
+      g cat-file -e "$upstream:$path" 2>/dev/null; then
+      if [[ $(g rev-parse "$upstream:$path") == "$(g hash-object -- "$path")" ]]; then
+        rm -- "$sync_dir/$path" || fail "cannot remove the duplicate wallpaper"
+        continue
+      fi
+      target=$(unique_target "$path")
+      mv -- "$sync_dir/$path" "$sync_dir/$target" || fail "cannot preserve $path"
+      path=$target
+    fi
+    g add -- "$path" || fail "cannot stage $path"
+  done < <(g diff --name-only -z HEAD -- wallpaper; g ls-files -z --others --exclude-standard -- wallpaper)
+  g diff --cached --quiet || g commit -q -m "wallpaper: sync from $host" || fail "cannot commit wallpapers"
+}
+
+# A failed push has already committed local additions. Resolve add/add rebase
+# conflicts too, rather than relying only on the untracked-file check above.
+rebase_local() {
+  local path target stage2 stage3 conflicts
+  if g rebase -q --merge --autostash "$upstream"; then
+    g diff --quiet --diff-filter=U || fail "excluded local edits need resolution in $sync_dir; the original edits are preserved in Git stash"
+    return
+  fi
+  while [[ -d $(g rev-parse --git-path rebase-merge) ]]; do
+    conflicts=$(g diff --name-only --diff-filter=U)
+    if [[ -z $conflicts ]]; then
+      g rebase --abort 2>/dev/null || true
+      fail "cannot continue the wallpaper rebase; check Git hooks and identity"
+    fi
+    while IFS= read -r -d '' path; do
+      if [[ $path != wallpaper/* ]] ||
+        g cat-file -e ":1:$path" 2>/dev/null ||
+        ! stage2=$(g rev-parse ":2:$path") || ! stage3=$(g rev-parse ":3:$path"); then
+        g rebase --abort 2>/dev/null || true
+        fail "wallpapers changed on two machines in a way Git cannot merge; resolve it in $sync_dir"
+      fi
+      if [[ $stage2 != "$stage3" ]]; then
+        target=$(unique_target "$path")
+        mkdir -p -- "${sync_dir}/${target%/*}" || fail "cannot preserve the conflicting wallpaper"
+        g show ":3:$path" > "$sync_dir/$target" || fail "cannot preserve $path"
+        g add -- "$target" || fail "cannot stage $target"
+      fi
+      g checkout --ours -- "$path" || fail "cannot restore the upstream wallpaper"
+      g add -- "$path" || fail "cannot resolve $path"
+    done < <(g diff --name-only --diff-filter=U -z)
+    if g diff --cached --quiet; then
+      g rebase --skip || continue
+    else
+      GIT_EDITOR=true g rebase --continue || continue
+    fi
+  done
+  g diff --name-only --diff-filter=U --exit-code || fail "excluded local edits need resolution in $sync_dir"
+  [[ $(g rev-parse HEAD) == "$(g rev-parse "$upstream")" ]] ||
+    g merge-base --is-ancestor "$upstream" HEAD || fail "cannot rebase wallpaper changes"
+}
+
+# Retry a rejected or failed push; local commits remain available next run.
+sync_once() {
+  g fetch -q "$remote" "$branch" || fail "cannot fetch $upstream"
+  commit_local
+  rebase_local
+  mkdir -p "$files" || fail "cannot recreate the empty wallpaper directory"
+  [[ $(g rev-parse HEAD) == "$(g rev-parse "$upstream")" ]] && return 0
+  g push -q "$remote" "HEAD:refs/heads/$branch"
+}
+
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/wallpaper-sync-$UID.lock"
+flock -w 300 9 || fail "another sync is still running"
+
+ensure_worktree
+adopt_wallpaper_dir
+wait_for_quiet
+for _ in 1 2 3; do
+  sync_once && exit 0
+done
+fail "push to $upstream failed three times"

@@ -64,7 +64,8 @@ output=$(run_dots --dry-run)
 [[ $output == *'neovim skipped: requires manual stow - see README.'* ]] ||
   fail 'manual-package skip notice missing'
 [[ $output != *'  - neovim'* ]] || fail 'neovim was not skipped by default'
-[[ $output != *'  - docs'* && $output != *'  - tests'* && $output != *'  - system'* ]] ||
+[[ $output != *'  - docs'* && $output != *'  - tests'* && $output != *'  - system'* &&
+  $output != *'  - wallpaper'* ]] ||
   fail 'excluded directory appeared as a package'
 [[ ! -e $fixture_state && ! -e $calls ]] || fail 'dry run changed fixture state'
 
@@ -116,6 +117,7 @@ output=$(run_dots --dry-run --all)
   fail '--all package plan incomplete'
 [[ $output == *'stow --restow --no-folding --target'* ]] ||
   fail '--all no-folding plan missing'
+[[ $output != *'  - wallpaper'* ]] || fail '--all tried to stow wallpaper'
 
 cat > "$stub_bin/stow" <<'STUB'
 #!/usr/bin/env bash

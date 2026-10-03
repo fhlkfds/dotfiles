@@ -63,7 +63,7 @@ root-owned `/etc` templates deployed by `yubikey-auth`, never symlinked into
 | `zsh/`, `fastfetch/`, `ai/` | Shell, prompt/startup display, AI CLI launcher |
 | `cliphist/` | Clipboard-history limits |
 | `xdg/` | MIME defaults and a Kitty/Neovim desktop entry |
-| `wallpaper/` | Tracked wallpaper assets; stow into `~/Pictures/Wallpapers` |
+| `wallpaper/` | Tracked assets; `wallpaper-sync` owns `~/Pictures/Wallpapers` (never stow) |
 | `tests/` | Browser native-tool fixture tests |
 
 ## Documentation

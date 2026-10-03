@@ -1,0 +1,13 @@
+[Unit]
+Description=Pull wallpapers added or removed on other machines
+
+# Started from Hyprland's autostart rather than enabled, like
+# night-light-schedule.timer. The first run at login catches up on everything
+# the other machines pushed while this one was off.
+[Timer]
+OnActiveSec=0
+OnUnitActiveSec=15min
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

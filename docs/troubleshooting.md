@@ -112,10 +112,9 @@ browser processes.
 
 ## Wallpaper picker shows no local results
 
-The tool defaults to `~/Pictures/Wallpapers`. Create that directory and put
-JPEG/PNG files there. Standard `stow --target="$HOME/Pictures/Wallpapers" wallpaper`
-deploys the package directly into the picker's default directory. Local
-matching uses filenames and recognizes JPEG/PNG files.
+The tool defaults to `~/Pictures/Wallpapers`, which `wallpaper-sync` creates
+on its first run after login; check `journalctl --user -u wallpaper-sync` if it
+is missing. Local matching uses filenames and recognizes JPEG/PNG files.
 Empty remote results additionally require `curl`,
 `jq`, DNS/network access, and a successful Wallhaven API response.
 
