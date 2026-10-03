@@ -20,14 +20,20 @@ Scope {
     model: Quickshell.screens
     DesktopNowPlaying { required property var modelData; output: modelData }
   }
+  Variants {
+    id: desktopVitals
+    model: Quickshell.screens
+    DesktopVitals { required property var modelData; output: modelData }
+  }
+  Binding { target: SysState; property: "active"; value: /* any card uncovered */ }
   Notifications.NotificationRoot {}
   VideoDownloadRoot {}
 }
 ```
 
-Six things: battery monitoring, the bar, one desktop clock and one Spotify
-now-playing card per screen, the notification service, and the browser-video
-progress service.
+Seven things: battery monitoring, the bar, one desktop clock, one Spotify
+now-playing card and one system vitals card per screen, the notification
+service, and the browser-video progress service.
 
 ## Bar layout
 
@@ -159,6 +165,27 @@ text shadow rather than going blank.
 It deliberately has no queue, sleep timer, or volume control: Spotify does not
 publish its queue over MPRIS, and ignores MPRIS volume on Linux.
 
+## Desktop vitals card
+
+`DesktopVitals.qml` puts a **Vitals** card in the top-right corner of every
+output, under the bar, on the same **background** layer as the clock. It shows
+five rings — CPU load, RAM used, root disk used, CPU temperature (k10temp Tctl,
+in °F) and battery — with free RAM, free disk and uptime spelled out underneath.
+Rings use the theme accent, then turn to the theme's warning colour at 75 %
+(70 °C for temperature) and critical at 90 % (85 °C). The card is a translucent
+slab in the bar's background colour. Every colour is a `Theme` binding, so
+switching themes recolours the card live, with the rest of the shell and no
+restart; light themes get a light slab with dark text.
+
+The battery ring shows the laptop battery when there is one, otherwise the
+Logitech mouse's battery through UPower (labelled **MOUSE**), and disappears
+when neither is present. A bolt marks a charging battery.
+
+The numbers come from `SysState.qml`, which only polls while its `active` flag
+is set. `shell.qml` binds that flag to whether any vitals card sits on a
+workspace with no windows, so nothing is read while every card is covered. The
+window is click-through and sized to the card.
+
 ## Panels and their backends
 
 | Panel | Backed by |
@@ -218,7 +245,7 @@ dropdown.
 | --- | --- |
 | Bar shell | `Bar.qml`, `WorkspacesModule.qml`, `IconButton.qml`, `Card.qml` |
 | Clock and calendar | `ClockState.qml`, `ClockWidget.qml`, `DesktopClock.qml`, `CalendarGrid.qml`, `CalendarPopup.qml`, `TimezonePopup.qml`, `DateTimeCard.qml` |
-| System metrics (unmounted since the dashboard drawer was removed) | `SysState.qml`, `MediaTab.qml`, `PerfTab.qml`, `WorkspacesTab.qml`, `WeatherTab.qml`, `MetricCard.qml`, `Gauge.qml`, `HeroGauge.qml`, `ProfileCard.qml` |
+| System metrics (the `*Tab.qml` views have been unmounted since the dashboard drawer was removed) | `SysState.qml`, `DesktopVitals.qml`, `DesktopVitalsCard.qml`, `MediaTab.qml`, `PerfTab.qml`, `WorkspacesTab.qml`, `WeatherTab.qml`, `MetricCard.qml`, `Gauge.qml`, `HeroGauge.qml`, `ProfileCard.qml` |
 | Network | `NetworkState/Icon/Panel.qml`, `SpeedTestOverlay.qml`, `SpeedTestGauge.qml` |
 | Disk speed test | `DiskState.qml`, `DiskSpeedOverlay.qml` (reuses `SpeedTestGauge.qml`) |
 | Audio and media | `AudioState/Icon/Panel.qml`, `AudioPanelContent.qml`, `VolumeSlider.qml`, `MediaState/Icon/Panel.qml`, `MediaPreviewCard.qml`, `LyricsState.qml`, `LyricsView.qml`, `SpotifyState.qml`, `DesktopNowPlaying.qml`, `DesktopNowPlayingCard.qml` |

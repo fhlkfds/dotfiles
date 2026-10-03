@@ -14,9 +14,8 @@ import QtQuick
 Singleton {
   id: root
 
-  // The clock's dashboard drawer used to drive this. With the drawer gone
-  // nothing mounts the metric views, so polling stays off until a future
-  // consumer sets this.
+  // shell.qml drives this from the desktop vitals cards: on while at least one
+  // of them sits on an empty workspace, off while windows cover them all.
   property bool active: false
 
   // --- resolved sensor paths -------------------------------------------------

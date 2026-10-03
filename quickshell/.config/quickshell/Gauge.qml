@@ -14,6 +14,7 @@ Item {
   property int size: Theme.fs(72)
   property int thickness: Theme.fs(7)
   property bool available: true
+  property int textSize: Theme.fs(13)
 
   implicitWidth: size
   implicitHeight: size + (label !== "" ? Theme.fs(16) : 0)
@@ -64,7 +65,7 @@ Item {
     anchors.centerIn: ring
     text: root.available ? root.text : "n/a"
     color: root.available ? Theme.text : Theme.textMuted
-    font.pixelSize: Theme.fs(13)
+    font.pixelSize: root.textSize
     font.bold: true
   }
 

@@ -1,4 +1,5 @@
 import Quickshell
+import QtQuick
 import "notifications" as Notifications
 
 Scope {
@@ -22,6 +23,29 @@ Scope {
     DesktopNowPlaying {
       required property var modelData
       output: modelData
+    }
+  }
+  // CPU, RAM, disk, temperature and battery rings on every monitor's desktop.
+  Variants {
+    id: desktopVitals
+    model: Quickshell.screens
+
+    DesktopVitals {
+      required property var modelData
+      output: modelData
+    }
+  }
+  // SysState polls only while some vitals card is on an empty workspace; under
+  // windows nobody can see the numbers.
+  Binding {
+    target: SysState
+    property: "active"
+    value: {
+      const cards = desktopVitals.instances
+      for (let i = 0; i < cards.length; i++)
+        if (!cards[i].covered)
+          return true
+      return false
     }
   }
   Notifications.NotificationRoot {}
