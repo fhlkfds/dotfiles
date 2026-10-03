@@ -18,15 +18,15 @@ Scope {
   }
   Variants {
     model: Quickshell.screens
-    DesktopNowPlaying { required property var modelData; output: modelData }
+    DesktopTurntable { required property var modelData; output: modelData }
   }
   Notifications.NotificationRoot {}
   VideoDownloadRoot {}
 }
 ```
 
-Six things: battery monitoring, the bar, one desktop clock and one Spotify
-now-playing card per screen, the notification service, and the browser-video
+Six things: battery monitoring, the bar, one desktop clock and one Turntable
+per screen, the notification service, and the browser-video
 progress service.
 
 ## Bar layout
@@ -133,31 +133,36 @@ still clears the island on both sides.
 empty input mask and `ExclusionMode.Ignore`, so it is entirely click-through, and
 it requests no keyboard focus. It draws in the bottom-right corner.
 
-## Desktop now-playing card
+## Desktop turntable
 
-`DesktopNowPlaying.qml` puts a Spotify card in the bottom-left corner of every
-output, on the same **background** layer as the clock: a record carrying the
-album art, the title and artist, previous / play-pause / next, elapsed time,
-and a progress line. It follows **Spotify only**, through `SpotifyState.qml`,
-so a browser tab playing a video never takes it over; the bar's media module
-still follows any player. The card is hidden while Spotify is closed, stopped,
-or has no track, and stays up while paused.
+`DesktopTurntable.qml` draws the Turntable in the middle of every output, on the
+same **background** layer as the clock: a record on a plinth, seen from above,
+whose label is the album art, with the sleeve tucked under its left edge and
+the title and artist beneath it. While playing, the tonearm swings onto the
+record and the platter spins up; on pause both settle back and the record
+freezes. A new cover fades in over the old one once it has loaded.
 
-Unlike the clock the window is sized to the card, not the whole screen, so its
-buttons take clicks and the rest of the desktop is untouched. Like anything on
-the background layer it is only visible on a workspace with no windows over
-it; the record stops spinning whenever the monitor's active workspace has
-windows, so a hidden card does not keep the output redrawing.
+It follows **allowed players** only, through `TurntableState.qml`: Spotify,
+YouTube Music (pear-desktop) and Cider, whichever most recently started
+playing. A browser is never allowed, so a video tab cannot take the desktop
+over; the bar's media module and its panel still follow any player, so the two
+can show different things. The Turntable fades out, leaving the wallpaper as it
+was, when no allowed player has a track or the last one has been paused for
+five minutes.
 
-Where the output is too narrow for the card and the clock to share the bottom
-edge (a portrait monitor, or a large text scale), the card moves up to sit
-above the clock's band instead of running into it. With more than one Spotify
-client on the bus, the one playing wins. On Qt Quick's software renderer,
-where `MultiEffect` draws nothing, the card drops the round art mask and the
-text shadow rather than going blank.
+The settings are plain properties at the top of `TurntableState.qml`:
+`allowedPlayers`, `framing` (`wide`, `mid`, `close`) and `pauseTimeout`.
+Quickshell reloads on save. Whatever the framing, the scene is capped to fit
+the output and to stay clear of the clock's band.
 
-It deliberately has no queue, sleep timer, or volume control: Spotify does not
-publish its queue over MPRIS, and ignores MPRIS volume on Linux.
+The window is sized to the scene, not the whole screen, and has an empty input
+mask, so it is click-through like the clock; the controls are in the media
+panel. Like anything on the background layer it is only visible on a workspace
+with no windows over it; the record spins down whenever the monitor's active
+workspace has windows, so a hidden record does not keep the output redrawing.
+On Qt Quick's software renderer, where `MultiEffect` draws nothing, the scene
+drops the round label mask, the shadow and the groove sheen rather than going
+blank.
 
 ## Panels and their backends
 
@@ -221,7 +226,7 @@ dropdown.
 | System metrics (unmounted since the dashboard drawer was removed) | `SysState.qml`, `MediaTab.qml`, `PerfTab.qml`, `WorkspacesTab.qml`, `WeatherTab.qml`, `MetricCard.qml`, `Gauge.qml`, `HeroGauge.qml`, `ProfileCard.qml` |
 | Network | `NetworkState/Icon/Panel.qml`, `SpeedTestOverlay.qml`, `SpeedTestGauge.qml` |
 | Disk speed test | `DiskState.qml`, `DiskSpeedOverlay.qml` (reuses `SpeedTestGauge.qml`) |
-| Audio and media | `AudioState/Icon/Panel.qml`, `AudioPanelContent.qml`, `VolumeSlider.qml`, `MediaState/Icon/Panel.qml`, `MediaPreviewCard.qml`, `LyricsState.qml`, `LyricsView.qml`, `SpotifyState.qml`, `DesktopNowPlaying.qml`, `DesktopNowPlayingCard.qml` |
+| Audio and media | `AudioState/Icon/Panel.qml`, `AudioPanelContent.qml`, `VolumeSlider.qml`, `MediaState/Icon/Panel.qml`, `MediaPreviewCard.qml`, `LyricsState.qml`, `LyricsView.qml`, `TurntableState.qml`, `DesktopTurntable.qml`, `DesktopTurntableScene.qml` |
 | Visualiser | `CavaState.qml`, `CavaBars.qml`, `CavaEdgeVisualizer.qml`, `VisualizerState.qml` |
 | Bluetooth | `BluetoothState/Icon/Panel/HeroCard/DeviceRow/Battery.qml` |
 | Display | `DisplayState/Icon/Panel.qml` |

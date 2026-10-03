@@ -14,12 +14,12 @@ Scope {
       output: modelData
     }
   }
-  // Spotify-only now-playing card on every monitor's desktop, hidden while
-  // Spotify is closed or has nothing loaded.
+  // The Turntable on every monitor's desktop: the playing album as a record,
+  // faded out while no allowed player has a track.
   Variants {
     model: Quickshell.screens
 
-    DesktopNowPlaying {
+    DesktopTurntable {
       required property var modelData
       output: modelData
     }

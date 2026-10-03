@@ -55,3 +55,24 @@ against stand-in inputs, with no live Hyprland session and no system mutation.
 
 **Smoke** — a `*Smoke.qml` fixture that loads QML headlessly under
 `QT_QPA_PLATFORM=offscreen` and asserts on what it built.
+
+## Media
+
+**Active player** — the MPRIS player the media module and its panel follow: the
+one that most recently started playing, unless one is pinned from the panel.
+
+**Allowed player** — a music player the Turntable may show: Spotify, YouTube
+Music, Cider. A browser is never an allowed player, so a video tab cannot reach
+the desktop.
+
+**Turntable** — the album artwork drawn over the wallpaper on every screen: a
+record whose label is the cover art, with the sleeve beside it and a caption of
+title and artist. It follows the allowed player that most recently started
+playing, which need not be the active player. It is not a panel; the panel is
+where the controls live.
+
+**Paused** — a track is loaded but not moving. The Turntable stays and freezes.
+
+**Idle** — no allowed player has a track, or the last one has been paused long
+enough to count as finished. The Turntable fades out and only the wallpaper
+remains.
