@@ -61,6 +61,7 @@ python3 -m unittest tests.test_theme_generator
 | `omakub-bar-layout.test.sh` | the bar still mounts the expected component set |
 | `audio-panel.test.sh` | shared audio helper behavior and headless panel rendering |
 | `desktop-now-playing.test.sh` | the Spotify-only desktop card against stand-in players: Spotify filtering, hide/show on stop and pause, controls, time text, the record pausing under windows, and the card clearing the clock on narrow outputs |
+| `desktop-vitals.test.sh` | the desktop vitals card against stand-in metrics: ring and free-space text, laptop-vs-mouse battery selection, threshold colours, live recolouring on a theme switch, the click-through background-layer window, and `SysState` polling only while a card is uncovered |
 | `omakub-toggles.test.sh` | the toggles menu |
 | `bluetooth-control.test.sh`, `network-control.test.sh` | the Quickshell panel backends |
 | `browser-native-tools.test.sh` | both native hosts, with mocked clipboard, downloader, notification, player, and OSD commands |
