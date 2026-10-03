@@ -1,16 +1,15 @@
 import Quickshell
 import QtQuick
+import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Controls
-import QtQuick.Effects
 import ".."
 import "NotificationLogic.js" as Logic
 
-// Elevated card: the theme's surface colour raised off the wallpaper by a soft
-// shadow, a small uppercase app label, a round icon badge, and filled/quiet
-// action buttons. Spotify track cards keep their own vinyl layout inside the
-// same shell.
-Item {
+// Elevated card: a small uppercase app label, a round icon badge, and
+// filled/quiet action buttons inside the NotificationBorder shell. Spotify
+// track cards keep their own vinyl layout inside the same shell.
+NotificationBorder {
   id: root
 
   property string app: ""
@@ -42,7 +41,6 @@ Item {
   readonly property string trackDetail: vinyl ? bodyLines.slice(1).join(" ") : ""
   readonly property int padX: Theme.fs(NotificationConfig.sidePadding)
   readonly property int padY: Theme.fs(NotificationConfig.multiLinePadding)
-  readonly property int radius: Theme.notificationRadius + Theme.fs(4)
   readonly property color accent: urgency === 2 ? Theme.critical : Theme.notificationCountdown
   property real nowMs: Date.now()
 
@@ -52,7 +50,7 @@ Item {
 
   function refreshArtwork() {
     icon.source = ""
-    icon.source = Qt.binding(function() { return root.vinyl ? "" : root.iconSource })
+    icon.source = Qt.binding(function() { return root.visible && !root.vinyl ? root.iconSource : "" })
     vinylArt.refreshArtwork()
   }
 
@@ -89,37 +87,6 @@ Item {
     }
   }
 
-  // Shadow: MultiEffect pads itself to fit, and the input mask is built from the
-  // card geometry alone, so the shadow stays click-through.
-  Rectangle {
-    id: shadowShape
-    anchors.fill: parent
-    radius: root.radius
-    color: Theme.notificationSurface
-    visible: false
-  }
-
-  MultiEffect {
-    anchors.fill: shadowShape
-    source: shadowShape
-    shadowEnabled: true
-    shadowColor: Theme.notificationShadow
-    shadowOpacity: Theme.shadowOpacity
-    shadowBlur: 1.0
-    shadowVerticalOffset: Theme.fs(6)
-    shadowScale: 1.0
-  }
-
-  Rectangle {
-    id: surface
-    anchors.fill: parent
-    radius: root.radius
-    color: Theme.notificationSurface
-    border.width: 1
-    border.color: Qt.rgba(Theme.notificationText.r, Theme.notificationText.g,
-                          Theme.notificationText.b, 0.08)
-  }
-
   RowLayout {
     id: row
     anchors.left: parent.left
@@ -136,7 +103,7 @@ Item {
       Layout.preferredWidth: visible ? implicitWidth : 0
       Layout.preferredHeight: visible ? implicitHeight : 0
       Layout.alignment: Qt.AlignVCenter
-      source: root.vinyl ? root.iconSource : ""
+      source: root.visible && root.vinyl ? root.iconSource : ""
       sleeveSize: Theme.fs(NotificationConfig.vinylSize)
     }
 
@@ -155,7 +122,9 @@ Item {
         anchors.centerIn: parent
         width: Math.round(parent.width * 0.6)
         height: width
-        source: root.vinyl ? "" : root.iconSource
+        source: root.visible && !root.vinyl ? root.iconSource : ""
+        sourceSize: Qt.size(Math.max(1, Math.ceil(width * Screen.devicePixelRatio)),
+                            Math.max(1, Math.ceil(height * Screen.devicePixelRatio)))
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         // New loads must read reused files instead of a previous decoded image.
@@ -182,18 +151,20 @@ Item {
       RowLayout {
         Layout.fillWidth: true
         Layout.rightMargin: Theme.fs(NotificationConfig.closeSize)
-        visible: root.app.length > 0 || root.replay
+        visible: label.text.length > 0 || root.replay
         spacing: Theme.fs(8)
 
+        // Spotify cards keep their summary ("NOW PLAYING") in the accent.
         Text {
+          id: label
           Layout.fillWidth: true
-          text: root.app.toUpperCase()
+          text: (root.vinyl ? root.summary : root.app).toUpperCase()
           textFormat: Text.PlainText
           color: root.vinyl ? Theme.notificationCountdown : Theme.notificationClose
           font.family: Theme.uiFamily
-          font.pixelSize: Theme.fs(10.5)
+          font.pixelSize: Theme.fs(root.vinyl ? 10 : 10.5)
           font.weight: Font.Bold
-          font.letterSpacing: Theme.fs(1.2)
+          font.letterSpacing: Theme.fs(root.vinyl ? 1.6 : 1.2)
           elide: Text.ElideRight
           maximumLineCount: 1
         }
@@ -229,7 +200,7 @@ Item {
         textFormat: Text.PlainText
         color: Theme.notificationBodyText
         font.family: Theme.uiFamily
-        font.pixelSize: Theme.fs(13.5)
+        font.pixelSize: Theme.fs(root.vinyl ? 14 : 13.5)
         wrapMode: root.vinyl ? Text.NoWrap : Text.WordWrap
         elide: Text.ElideRight
         maximumLineCount: root.vinyl ? 1 : 3

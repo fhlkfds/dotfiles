@@ -10,14 +10,16 @@
 # downloads the install ISO, runs virt-install against qemu:///system, and opens
 # the console in virt-manager. The guest user is the host $USER.
 #
-# win11 clones a sysprepped base image, win11-base.qcow2 in the default pool,
-# which the first win11 create builds from the newest ~/Resources/ISO/Win11*.iso.
-# The clone's name and user come from an answer disc that is ejected and deleted
-# at the clone's first reboot. Windows takes the password only in a reversible
-# encoding, so that disc holds it for the minute or two before then.
+# win11 asks for the local account's username too, pre-filled with $USER. It
+# clones a sysprepped base image, win11-base.qcow2 in the default pool, which
+# the first win11 create builds from the newest ~/Resources/ISO/Win11*.iso. The
+# clone's name and account come from an answer disc that stays in the running
+# clone for all of Windows setup, but is dropped from its saved definition and
+# deleted on the host when creation exits. Windows takes the password
+# only in a reversible encoding, so that disc holds it in that encoding.
 #
-# The password is hashed with openssl as soon as it is read and is never written
-# anywhere. Only the SHA-512 crypt hash reaches the preseed, which lives in a
+# For Debian, the password is hashed with openssl as soon as it is read and is
+# never written anywhere. Only the SHA-512 crypt hash reaches the preseed, in a
 # mode 0700 temporary directory that is removed once the install has started.
 #
 # --dry-run prints the virt-install command and the rendered answer files, with
@@ -289,7 +291,24 @@ windows_timezone() {
 computer_name() {
   local name=${1:0:15}
   while [[ $name == *- ]]; do name=${name%-}; done
+  [[ ! $name =~ ^[0-9]+$ ]] ||
+    die "The Windows computer name '$name' cannot contain only digits. Choose another VM name."
   printf '%s' "$name"
+}
+
+# check_windows_user USER COMPUTER_NAME - fail unless USER can be a new local account.
+# Windows allows more characters, but these are also safe in the answer file.
+check_windows_user() {
+  local user=${1,,}
+  [[ $1 =~ ^[A-Za-z0-9._-]{1,20}$ && $1 != *. ]] ||
+    die "Invalid Windows username '$1'. Use up to 20 letters, digits, '.', '_' and '-'."
+  case $user in
+    none) die "$1 is reserved by Windows. Choose another username." ;;
+    administrator|administrators|guest|guests|users|defaultaccount|wdagutilityaccount)
+      die "$1 is a built-in Windows account or group. Choose another username." ;;
+  esac
+  [[ $user != "${2,,}" ]] ||
+    die "The Windows username cannot be the same as the computer name, $2."
 }
 
 # windows_password PASSWORD ELEMENT - the unattend encoding, base64 of
@@ -489,13 +508,14 @@ check_resources() {
 dry_run_create() {
   local preset=$1 name=${2:-$1-1} user answers iso with_key=false
   valid_name "$name" || die "Invalid VM name: $name"
-  user=$(guest_user)
   answers=$(mktemp -d -t vm-preset.XXXXXX)
   cleanup_paths+=("$answers")
   if [[ $preset == win11 ]]; then
+    user=${USER:-$("$id_command" -un)}
     dry_run_win11 "$name" "$user" "$answers"
     return 0
   fi
+  user=$(guest_user)
   [[ -f $ssh_key ]] && with_key=true
   iso=$(cached_iso) || iso="$cache_root/debian-13.<latest>-amd64-netinst.iso"
   write_answers "$answers" "$preset" "$(hostname_for "$name")" "$user" '<redacted-hash>' "$with_key"
@@ -519,7 +539,7 @@ dry_run_create() {
 }
 
 create_vm() {
-  local preset=$1 requested_name=${2:-} label name user password confirm secret
+  local preset=$1 requested_name=${2:-} label name user password confirm secret windows_name
   local with_key=false choice iso answers install_pid status=0 uuid
   uuid=$(</proc/sys/kernel/random/uuid)
   label=$(preset_label "$preset")
@@ -532,7 +552,7 @@ create_vm() {
 
   check_prerequisites "$preset"
   acquire_lock
-  user=$(guest_user)
+  [[ $preset == win11 ]] || user=$(guest_user)
 
   if [[ -n $requested_name ]]; then
     name=$requested_name
@@ -542,6 +562,13 @@ create_vm() {
   fi
   valid_name "$name" || die "Invalid VM name '$name'. Use letters, digits, '.', '_' and '-'."
   domain_exists "$name" && die "A VM named $name already exists. Nothing was created."
+
+  if [[ $preset == win11 ]]; then
+    windows_name=$(computer_name "$(hostname_for "$name")")
+    user=$(printf '' | rofi_prompt 'Username' "Local Windows account on $name" -l 0 \
+      -filter "${USER:-$("$id_command" -un)}") || cancelled
+    check_windows_user "$user" "$windows_name"
+  fi
 
   password=$(printf '' | rofi_prompt 'Password' "Guest password for $user on $name" -l 0 -password) ||
     cancelled
@@ -645,7 +672,8 @@ render_win11() {
 }
 
 # answer_disc DIR ISO - burn DIR/autounattend.xml onto a disc qemu can read.
-# It is 0644 in the cache only until the guest's next reboot.
+# A clone's disc is deleted when creation exits; a base-build disc stays until
+# the base shuts down and is undefined, then is deleted before cloning.
 answer_disc() {
   mkdir -p -- "$cache_root"
   chmod 755 -- "$cache_root"
@@ -676,7 +704,7 @@ clone_install_args() {
     --connect "$connection" --name "$name" --osinfo win11
     --vcpus "$vcpus" --memory "$memory"
     --disk "size=$disk_gb,format=qcow2,bus=sata,backing_store=$base,backing_format=qcow2"
-    --disk "path=$disc,device=cdrom,bus=sata"
+    --disk "path=$disc,device=cdrom,bus=sata,startup_policy=requisite"
     --network network=default,model=e1000e --import --boot uefi --tpm emulator
     --uuid "$uuid" --noautoconsole
   )
@@ -739,6 +767,8 @@ build_base() {
   # Keep the disk, drop the VM, so nothing boots and changes the base.
   virsh_system undefine "$base_uuid" --nvram >>"$log_file" 2>&1 ||
     die "Could not remove the $base_name VM definition. See $log_file."
+  rm -rf -- "$work"
+  rm -f -- "$cache_root/.answers-$base_uuid.iso"
   log "Built the $base_name.qcow2 base image."
 }
 
@@ -773,29 +803,30 @@ create_win11() {
     remove_domain "$uuid" "$name"
     die "Creating $name failed. See $log_file."
   fi
+  # Keep the disc available across normal setup reboots. Its saved definition
+  # drops it now and the EXIT trap deletes the file; QEMU retains its open
+  # descriptor. Requisite requires the disc at initial boot but permits its
+  # absence on restore. Power-off or save/restore discards that descriptor;
+  # leave the clone running until setup finishes.
+  if ! virsh_system change-media "$uuid" "$disc" --eject --config >>"$log_file" 2>&1; then
+    remove_domain "$uuid" "$name"
+    die "Creating $name failed while removing its answer disc from the saved definition. See $log_file."
+  fi
   exec 9>&-
   open_console "$name"
-  notify normal "Setting up $name from the Windows 11 base image. This takes a few minutes."
-
-  # Setup caches the answer file before the reboot that ends specialize, so the
-  # disc, and the password on it, can go then.
-  if ! virsh_system event --domain "$uuid" --event reboot --timeout 900 >>"$log_file" 2>&1; then
-    remove_domain "$uuid" "$name"
-    die "Waiting for the Windows setup reboot failed. The incomplete clone was removed. See $log_file."
-  fi
-  virsh_system change-media "$uuid" "$disc" --eject --live --config >>"$log_file" 2>&1 ||
-    log "warning: could not eject the answer disc from $name; remove its second CD drive in virt-manager."
-  log "$name is finishing setup."
-  notify normal "$name is finishing Windows setup. Log in as $user in a minute or two."
+  log "$name is running Windows setup."
+  notify normal "Setting up $name from the Windows 11 base image. Leave it running until the sign-in screen appears; then sign in as $user."
 }
 
 dry_run_win11() {
-  local name=$1 user=$2 work=$3 iso
+  local name=$1 user=$2 work=$3 iso windows_name
+  windows_name=$(computer_name "$(hostname_for "$name")")
+  check_windows_user "$user" "$windows_name"
   iso=$(win11_iso) || iso="$win11_iso_dir/Win11_<version>_x64.iso"
   render_win11 win11-base.autounattend.xml "$work/base.xml" \
     'ADMIN_PASSWORD=<redacted-password>' 'AUTOLOGON_PASSWORD=<redacted-password>'
   render_win11 win11.autounattend.xml "$work/clone.xml" \
-    "TIMEZONE=$(windows_timezone)" "COMPUTER_NAME=$(computer_name "$(hostname_for "$name")")" \
+    "TIMEZONE=$(windows_timezone)" "COMPUTER_NAME=$windows_name" \
     "USERNAME=$user" 'PASSWORD=<redacted-password>'
 
   printf '# Only when %s.qcow2 is missing: build the base from %s\n' "$base_name" "$iso"

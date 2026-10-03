@@ -140,7 +140,9 @@ Singleton {
       root.nativeClosed(entry.key, reason)
     })
 
-    const refresh = function() { root.refreshNative(entry.key, notification) }
+    // Coalesce each notification's signals before reloading and copying its art.
+    const applyRefresh = function() { root.refreshNative(entry.key, notification) }
+    const refresh = function() { Qt.callLater(applyRefresh) }
     const signals = ["summaryChanged", "bodyChanged", "appNameChanged", "appIconChanged",
                      "imageChanged", "urgencyChanged", "expireTimeoutChanged",
                      "desktopEntryChanged", "hintsChanged", "actionsChanged"]

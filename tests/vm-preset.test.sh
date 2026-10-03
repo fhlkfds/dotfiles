@@ -18,7 +18,7 @@ calls=$test_root/calls
 domains=$test_root/domains
 injected=$test_root/injected
 mirror=$test_root/mirror
-mkdir -p "$bin" "$test_root/home/.ssh" "$test_root/tmp" "$injected" "$mirror" "$test_root/uuids"
+mkdir -p "$bin" "$test_root/home/.ssh" "$test_root/tmp" "$injected" "$mirror" "$test_root/uuids" "$test_root/media"
 : >"$calls"
 printf 'debian13\ndebian13-docker-1\n' >"$domains"
 
@@ -47,8 +47,13 @@ case $1 in
     printf ' file   disk     vda      /var/lib/libvirt/images/%s.qcow2\n' "$domain"
     printf ' file   cdrom    sda      /cache/netinst.iso\n'
     ;;
-  destroy|send-key|change-media) ;;
-  event) exit "${VM_TEST_REBOOT_EXIT:-0}" ;;
+  destroy|send-key) ;;
+  change-media)
+    [[ -z ${VM_TEST_MEDIA_EXIT:-} ]] || exit "$VM_TEST_MEDIA_EXIT"
+    [[ -f $VM_TEST_MEDIA/$2.config && $(<"$VM_TEST_MEDIA/$2.config") == "$3" ]] || exit 6
+    [[ " $* " != *' --config '* ]] || : >"$VM_TEST_MEDIA/$2.config"
+    [[ " $* " != *' --live '* ]] || : >"$VM_TEST_MEDIA/$2.live"
+    ;;
   domstate) printf 'shut off (%s)\n' "${VM_TEST_SHUTOFF_REASON:-shutdown}" ;;
   vol-info) printf 'Capacity: %s\n' "${VM_TEST_BASE_CAPACITY:-107374182400}" ;;
   vol-path)
@@ -66,11 +71,17 @@ SH
 cat >"$bin/virt-install" <<'SH'
 #!/usr/bin/env bash
 printf 'virt-install %s\n' "$*" >>"$VM_TEST_CALLS"
-name= uuid=
+name= uuid= disc= startup_policy=
 while (($#)); do
   case $1 in
     --name) name=$2; shift ;;
     --uuid) uuid=$2; shift ;;
+    --disk)
+      if [[ $2 == path=*,device=cdrom,* ]]; then
+        disc=${2#path=}; disc=${disc%%,*}
+        startup_policy=${2##*startup_policy=}
+      fi
+      shift ;;
     --initrd-inject) cp -- "$2" "$VM_TEST_INJECTED/"; ls -l "$2" >>"$VM_TEST_INJECTED/modes" ;;
   esac
   shift
@@ -78,6 +89,25 @@ done
 printf '%s\n' "$name" >>"$VM_TEST_DOMAINS"
 [[ -z ${VM_TEST_COLLISION:-} ]] || exit 1
 printf '%s\n' "$name" >"$VM_TEST_UUIDS/$uuid"
+if [[ -n $disc && $name != win11-base ]]; then
+  [[ ! -f $VM_TEST_MEDIA/base-disc || ! -e $(<"$VM_TEST_MEDIA/base-disc") ]] || exit 8
+  [[ -z ${VM_TEST_MISSING_DISC:-} ]] || rm -f -- "$disc"
+  if [[ ! -f $disc ]]; then
+    [[ $startup_policy == optional ]] || exit 1
+    disc=
+  fi
+  printf '%s' "$disc" >"$VM_TEST_MEDIA/$uuid.config"
+  printf '%s' "$disc" >"$VM_TEST_MEDIA/$uuid.live"
+  if [[ -n ${VM_TEST_MEDIA_GATE:-} ]]; then
+    printf '%s' "$disc" >"$VM_TEST_MEDIA_GATE.ready"
+    for _ in {1..500}; do
+      [[ ! -e $VM_TEST_MEDIA_GATE.continue ]] || break
+      sleep 0.01
+    done
+    [[ -e $VM_TEST_MEDIA_GATE.continue ]] || exit 7
+  fi
+fi
+[[ $name != win11-base ]] || printf '%s' "$disc" >"$VM_TEST_MEDIA/base-disc"
 [[ $name != win11-base || -n ${VM_TEST_INSTALL_EXIT:-} ]] || : >"$VM_TEST_BASE"
 exit "${VM_TEST_INSTALL_EXIT:-0}"
 SH
@@ -103,6 +133,7 @@ cat >/dev/null
 printf 'rofi %s\n' "$prompt" >>"$VM_TEST_CALLS"
 case $prompt in
   'VM name') answer=${VM_TEST_NAME-$filter} ;;
+  Username) answer=${VM_TEST_USER-$filter} ;;
   Password) answer=$VM_TEST_PASSWORD ;;
   Confirm) answer=${VM_TEST_CONFIRM-$VM_TEST_PASSWORD} ;;
   'Install host SSH key?') answer=${VM_TEST_SSH:-Yes} ;;
@@ -127,7 +158,7 @@ while (($#)); do
 done
 cp -- "$source/autounattend.xml" "$VM_TEST_INJECTED/"
 cat -- "$source/autounattend.xml" >>"$VM_TEST_INJECTED/all-discs.xml"
-printf 'answer disc\n' >"$output"
+cp -- "$source/autounattend.xml" "$output"
 SH
 
 printf '#!/bin/sh\n' >"$bin/swtpm"
@@ -184,7 +215,7 @@ SH
 chmod +x "$bin"/*
 
 run() {
-  HOME="$test_root/home" USER=tester LANG=en_GB.UTF-8 TMPDIR="$test_root/tmp" \
+  HOME="$test_root/home" USER="${VM_TEST_HOST_USER:-tester}" LANG=en_GB.UTF-8 TMPDIR="$test_root/tmp" \
     XDG_CONFIG_HOME="$test_root/home/.config" XDG_CACHE_HOME="$test_root/cache" \
     XDG_STATE_HOME="$test_root/state" VM_PRESET_TEMPLATES="$templates" \
     VM_PRESET_KEYMAP=gb VM_PRESET_TIMEZONE=Europe/London VM_PRESET_POLL_INTERVAL=0.05 \
@@ -195,6 +226,7 @@ run() {
     XORRISO="$bin/xorriso" SWTPM="${SWTPM:-$bin/swtpm}" \
     VM_TEST_CALLS="$calls" VM_TEST_DOMAINS="$domains" VM_TEST_INJECTED="$injected" \
     VM_TEST_UUIDS="$test_root/uuids" VM_TEST_BASE="$test_root/base-built" \
+    VM_TEST_MEDIA="$test_root/media" \
     VM_TEST_MIRROR="$mirror" VM_TEST_PASSWORD="${VM_TEST_PASSWORD-$password}" "$helper" "$@"
 }
 
@@ -329,6 +361,7 @@ assert_contains "$calls" 'rofi VM name'
 assert_contains "$calls" 'rofi Password'
 assert_contains "$calls" 'rofi Confirm'
 assert_contains "$calls" 'rofi Install host SSH key?'
+assert_not_contains "$calls" 'rofi Username'
 assert_contains "$calls" 'virt-install --connect qemu:///system --name debian13-docker-2 '
 assert_contains "$calls" "--location $test_root/cache/vm-presets/$iso_name"
 wait_for_call 'virt-manager --connect qemu:///system --show-domain-console debian13-docker-2'
@@ -419,9 +452,15 @@ grep -Fxq win11-base "$domains" && fail 'the base VM is still defined'
 assert_contains "$calls" 'virt-install --connect qemu:///system --name win11-1 --osinfo win11 '
 assert_contains "$calls" 'backing_store=/var/lib/libvirt/images/win11-base.qcow2,backing_format=qcow2'
 assert_contains "$calls" '--import --boot uefi --tpm emulator'
-assert_contains "$calls" '--event reboot --timeout 900'
-assert_contains "$calls" '--eject --live --config'
-assert_contains "$calls" 'win11-1 is finishing Windows setup. Log in as tester'
+assert_contains "$calls" 'device=cdrom,bus=sata,startup_policy=requisite --network network=default'
+assert_contains "$calls" 'rofi Username'
+# The running clone keeps the answer disc for every setup pass; only its saved
+# definition drops it.
+grep -Eq '^virsh -c qemu:///system change-media [0-9a-f-]+ .*/\.answers-[0-9a-f-]+\.iso --eject --config$' "$calls" ||
+  fail 'the answer disc was not dropped from the saved definition only'
+assert_not_contains "$calls" '--live'
+assert_not_contains "$calls" ' event '
+assert_contains "$calls" 'then sign in as tester.'
 assert_not_contains "$calls" 'rofi Install host SSH key?'
 wait_for_call 'virt-manager --connect qemu:///system --show-domain-console win11-1'
 assert_contains "$injected/all-discs.xml" 'sysprep.exe /generalize'
@@ -439,13 +478,105 @@ assert_contains "$calls" 'The clone disk cannot be smaller than the Windows base
 grep -Fq 'virt-install' "$calls" && fail 'virt-install ran with a truncated clone disk'
 reset_calls
 
-# Without a setup reboot, do not delete the answer disc under a running VM or
-# report success. Remove only this failed clone and its overlay.
-VM_TEST_REBOOT_EXIT=1 run create win11 --name reboot-failed >/dev/null 2>&1 &&
-  fail 'reported successful setup without a reboot'
-grep -Fxq reboot-failed "$domains" && fail 'left the incomplete clone running'
-assert_contains "$calls" 'Waiting for the Windows setup reboot failed.'
-assert_not_contains "$calls" 'reboot-failed is finishing Windows setup'
+# The prompted username becomes the local account.
+VM_TEST_USER=alice run create win11 --name named-user >/dev/null 2>&1 || fail 'create win11 as alice failed'
+assert_contains "$injected/autounattend.xml" '<Name>alice</Name>'
+assert_contains "$calls" 'then sign in as alice.'
+reset_calls
+
+for bad_user in 'bad user' 'has<xml' 'ends-with-dot.' 'twenty-one-characters' Administrator GUEST Users named-user-2; do
+  VM_TEST_USER=$bad_user run create win11 --name named-user-2 >/dev/null 2>&1 &&
+    fail "the Windows username [$bad_user] was accepted"
+  assert_contains "$calls" 'rofi Username'
+  grep -Eq 'Invalid Windows username|is a built-in Windows account|same as the computer name' "$calls" ||
+    fail "the username [$bad_user] was refused for the wrong reason"
+  grep -Fq 'virt-install' "$calls" && fail "virt-install ran for the username [$bad_user]"
+  grep -Fq 'rofi Password' "$calls" && fail "asked for a password after the username [$bad_user]"
+  reset_calls
+done
+
+# Windows reserves NONE, even though it fits the allowed character set.
+for bad_user in NONE None none; do
+  VM_TEST_USER=$bad_user run create win11 --name restricted-user >/dev/null 2>&1 &&
+    fail "the restricted Windows username [$bad_user] was accepted"
+  assert_contains "$calls" 'is reserved by Windows'
+  assert_not_contains "$calls" 'rofi Password'
+  assert_not_contains "$calls" 'virt-install '
+  reset_calls
+done
+
+for user in _alice -alice .alice abcdefghijklmnopqrst; do
+  VM_TEST_USER=$user run create win11 --name "user-${user//./dot}" >/dev/null 2>&1 ||
+    fail "the valid Windows username [$user] was refused"
+  assert_contains "$injected/autounattend.xml" "<Name>$user</Name>"
+  reset_calls
+done
+
+# Validate the transformed and truncated computer name before setup starts.
+for name in 123 123456789012345suffix 12345678901234-suffix; do
+  run create win11 --name "$name" >/dev/null 2>&1 && fail 'accepted an all-numeric computer name'
+  assert_contains "$calls" 'cannot contain only digits'
+  assert_not_contains "$calls" 'rofi Password'
+  assert_not_contains "$calls" 'virt-install '
+  reset_calls
+done
+
+VM_TEST_HOST_USER=Alice.test run --dry-run create win11 >"$test_root/dry-windows-user" ||
+  fail 'Windows dry run applied Debian username rules'
+assert_contains "$test_root/dry-windows-user" '<Name>Alice.test</Name>'
+run --dry-run create win11 --name 123 >/dev/null 2>&1 && fail 'dry run accepted an invalid computer name'
+[[ ! -s $calls ]] || fail 'Windows dry run called an external tool'
+
+# A missing answer disc must fail the initial boot, not silently start OOBE.
+VM_TEST_MISSING_DISC=1 run create win11 --name missing-disc >/dev/null 2>&1 &&
+  fail 'reported success without the answer disc on initial boot'
+grep -Fxq missing-disc "$domains" && fail 'left the clone with no answer disc defined'
+assert_contains "$calls" 'Creating missing-disc failed.'
+assert_not_contains "$calls" ' change-media '
+reset_calls
+
+# Do not leave a persistent definition pointing to a deleted required ISO.
+VM_TEST_MEDIA_EXIT=1 run create win11 --name media-failed >/dev/null 2>&1 &&
+  fail 'reported success after saved-definition cleanup failed'
+grep -Fxq media-failed "$domains" && fail 'left a clone with a broken persistent definition'
+assert_not_contains "$calls" 'show-domain-console media-failed'
+assert_not_contains "$calls" 'then sign in as tester.'
+[[ -z $(find "$test_root/cache/vm-presets" -name '.answers-*') ]] || fail 'failed media cleanup left credentials'
+reset_calls
+
+# Model QEMU's open descriptor separately from the persistent media source.
+VM_TEST_MEDIA_GATE="$test_root/media-gate" run create win11 --name retained-media >"$test_root/retained.out" 2>&1 &
+creation_pid=$!
+for _ in {1..200}; do
+  [[ ! -s $test_root/media-gate.ready ]] || break
+  sleep 0.01
+done
+[[ -s $test_root/media-gate.ready ]] || fail 'clone did not reach media startup'
+disc=$(<"$test_root/media-gate.ready")
+exec 7<"$disc"
+: >"$test_root/media-gate.continue"
+wait "$creation_pid" || { cat "$test_root/retained.out" >&2; fail 'retained-media create failed'; }
+[[ ! -e $disc ]] || fail 'host answer disc was not deleted'
+media_uuid=${disc##*/.answers-}; media_uuid=${media_uuid%.iso}
+[[ ! -s $test_root/media/$media_uuid.config ]] || fail 'persistent definition kept its answer disc'
+[[ $(<"$test_root/media/$media_uuid.live") == "$disc" ]] || fail 'running definition lost its answer disc'
+python3 - 3<&7 <<'CHECK' || fail 'the unlinked answer file was not readable through the retained descriptor'
+import os
+import xml.etree.ElementTree as ET
+with os.fdopen(3, 'rb') as disc:
+    answer = disc.read()
+    disc.seek(0)
+    assert disc.read() == answer
+root = ET.fromstring(answer)
+assert root.find('.//{*}LocalAccount/{*}Name').text == 'tester'
+CHECK
+exec 7<&-
+reset_calls
+
+VM_TEST_USER=__cancel__ run create win11 >/dev/null 2>&1 || fail 'cancelling the username prompt was an error'
+assert_contains "$calls" 'rofi Username'
+grep -Fq 'rofi Password' "$calls" && fail 'asked for a password after cancelling the username'
+grep -Fq 'virt-install' "$calls" && fail 'virt-install ran after cancelling the username'
 reset_calls
 
 # Later creates only clone.
