@@ -71,6 +71,14 @@ Item {
         Component.onCompleted: resetLifetime()
         onDeadlineChanged: resetLifetime()
 
+        Connections {
+          target: NotificationService
+          function onArtworkRefreshRequested(key) {
+            // A native replacement may emit several property signals at once.
+            if (key === slot.key) Qt.callLater(card.refreshArtwork)
+          }
+        }
+
         Timer {
           interval: 50
           repeat: true

@@ -50,6 +50,12 @@ Item {
   signal cardClicked()
   signal actionRequested(string identifier)
 
+  function refreshArtwork() {
+    icon.source = ""
+    icon.source = Qt.binding(function() { return root.vinyl ? "" : root.iconSource })
+    vinylArt.refreshArtwork()
+  }
+
   function resolveIcon(value) {
     const icon = String(value || "")
     if (!icon) return ""
@@ -125,11 +131,12 @@ Item {
     spacing: Theme.fs(NotificationConfig.iconGap)
 
     NotificationVinyl {
+      id: vinylArt
       visible: root.vinyl
       Layout.preferredWidth: visible ? implicitWidth : 0
       Layout.preferredHeight: visible ? implicitHeight : 0
       Layout.alignment: Qt.AlignVCenter
-      source: root.iconSource
+      source: root.vinyl ? root.iconSource : ""
       sleeveSize: Theme.fs(NotificationConfig.vinylSize)
     }
 
@@ -144,12 +151,15 @@ Item {
 
       Image {
         id: icon
+        objectName: "notificationBadgeImage"
         anchors.centerIn: parent
         width: Math.round(parent.width * 0.6)
         height: width
-        source: root.iconSource
+        source: root.vinyl ? "" : root.iconSource
         fillMode: Image.PreserveAspectFit
         asynchronous: true
+        // New loads must read reused files instead of a previous decoded image.
+        cache: false
         smooth: true
         visible: status === Image.Ready
       }

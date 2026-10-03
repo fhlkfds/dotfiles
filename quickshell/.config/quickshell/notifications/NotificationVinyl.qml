@@ -11,6 +11,13 @@ Item {
   property int sleeveSize: Theme.fs(NotificationConfig.iconSize)
   property bool spinning: MediaState.isPlaying
 
+  function refreshArtwork() {
+    labelArt.source = ""
+    labelArt.source = Qt.binding(function() { return root.source })
+    sleeve.source = ""
+    sleeve.source = Qt.binding(function() { return root.source })
+  }
+
   readonly property int discSize: Math.round(sleeveSize * 0.94)
   readonly property int discOffset: Math.round(sleeveSize * 0.55)
 
@@ -50,10 +57,13 @@ Item {
 
       Image {
         id: labelArt
+        objectName: "notificationLabelImage"
         anchors.fill: parent
         source: root.source
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
+        // New loads must read reused files instead of a previous decoded image.
+        cache: false
         smooth: true
         visible: false
       }
@@ -101,6 +111,7 @@ Item {
 
   Image {
     id: sleeve
+    objectName: "notificationSleeveImage"
     anchors.left: parent.left
     anchors.verticalCenter: parent.verticalCenter
     width: root.sleeveSize
@@ -108,6 +119,7 @@ Item {
     source: root.source
     fillMode: Image.PreserveAspectCrop
     asynchronous: true
+    cache: false
     smooth: true
     visible: false
   }
