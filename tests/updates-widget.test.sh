@@ -35,9 +35,12 @@ grep -Fq 'minRefreshGap' "$state" ||
 # One number on the bar; the pacman/AUR split lives in the hover.
 grep -Fq '"󰚰  " + UpdatesState.totalCount' "$widget" ||
   fail 'bar label is not the single combined count'
-grep -Fq '"Pacman (" + UpdatesState.repoCount' "$widget" &&
-  grep -Fq '"\nAUR (" + UpdatesState.aurCount' "$widget" ||
+grep -Fq '"Pacman: " + UpdatesState.repoCount' "$widget" &&
+  grep -Fq '"\nAUR: " + UpdatesState.aurCount' "$widget" ||
   fail 'hover does not break the count down into pacman and AUR'
+# A long package list in the hover covered the whole screen.
+! grep -Eq 'UpdatesState\.(repo|aur)Packages' "$widget" ||
+  fail 'hover lists package names instead of only counts'
 
 # Hidden on a clean zero, but a failed check must stay visible or a missing
 # checkupdates looks like an up-to-date system.
