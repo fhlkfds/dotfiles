@@ -22,6 +22,10 @@ Item {
   implicitHeight: Theme.fs(18)
   readonly property real playhead: Math.max(0, Math.min(1, value)) * width
 
+  onAmplitudeChanged: wave.requestPaint()
+  onWavelengthChanged: wave.requestPaint()
+  onLineWidthChanged: wave.requestPaint()
+
   Rectangle {
     x: root.playhead
     width: Math.max(0, root.width - root.playhead)

@@ -13,17 +13,13 @@ Item {
 
   // Every second hour from now, 12 of them: the next 24 hours.
   readonly property var hours: {
-    const all = WeatherState.hourly
-    const nowIso = Qt.formatDateTime(new Date(), "yyyy-MM-ddThh:00")
-    var i = 0
-    while (i < all.length && all[i].time < nowIso)
-      i++
+    const all = WeatherState.upcomingHours
     const out = []
-    for (var k = i; k < all.length && out.length < 12; k += 2)
+    for (var k = 0; k < all.length && out.length < 12; k += 2)
       out.push(all[k])
     return out
   }
-  readonly property var week: WeatherState.daily.slice(0, 7)
+  readonly property var week: WeatherState.upcomingDays.slice(0, 7)
   readonly property real weekMin: week.reduce((m, d) => Math.min(m, d.tMin), Infinity)
   readonly property real weekMax: week.reduce((m, d) => Math.max(m, d.tMax), -Infinity)
   function weekFrac(t) {
@@ -164,7 +160,7 @@ Item {
         width: parent.cellW; height: parent.cellH
         glyph: String.fromCodePoint(0xf058e) // md-water_percent
         label: "Humidity"
-        value: root.ready ? WeatherState.current.humidity + "%" : "--"
+        value: root.ready ? WeatherState.fmtPercent(WeatherState.current.humidity) : "--"
       }
       Tile {
         width: parent.cellW; height: parent.cellH
@@ -176,14 +172,14 @@ Item {
         width: parent.cellW; height: parent.cellH
         glyph: String.fromCodePoint(0xf054a) // md-umbrella
         label: "Rain"
-        value: root.hours.length > 0 ? root.hours[0].precipProb + "%" : "--"
+        value: root.hours.length > 0 ? WeatherState.fmtPercent(root.hours[0].precipProb) : "--"
       }
       Tile {
         width: parent.cellW; height: parent.cellH
         glyph: String.fromCodePoint(0xf05a8) // md-white_balance_sunny
         glyphColor: Theme.yellow
         label: "UV"
-        value: root.ready && WeatherState.current.uv !== undefined
+        value: root.ready && WeatherState.current.uv !== null && WeatherState.current.uv !== undefined
                ? Math.round(WeatherState.current.uv) + " " + WeatherState.uvLabel(WeatherState.current.uv) : "--"
       }
       Tile {
@@ -376,7 +372,7 @@ Item {
             }
             Text {
               width: Theme.fs(62)
-              text: String.fromCodePoint(0xf058c) + " " + day.modelData.precipMax + "%" // md-water
+              text: String.fromCodePoint(0xf058c) + " " + WeatherState.fmtPercent(day.modelData.precipMax) // md-water
               color: day.modelData.precipMax >= WeatherState.rainThreshold ? Theme.accent : Theme.textFaint
               font.family: Theme.glyphFamily
               font.pixelSize: Theme.fs(11)

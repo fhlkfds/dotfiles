@@ -23,10 +23,11 @@ PopupWindow {
   anchor.gravity: Edges.Bottom
   anchor.margins.top: Theme.gapS
 
-  implicitWidth: view.implicitWidth
+  implicitWidth: Math.min(view.implicitWidth,
+                         Math.max(1, (panel.screen ? panel.screen.width : 1920) - Theme.gapL * 2))
   // Never taller than the screen under the bar; the view scrolls instead.
   implicitHeight: Math.min(view.implicitHeight,
-                           (panel.screen ? panel.screen.height : 1080) - Theme.barHeight - Theme.gapL)
+                           Math.max(1, (panel.screen ? panel.screen.height : 1080) - Theme.barHeight - Theme.gapL))
 
   DashboardView {
     id: view
@@ -42,5 +43,10 @@ PopupWindow {
       // A click outside dismisses the popup without going through the state.
       DashboardState.panelVisible = false
     }
+  }
+
+  Component.onDestruction: {
+    if (DashboardState.panelScreen === panel.ownerScreen)
+      DashboardState.panelVisible = false
   }
 }

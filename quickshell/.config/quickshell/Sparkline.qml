@@ -18,6 +18,10 @@ Canvas {
   onSeriesChanged: requestPaint()
   onWidthChanged: requestPaint()
   onHeightChanged: requestPaint()
+  onMaxValueChanged: requestPaint()
+  onSlotsChanged: requestPaint()
+  onFillChanged: requestPaint()
+  onLineWidthChanged: requestPaint()
 
   onPaint: {
     const ctx = getContext("2d")

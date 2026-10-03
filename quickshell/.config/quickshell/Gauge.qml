@@ -39,6 +39,10 @@ Item {
     onTrackChanged: requestPaint()
     onFillChanged: requestPaint()
     onSweepRadChanged: requestPaint()
+    onWidthChanged: requestPaint()
+    onHeightChanged: requestPaint()
+    property int strokeWidth: root.thickness
+    onStrokeWidthChanged: requestPaint()
 
     onPaint: {
       const ctx = getContext("2d")

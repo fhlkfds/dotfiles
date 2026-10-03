@@ -12,7 +12,7 @@ Rectangle {
   property int padding: Theme.gapM
   readonly property bool hasHeader: title !== "" || glyph !== ""
 
-  radius: Theme.radiusS
+  radius: Theme.fs(Math.max(0, Theme.hyprRounding))
   color: Theme.mixColor(Theme.bg, Theme.surfaceColor, 0.55)
   border.width: Theme.borderWidth
   border.color: Theme.hairline

@@ -21,7 +21,7 @@ Rectangle {
   implicitHeight: pad + tabH + Theme.gapM + pageH + pad
 
   color: Theme.bg
-  radius: Theme.radiusM
+  radius: Theme.fs(Math.max(0, Theme.hyprRounding))
   border.width: Theme.borderWidth
   border.color: Theme.hairline
   focus: true
@@ -53,7 +53,7 @@ Rectangle {
     id: tabStrip
     x: root.pad
     y: root.pad
-    width: root.pageW
+    width: root.width - root.pad * 2
     height: root.tabH
     readonly property real tabW: width / root.tabs.length
 
@@ -134,7 +134,8 @@ Rectangle {
 
   // --- pages -----------------------------------------------------------------
 
-  // Scrolls only when the window had to be clamped to a short screen.
+  // Keep tabs reachable on narrow screens; scroll the fixed-size body when
+  // either dimension has to be clamped. Tab changes still never resize it.
   Flickable {
     anchors.fill: parent
     anchors.topMargin: root.pad + root.tabH + Theme.gapM
@@ -144,7 +145,8 @@ Rectangle {
     clip: true
     contentWidth: root.pageW
     contentHeight: root.pageH
-    interactive: contentHeight > height
+    interactive: contentHeight > height || contentWidth > width
+    flickableDirection: Flickable.AutoFlickIfNeeded
     boundsBehavior: Flickable.StopAtBounds
 
     DashOverview {

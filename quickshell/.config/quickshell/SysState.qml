@@ -29,11 +29,15 @@ Singleton {
   // while the card is awake. On a hybrid laptop the dGPU sits in D3cold, and
   // querying it would wake it up and drain the battery to draw a graph.
   property string nvidiaDevPath: ""
+  property string gpuPciId: ""
   property bool nvidiaSmi: false
+  property bool nvidiaAwake: false
   property bool gpuAsleep: false
 
-  readonly property bool cpuTempAvailable: cpuTempPath !== ""
-  readonly property bool gpuAvailable: gpuBusyPath !== "" || (nvidiaSmi && nvidiaDevPath !== "")
+  property bool cpuTempReported: false
+  property bool gpuReported: false
+  readonly property bool cpuTempAvailable: cpuTempReported
+  readonly property bool gpuAvailable: gpuReported
 
   property string cpuModel: ""
   property string hostname: ""
@@ -56,21 +60,19 @@ Singleton {
   }
 
   function pickGpuModel() {
-    const vendor = root.gpuBusyPath !== "" ? /AMD|ATI/ : (root.nvidiaDevPath !== "" ? /NVIDIA/ : /./)
     for (var i = 0; i < root.gpuLines.length; i++)
-      if (vendor.test(root.gpuLines[i])) {
+      if (root.gpuPciId !== "" && root.gpuLines[i].indexOf(root.gpuPciId + " ") === 0) {
         root.gpuModel = root.gpuName(root.gpuLines[i])
         return
       }
   }
-  onGpuBusyPathChanged: pickGpuModel()
-  onNvidiaDevPathChanged: pickGpuModel()
+  onGpuPciIdChanged: pickGpuModel()
 
   Process {
     id: namesProc
     command: ["sh", "-c",
       'grep -m1 "model name" /proc/cpuinfo | cut -d: -f2- | sed "s/^ *//"; ' +
-      'lspci -nn 2>/dev/null | grep -iE "vga|3d"']
+      'lspci -Dnn 2>/dev/null | grep -iE "vga|3d"']
     stdout: StdioCollector {
       onTextChanged: {
         if (text.trim() === "")
@@ -126,9 +128,12 @@ Singleton {
       'n=$(cat "$h/name" 2>/dev/null); ' +
       '[ -n "$n" ] && echo "HWMON $n $h"; done; ' +
       'for c in /sys/class/drm/card*/device/gpu_busy_percent; do ' +
-      '[ -e "$c" ] && echo "GPUBUSY $c"; done; ' +
+      '[ -e "$c" ] || continue; d=${c%/gpu_busy_percent}; ' +
+      'echo "GPUBUSY $c $(basename "$(readlink -f "$d")")"; ' +
+      'for h in "$d"/hwmon/hwmon*; do ' +
+      '[ "$(cat "$h/name" 2>/dev/null)" = amdgpu ] && echo "GPUHWMON $c $h"; done; done; ' +
       'for d in /sys/class/drm/card*/device; do ' +
-      '[ "$(cat "$d/vendor" 2>/dev/null)" = 0x10de ] && echo "NVIDIA $d"; done; ' +
+      '[ "$(cat "$d/vendor" 2>/dev/null)" = 0x10de ] && echo "NVIDIA $d $(basename "$(readlink -f "$d")")"; done; ' +
       'command -v nvidia-smi >/dev/null 2>&1 && echo NVSMI']
     stdout: StdioCollector {
       onTextChanged: {
@@ -142,14 +147,15 @@ Singleton {
             // coretemp, and edge on amdgpu.
             if (p[1] === "k10temp" || p[1] === "zenpower" || p[1] === "coretemp")
               root.cpuTempPath = p[2] + "/temp1_input"
-            else if (p[1] === "amdgpu") {
-              root.gpuTempPath = p[2] + "/temp1_input"
-              root.gpuPowerPath = p[2] + "/power1_average"
-            }
-          } else if (p[0] === "GPUBUSY" && p.length >= 2) {
+          } else if (p[0] === "GPUBUSY" && p.length >= 3 && root.gpuBusyPath === "") {
             root.gpuBusyPath = p[1]
-          } else if (p[0] === "NVIDIA" && p.length >= 2 && root.nvidiaDevPath === "") {
+            root.gpuPciId = p[2]
+          } else if (p[0] === "GPUHWMON" && p[1] === root.gpuBusyPath) {
+            root.gpuTempPath = p[2] + "/temp1_input"
+            root.gpuPowerPath = p[2] + "/power1_average"
+          } else if (p[0] === "NVIDIA" && p.length >= 3 && root.nvidiaDevPath === "" && root.gpuBusyPath === "") {
             root.nvidiaDevPath = p[1]
+            root.gpuPciId = p[2]
           } else if (p[0] === "NVSMI") {
             root.nvidiaSmi = true
           }
@@ -163,6 +169,7 @@ Singleton {
 
   property real cpuPercent: 0
   property bool cpuSeeded: false
+  property bool cpuSamplingSeeded: false
   property real memUsedBytes: 0
   property real memTotalBytes: 0
   property real diskUsedBytes: 0
@@ -211,49 +218,103 @@ Singleton {
 
   // --- files -----------------------------------------------------------------
 
-  FileView { id: statFile; path: "/proc/stat" }
-  FileView { id: memFile; path: "/proc/meminfo" }
-  FileView { id: upFile; path: "/proc/uptime" }
-  FileView { id: loadFile; path: "/proc/loadavg" }
-  FileView { id: cpuinfoFile; path: "/proc/cpuinfo" }
-  FileView { id: netFile; path: "/proc/net/dev" }
-  FileView { id: cpuTempFile; path: root.cpuTempPath }
-  FileView { id: gpuTempFile; path: root.gpuTempPath }
-  FileView { id: gpuBusyFile; path: root.gpuBusyPath }
-  FileView { id: gpuPowerFile; path: root.gpuPowerPath; printErrors: false }
+  // FileView reloads asynchronously. Parse only completed reads so the UI
+  // thread never blocks and the runtime-PM check cannot use stale contents.
+  FileView { id: statFile; path: "/proc/stat"; onLoaded: root.parseCpu(text()) }
+  FileView { id: memFile; path: "/proc/meminfo"; onLoaded: root.parseMem(text()) }
+  FileView {
+    id: upFile; path: "/proc/uptime"
+    onLoaded: { const v = parseFloat(text()); if (isFinite(v)) root.uptimeSeconds = v }
+  }
+  FileView {
+    id: loadFile; path: "/proc/loadavg"
+    onLoaded: { const v = parseFloat(text()); if (isFinite(v)) root.loadAvg = v }
+  }
+  FileView { id: cpuinfoFile; path: "/proc/cpuinfo"; onLoaded: root.parseFrequency(text()) }
+  FileView { id: netFile; path: "/proc/net/dev"; onLoaded: root.parseNet(text()) }
+  FileView {
+    id: cpuTempFile; path: root.cpuTempPath; printErrors: false
+    onLoaded: {
+      const v = parseFloat(text())
+      root.cpuTempReported = isFinite(v)
+      if (root.cpuTempReported) root.cpuTempC = v / 1000
+    }
+    onLoadFailed: root.cpuTempReported = false
+  }
+  FileView {
+    id: gpuTempFile; path: root.gpuTempPath; printErrors: false
+    onLoaded: {
+      const v = parseFloat(text())
+      root.gpuTempReported = isFinite(v)
+      if (root.gpuTempReported) root.gpuTempC = v / 1000
+    }
+    onLoadFailed: root.gpuTempReported = false
+  }
+  FileView {
+    id: gpuBusyFile; path: root.gpuBusyPath; printErrors: false
+    onLoaded: {
+      const v = parseFloat(text())
+      root.gpuReported = isFinite(v) && v >= 0 && v <= 100
+      if (root.gpuReported) {
+        root.gpuPercent = v
+        root.gpuHistory = root.pushHistory(root.gpuHistory, v / 100)
+      }
+    }
+    onLoadFailed: root.gpuReported = false
+  }
+  FileView {
+    id: gpuPowerFile; path: root.gpuPowerPath; printErrors: false
+    onLoaded: { const v = parseFloat(text()); root.gpuPowerW = isFinite(v) ? v / 1e6 : -1 }
+    onLoadFailed: root.gpuPowerW = -1
+  }
   FileView {
     id: vramUsedFile
     path: root.gpuBusyPath !== "" ? root.gpuBusyPath.replace("gpu_busy_percent", "mem_info_vram_used") : ""
     printErrors: false
+    onLoaded: { const v = parseFloat(text()); root.gpuVramUsedBytes = isFinite(v) ? v : 0 }
+    onLoadFailed: root.gpuVramUsedBytes = 0
   }
   FileView {
     id: vramTotalFile
     path: root.gpuBusyPath !== "" ? root.gpuBusyPath.replace("gpu_busy_percent", "mem_info_vram_total") : ""
     printErrors: false
+    onLoaded: { const v = parseFloat(text()); root.gpuVramTotalBytes = isFinite(v) ? v : 0 }
+    onLoadFailed: root.gpuVramTotalBytes = 0
   }
   FileView {
     id: nvidiaPmFile
     path: root.nvidiaDevPath !== "" ? root.nvidiaDevPath + "/power/runtime_status" : ""
     printErrors: false
+    onLoaded: {
+      const state = text().trim()
+      root.nvidiaAwake = state === "active"
+      root.gpuAsleep = state === "suspended" || state === "suspending"
+      if (state !== "active") root.clearNvidia()
+      // Unknown/failed PM reads are not permission to wake the card.
+      if (root.active && state === "active" && !nvidiaProc.running)
+        nvidiaProc.running = true
+    }
+    onLoadFailed: { root.nvidiaAwake = false; root.gpuAsleep = false; root.clearNvidia() }
   }
 
   // Previous /proc/stat counters, as [total, idle] per line: index 0 is the
   // aggregate "cpu" line, 1.. the individual cores.
   property var lastStat: []
 
-  function sampleCpu() {
-    statFile.reload()
-    const lines = statFile.text().split("\n")
+  function parseCpu(text) {
+    if (!root.active) return
+    const lines = text.split("\n")
     const next = []
     const cores = []
     for (var l = 0; l < lines.length; l++) {
       if (lines[l].indexOf("cpu") !== 0)
         break
       const f = lines[l].trim().split(/\s+/).slice(1).map(Number)
-      if (f.length < 5)
+      if (f.length < 5 || !f.slice(0, 8).every(isFinite))
         continue
       var total = 0
-      for (var i = 0; i < f.length; i++)
+      // guest and guest_nice are already included in user and nice.
+      for (var i = 0; i < Math.min(8, f.length); i++)
         total += f[i]
       const idle = f[3] + f[4]   // idle + iowait
       next.push([total, idle])
@@ -265,6 +326,7 @@ Singleton {
         if (dt > 0) {
           root.cpuPercent = busy * 100
           root.cpuSeeded = true
+          root.cpuSamplingSeeded = true
           root.cpuHistory = root.pushHistory(root.cpuHistory, busy)
         }
       } else {
@@ -276,13 +338,8 @@ Singleton {
     root.lastStat = next
   }
 
-  function sampleLoad() {
-    loadFile.reload()
-    const v = parseFloat(loadFile.text())
-    if (!isNaN(v))
-      root.loadAvg = v
-    cpuinfoFile.reload()
-    const mhz = cpuinfoFile.text().match(/^cpu MHz\s*:\s*[\d.]+/gm)
+  function parseFrequency(text) {
+    const mhz = text.match(/^cpu MHz\s*:\s*[\d.]+/gm)
     if (mhz && mhz.length > 0) {
       var sum = 0
       for (var i = 0; i < mhz.length; i++)
@@ -295,9 +352,9 @@ Singleton {
   property real lastNetTx: -1
   property real lastNetMs: 0
 
-  function sampleNet() {
-    netFile.reload()
-    const rows = netFile.text().split("\n").slice(2)
+  function parseNet(text) {
+    if (!root.active) return
+    const rows = text.split("\n").slice(2)
     const wanted = NetworkState.iface
     var pick = null
     for (var i = 0; i < rows.length; i++) {
@@ -306,12 +363,21 @@ Singleton {
         continue
       const f = m[2].trim().split(/\s+/).map(Number)
       const row = { name: m[1], rx: f[0], tx: f[8] }
+      if (f.length < 9 || !isFinite(row.rx) || !isFinite(row.tx))
+        continue
       if (m[1] === wanted) { pick = row; break }
       if (!pick || row.rx + row.tx > pick.rx + pick.tx)
         pick = row
     }
-    if (!pick)
+    if (!pick || pick.name !== root.netIface) {
+      root.rxRate = 0; root.txRate = 0
+      root.rxHistory = []; root.txHistory = []
+      root.lastNetRx = -1
+    }
+    if (!pick) {
+      root.netIface = ""; root.rxTotal = 0; root.txTotal = 0
       return
+    }
     const now = Date.now()
     if (pick.name === root.netIface && root.lastNetRx >= 0 && now > root.lastNetMs) {
       const secs = (now - root.lastNetMs) / 1000
@@ -328,9 +394,7 @@ Singleton {
     root.lastNetMs = now
   }
 
-  function sampleMem() {
-    memFile.reload()
-    const t = memFile.text()
+  function parseMem(t) {
     const total = t.match(/MemTotal:\s+(\d+)/)
     const avail = t.match(/MemAvailable:\s+(\d+)/)
     if (total && avail) {
@@ -345,96 +409,73 @@ Singleton {
     }
   }
 
-  function sampleUptime() {
-    upFile.reload()
-    const v = parseFloat(upFile.text().trim().split(/\s+/)[0])
-    if (!isNaN(v))
-      root.uptimeSeconds = v
-  }
-
   function sampleTemps() {
-    if (root.cpuTempPath !== "") {
-      cpuTempFile.reload()
-      const c = parseFloat(cpuTempFile.text())
-      if (!isNaN(c))
-        root.cpuTempC = c / 1000
-    }
-    if (root.gpuTempPath !== "") {
-      gpuTempFile.reload()
-      const g = parseFloat(gpuTempFile.text())
-      if (!isNaN(g))
-        root.gpuTempC = g / 1000
-    }
+    if (root.cpuTempPath !== "") cpuTempFile.reload()
     if (root.gpuBusyPath !== "") {
       gpuBusyFile.reload()
-      const b = parseFloat(gpuBusyFile.text())
-      if (!isNaN(b)) {
-        root.gpuPercent = b
-        root.gpuHistory = root.pushHistory(root.gpuHistory, b / 100)
-      }
+      if (root.gpuTempPath !== "") gpuTempFile.reload()
+      if (root.gpuPowerPath !== "") gpuPowerFile.reload()
       vramUsedFile.reload()
       vramTotalFile.reload()
-      const used = parseFloat(vramUsedFile.text())
-      const vtotal = parseFloat(vramTotalFile.text())
-      if (!isNaN(used) && !isNaN(vtotal)) {
-        root.gpuVramUsedBytes = used
-        root.gpuVramTotalBytes = vtotal
-      }
-      if (root.gpuPowerPath !== "") {
-        gpuPowerFile.reload()
-        const uw = parseFloat(gpuPowerFile.text())
-        root.gpuPowerW = isNaN(uw) ? -1 : uw / 1e6
-      }
     } else if (root.nvidiaSmi && root.nvidiaDevPath !== "") {
       nvidiaPmFile.reload()
-      root.gpuAsleep = nvidiaPmFile.text().trim() === "suspended"
-      if (!root.gpuAsleep && !nvidiaProc.running)
-        nvidiaProc.running = true
     }
+  }
+
+  function clearNvidia() {
+    root.gpuReported = false
+    root.gpuTempReported = false
+    root.gpuVramUsedBytes = 0
+    root.gpuVramTotalBytes = 0
+    root.gpuPowerW = -1
+  }
+
+  function parseNvidia(text) {
+    root.clearNvidia()
+    if (!root.nvidiaAwake) return
+    const f = text.trim().split("\n")[0].split(",").map(s => parseFloat(s))
+    if (f.length < 5 || !isFinite(f[0]) || f[0] < 0 || f[0] > 100)
+      return
+    root.gpuReported = true
+    root.gpuPercent = f[0]
+    root.gpuHistory = root.pushHistory(root.gpuHistory, f[0] / 100)
+    root.gpuTempReported = isFinite(f[1])
+    if (root.gpuTempReported) root.gpuTempC = f[1]
+    if (isFinite(f[2]) && isFinite(f[3]) && f[3] > 0) {
+      root.gpuVramUsedBytes = f[2] * 1048576
+      root.gpuVramTotalBytes = f[3] * 1048576
+    }
+    root.gpuPowerW = isFinite(f[4]) ? f[4] : -1
   }
 
   Process {
     id: nvidiaProc
-    command: ["nvidia-smi",
+    command: ["timeout", "2s", "nvidia-smi", "--id=" + root.gpuPciId,
       "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total,power.draw",
       "--format=csv,noheader,nounits"]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        const f = text.trim().split("\n")[0].split(",").map(s => parseFloat(s))
-        if (f.length < 5 || isNaN(f[0]))
-          return
-        root.gpuPercent = f[0]
-        root.gpuHistory = root.pushHistory(root.gpuHistory, f[0] / 100)
-        if (!isNaN(f[1])) {
-          root.gpuTempC = f[1]
-          root.gpuTempReported = true
-        }
-        root.gpuVramUsedBytes = f[2] * 1048576
-        root.gpuVramTotalBytes = f[3] * 1048576
-        root.gpuPowerW = isNaN(f[4]) ? -1 : f[4]
-      }
-    }
+    stdout: StdioCollector { onStreamFinished: root.parseNvidia(text) }
     stderr: StdioCollector {}
+    onExited: function (code) { if (code !== 0) root.clearNvidia() }
   }
 
-  // amdgpu reads its temperature from hwmon; nvidia-smi reports it directly.
   property bool gpuTempReported: false
-  readonly property bool gpuTempAvailable: (gpuTempPath !== "" || gpuTempReported) && !gpuAsleep
+  readonly property bool gpuTempAvailable: gpuTempReported && !gpuAsleep
 
   // Fast metrics: only while the dashboard is open.
   // The first CPU reading needs two samples, so the second comes quickly.
   Timer {
-    interval: root.cpuSeeded ? 1000 : 250
+    interval: root.cpuSamplingSeeded ? 1000 : 250
     running: root.active
     repeat: true
     triggeredOnStart: true
     onTriggered: {
-      root.sampleCpu()
-      root.sampleMem()
-      root.sampleUptime()
+      statFile.reload()
+      memFile.reload()
+      upFile.reload()
       root.sampleTemps()
-      root.sampleLoad()
-      root.sampleNet()
+      loadFile.reload()
+      cpuinfoFile.reload()
+      netFile.reload()
     }
   }
 
@@ -475,6 +516,7 @@ Singleton {
   onActiveChanged: {
     if (!active) {
       root.lastStat = []
+      root.cpuSamplingSeeded = false
       root.lastNetRx = -1
     }
   }

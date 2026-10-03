@@ -149,18 +149,33 @@ resizes the Wayland surface, and nothing fades or grows on open or close; the
 tab underline is the one animation. The wave timeline is drawn once and slid
 sideways rather than repainted.
 
-A closed dashboard costs nothing. `SysState` polls `/proc` and `/sys` only
+The panel and its cards follow the active palette and its corner rounding
+live, including cached charts and playback waves; a theme switch does not
+rebuild pages. On narrow or short screens the tab strip fits the screen and
+the fixed-size page body scrolls in either direction.
+
+Closing the dashboard stops its system polling and animations. `SysState` polls `/proc` and `/sys` only
 while it is open (once a second, `df` every 30 s), the media position ticks
 only while a timeline is on screen, and each page stops its spectrum bindings
 and animations whenever it is not the visible tab. Reopening shows the last
-readings at once and refreshes them within a second.
+readings at once and refreshes them within a second; CPU delta sampling is
+reseeded after 250 ms. Removing the owning monitor stops dashboard polling.
 
 Temperatures come from `k10temp`, `zenpower` or `coretemp`, and from `amdgpu`
 for an AMD card. An NVIDIA card is read through `nvidia-smi`, but only while
 it is awake: a hybrid laptop's dGPU that is runtime-suspended shows as asleep
-rather than being woken to draw a graph. Hardware that exposes nothing reads as
+rather than being queried. Queries target the selected PCI device and have a
+two-second timeout. AMD sensors and the GPU name come from the same device.
+System file reads are asynchronous, and invalid or failed sensor reads show
+unavailable. Hardware that exposes nothing reads as
 unavailable, never as a made-up number. Holidays are computed locally
 (`Holidays.js`), so the calendar needs no network.
+
+Forecast hours and days follow the weather location's UTC offset from
+Open-Meteo and advance with a minute clock. Malformed responses keep the
+previous good forecast, and results for a location changed during a request
+are discarded. Holiday markers use actual holiday dates, not observed
+workday substitutes.
 
 ## Desktop clock
 

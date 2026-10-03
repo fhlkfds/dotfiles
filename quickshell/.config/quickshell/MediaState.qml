@@ -198,7 +198,8 @@ Singleton {
 
   // Something on screen is showing the timeline: this panel or the clock
   // dashboard. Nothing else reads the extrapolated position.
-  readonly property bool timelineShown: root.panelVisible || DashboardState.panelVisible
+  readonly property bool timelineShown: root.panelVisible || (DashboardState.panelVisible
+    && (DashboardState.activeTab === "overview" || DashboardState.activeTab === "media"))
 
   // Smooth local extrapolation for the timeline and lyric sync.
   // Only while a timeline is on screen.

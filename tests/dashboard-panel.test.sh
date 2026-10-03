@@ -47,8 +47,10 @@ grep -Fq 'target: "dashboard"' "$qs/Bar.qml" || fail 'dashboard has no IPC targe
 
 grep -Fq 'readonly property bool active: DashboardState.panelVisible' "$qs/SysState.qml" \
   || fail 'system metrics poll while the dashboard is closed'
-grep -Fq 'root.panelVisible || DashboardState.panelVisible' "$qs/MediaState.qml" \
+grep -Fq 'root.panelVisible || (DashboardState.panelVisible' "$qs/MediaState.qml" \
   || fail 'media position does not tick for the dashboard timeline'
+grep -Fq 'DashboardState.activeTab === "overview" || DashboardState.activeTab === "media"' "$qs/MediaState.qml" \
+  || fail 'media position ticks on tabs without a timeline'
 grep -Fq 'live: root.shown && visible' "$view" || fail 'pages are not told when they are on screen'
 for page in "${pages[@]}"; do
   grep -Fq 'property bool live' "$page" || fail "${page##*/} has no on-screen gate"
@@ -67,6 +69,14 @@ grep -Fq 'NumberAnimation on x' "$qs/WaveProgress.qml" && grep -Fq 'running: roo
 # A sleeping hybrid-laptop dGPU must not be woken just to draw a graph.
 grep -Fq 'power/runtime_status' "$qs/SysState.qml" && grep -Fq '"suspended"' "$qs/SysState.qml" \
   || fail 'nvidia-smi can wake a suspended GPU'
+grep -Fq '"--id=" + root.gpuPciId' "$qs/SysState.qml" \
+  || fail 'nvidia-smi queries GPUs other than the one whose power state was checked'
+grep -Fq 'state === "active" && !nvidiaProc.running' "$qs/SysState.qml" \
+  || fail 'NVIDIA query runs without a completed active power-state reading'
+grep -Fq 'Component.onDestruction' "$panel" \
+  || fail 'removing the owning screen can leave dashboard polling active'
+grep -Fq 'panel.screen.width' "$panel" && grep -Fq 'contentWidth > width' "$view" \
+  || fail 'dashboard body is unreachable on narrow screens'
 
 # --- theming -------------------------------------------------------------------
 
@@ -79,6 +89,7 @@ fi
 
 if command -v node >/dev/null 2>&1; then
   node "$repo_root/tests/dashboard-holidays.logic.test.js" "$qs/Holidays.js"
+  node "$repo_root/tests/dashboard-state.logic.test.js"
 else
   printf 'skip: node is not installed, holiday logic not run\n'
 fi

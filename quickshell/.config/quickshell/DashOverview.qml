@@ -254,15 +254,15 @@ Item {
       Column {
         anchors.right: parent.right
         anchors.verticalCenter: wxGlyph.verticalCenter
-        visible: WeatherState.daily.length > 0
+        visible: WeatherState.upcomingDays.length > 0
         Text {
-          text: "↑ " + (WeatherState.daily.length > 0 ? Math.round(WeatherState.daily[0].tMax) + "°" : "")
+          text: "↑ " + (WeatherState.upcomingDays.length > 0 ? Math.round(WeatherState.upcomingDays[0].tMax) + "°" : "")
           color: Theme.textDim
           font.family: Theme.glyphFamily
           font.pixelSize: Theme.fs(11)
         }
         Text {
-          text: "↓ " + (WeatherState.daily.length > 0 ? Math.round(WeatherState.daily[0].tMin) + "°" : "")
+          text: "↓ " + (WeatherState.upcomingDays.length > 0 ? Math.round(WeatherState.upcomingDays[0].tMin) + "°" : "")
           color: Theme.textDim
           font.family: Theme.glyphFamily
           font.pixelSize: Theme.fs(11)
@@ -328,13 +328,13 @@ Item {
           width: parent.cellW; height: parent.cellH
           glyph: String.fromCodePoint(0xf054a) // md-umbrella
           label: "Rain"
-          value: WeatherState.upcomingHours.length > 0 ? WeatherState.upcomingHours[0].precipProb + "%" : "--"
+          value: WeatherState.upcomingHours.length > 0 ? WeatherState.fmtPercent(WeatherState.upcomingHours[0].precipProb) : "--"
         }
         Tile {
           width: parent.cellW; height: parent.cellH
           glyph: String.fromCodePoint(0xf058e) // md-water_percent
           label: "Humidity"
-          value: WeatherState.hasData ? WeatherState.current.humidity + "%" : "--"
+          value: WeatherState.hasData ? WeatherState.fmtPercent(WeatherState.current.humidity) : "--"
         }
         Tile {
           width: parent.cellW; height: parent.cellH
