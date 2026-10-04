@@ -18,13 +18,25 @@ Singleton {
   property real longitude: -87.6298
   property string timezone: "America/Chicago"
   property bool savedLocation: false
+  // The night-light panel saves a place name with its location; weather.json
+  // has none, so fall back to the city in the timezone id.
+  property string place: ""
+  readonly property string locationName: place !== ""
+    ? place.split(",")[0]
+    : timezone.substring(timezone.lastIndexOf("/") + 1).replace(/_/g, " ")
 
   function applyLocation(c) {
-    if (!c || !isFinite(c.latitude) || !isFinite(c.longitude))
+    if (!c || typeof c.latitude !== "number" || typeof c.longitude !== "number"
+        || !isFinite(c.latitude) || !isFinite(c.longitude)
+        || Math.abs(c.latitude) > 90 || Math.abs(c.longitude) > 180)
       return false
     root.latitude = c.latitude
     root.longitude = c.longitude
     if (typeof c.timezone === "string" && c.timezone !== "") root.timezone = c.timezone
+    root.current = null
+    root.hourly = []
+    root.daily = []
+    root.lastFetchMs = 0
     root.refresh()
     return true
   }
@@ -53,12 +65,15 @@ Singleton {
       try {
         const loc = JSON.parse(text()).location
         const same = loc && loc.latitude === root.latitude && loc.longitude === root.longitude
+          && (!loc.timezone || loc.timezone === root.timezone)
         // The panel rewrites this file on every click; only a new location
         // is worth a weather request.
         if (same)
           root.savedLocation = true
         else if (root.applyLocation(loc))
           root.savedLocation = true
+        if (root.savedLocation && typeof loc.place === "string")
+          root.place = loc.place
       } catch (e) {}
     }
   }
@@ -70,11 +85,23 @@ Singleton {
   property double lastFetchMs: 0
   readonly property int refreshIntervalMs: 15 * 60 * 1000
 
-  property var current: null      // { temp, feels, humidity, code, wind, isDay, precip }
+  property var current: null      // { temp, feels, humidity, code, wind, isDay, precip, uv }
   property var hourly: []         // [{ time, temp, precipProb, code }]
-  property var daily: []          // [{ date, code, tMax, tMin, precipMax, sunrise, sunset }]
+  property var daily: []          // [{ date, code, tMax, tMin, precipMax, sunrise, sunset, uvMax }]
 
   readonly property bool hasData: current !== null
+
+  // Forecast timestamps belong to the requested location, not the host.
+  // A minute clock advances cached strips across hour/day boundaries.
+  property int utcOffsetSeconds: 0
+  SystemClock { id: forecastClock; precision: SystemClock.Minutes }
+  function hourAt(ms) {
+    return new Date(ms + root.utcOffsetSeconds * 1000).toISOString().slice(0, 13) + ":00"
+  }
+  readonly property string forecastHour: hourAt(forecastClock.date.getTime())
+  readonly property var upcomingDays: daily.filter(d => d.date >= forecastHour.slice(0, 10))
+  readonly property string locationKey: latitude + "," + longitude + "," + timezone
+  property string fetchLocationKey: ""
 
   Component.onCompleted: root.maybeRefresh()
 
@@ -92,14 +119,15 @@ Singleton {
     if (fetchProc.running)
       return
     root.status = "loading"
+    root.fetchLocationKey = root.locationKey
     fetchProc.command = ["curl", "-sS", "--max-time", "15", "-G",
       "--data-urlencode", "latitude=" + root.latitude,
       "--data-urlencode", "longitude=" + root.longitude,
       "--data-urlencode", "current=temperature_2m,apparent_temperature,"
-        + "relative_humidity_2m,weather_code,wind_speed_10m,is_day,precipitation",
+        + "relative_humidity_2m,weather_code,wind_speed_10m,is_day,precipitation,uv_index",
       "--data-urlencode", "hourly=temperature_2m,precipitation_probability,weather_code",
       "--data-urlencode", "daily=weather_code,temperature_2m_max,temperature_2m_min,"
-        + "precipitation_probability_max,sunrise,sunset",
+        + "precipitation_probability_max,sunrise,sunset,uv_index_max",
       "--data-urlencode", "temperature_unit=fahrenheit",
       "--data-urlencode", "wind_speed_unit=mph",
       "--data-urlencode", "timezone=" + root.timezone,
@@ -119,71 +147,84 @@ Singleton {
   Process {
     id: fetchProc
     stdout: StdioCollector {
-      onTextChanged: {
-        if (text.trim() === "")
-          return
-        var d = null
-        try {
-          d = JSON.parse(text)
-        } catch (e) {
-          root.fail("Malformed weather response")
-          return
-        }
-        if (!d || d.error || !d.current) {
-          root.fail(d && d.reason ? d.reason : "Weather unavailable")
-          return
-        }
-
-        const c = d.current
-        root.current = {
-          temp: c.temperature_2m,
-          feels: c.apparent_temperature,
-          humidity: c.relative_humidity_2m,
-          code: c.weather_code,
-          wind: c.wind_speed_10m,
-          isDay: c.is_day === 1,
-          precip: c.precipitation
-        }
-
-        const hs = []
-        if (d.hourly && d.hourly.time) {
-          for (var i = 0; i < d.hourly.time.length; i++) {
-            hs.push({
-              time: d.hourly.time[i],
-              temp: d.hourly.temperature_2m[i],
-              precipProb: d.hourly.precipitation_probability[i],
-              code: d.hourly.weather_code[i]
-            })
-          }
-        }
-        root.hourly = hs
-
-        const ds = []
-        if (d.daily && d.daily.time) {
-          for (var j = 0; j < d.daily.time.length; j++) {
-            ds.push({
-              date: d.daily.time[j],
-              code: d.daily.weather_code[j],
-              tMax: d.daily.temperature_2m_max[j],
-              tMin: d.daily.temperature_2m_min[j],
-              precipMax: d.daily.precipitation_probability_max[j],
-              sunrise: d.daily.sunrise[j],
-              sunset: d.daily.sunset[j]
-            })
-          }
-        }
-        root.daily = ds
-
-        root.lastFetchMs = Date.now()
-        root.status = "ok"
-        root.errorText = ""
-      }
+      onStreamFinished: root.acceptForecast(text)
     }
     stderr: StdioCollector { id: fetchErr }
     onExited: function (code) {
+      if (root.fetchLocationKey !== root.locationKey) {
+        Qt.callLater(root.refresh)
+        return
+      }
       if (code !== 0 && root.status === "loading")
         root.fail(fetchErr.text.trim() || "Could not reach Open-Meteo")
     }
+  }
+
+  function acceptForecast(text) {
+    if (root.fetchLocationKey !== root.locationKey)
+      return
+    var d = null
+    try {
+      d = JSON.parse(text)
+    } catch (e) {
+      root.fail("Malformed weather response")
+      return
+    }
+    if (!d || d.error || !d.current) {
+      root.fail(d && d.reason ? d.reason : "Weather unavailable")
+      return
+    }
+    const c = d.current
+    const required = [c.temperature_2m, c.apparent_temperature, c.relative_humidity_2m,
+                      c.weather_code, c.wind_speed_10m, c.is_day]
+    if (!required.every(v => typeof v === "number" && isFinite(v))) {
+      root.fail("Incomplete current weather")
+      return
+    }
+    const h = d.hourly
+    const day = d.daily
+    if ((h && ![h.time, h.temperature_2m, h.precipitation_probability, h.weather_code].every(Array.isArray))
+        || (day && ![day.time, day.weather_code, day.temperature_2m_max, day.temperature_2m_min,
+                     day.precipitation_probability_max, day.sunrise, day.sunset].every(Array.isArray))) {
+      root.fail("Incomplete weather forecast")
+      return
+    }
+
+    const hs = []
+    if (h) {
+      for (var i = 0; i < h.time.length; i++) {
+        if (typeof h.time[i] !== "string" || typeof h.temperature_2m[i] !== "number"
+            || !isFinite(h.temperature_2m[i])) continue
+        hs.push({time: h.time[i], temp: h.temperature_2m[i],
+                 precipProb: h.precipitation_probability[i], code: h.weather_code[i]})
+      }
+    }
+    const ds = []
+    if (day) {
+      for (var j = 0; j < day.time.length; j++) {
+        if (typeof day.time[j] !== "string" || typeof day.temperature_2m_min[j] !== "number"
+            || typeof day.temperature_2m_max[j] !== "number"
+            || !isFinite(day.temperature_2m_min[j]) || !isFinite(day.temperature_2m_max[j])) continue
+        ds.push({date: day.time[j], code: day.weather_code[j],
+                 tMax: day.temperature_2m_max[j], tMin: day.temperature_2m_min[j],
+                 precipMax: day.precipitation_probability_max[j],
+                 sunrise: typeof day.sunrise[j] === "string" ? day.sunrise[j] : "",
+                 sunset: typeof day.sunset[j] === "string" ? day.sunset[j] : "",
+                 uvMax: day.uv_index_max ? day.uv_index_max[j] : null})
+      }
+    }
+
+    // Commit a complete response together; malformed responses keep the cache.
+    root.utcOffsetSeconds = Number(d.utc_offset_seconds) || 0
+    root.current = {temp: c.temperature_2m, feels: c.apparent_temperature,
+                    humidity: c.relative_humidity_2m, code: c.weather_code,
+                    wind: c.wind_speed_10m, isDay: c.is_day === 1,
+                    precip: c.precipitation, uv: c.uv_index}
+    root.hourly = hs
+    root.daily = ds
+    root.lastFetchMs = Date.now()
+    root.status = "ok"
+    root.errorText = ""
   }
 
   function fail(msg) {
@@ -201,7 +242,7 @@ Singleton {
   readonly property var rainSoon: {
     if (root.hourly.length === 0)
       return null
-    const nowIso = Qt.formatDateTime(new Date(), "yyyy-MM-ddThh:00")
+    const nowIso = root.forecastHour
     var start = -1
     for (var i = 0; i < root.hourly.length; i++) {
       if (root.hourly[i].time >= nowIso) { start = i; break }
@@ -225,10 +266,10 @@ Singleton {
   readonly property var upcomingHours: {
     if (root.hourly.length === 0)
       return []
-    const nowIso = Qt.formatDateTime(new Date(), "yyyy-MM-ddThh:00")
+    const nowIso = root.forecastHour
     for (var i = 0; i < root.hourly.length; i++) {
       if (root.hourly[i].time >= nowIso)
-        return root.hourly.slice(i, i + 12)
+        return root.hourly.slice(i, i + 24)
     }
     return []
   }
@@ -311,8 +352,22 @@ Singleton {
     return h >= 6 && h < 20
   }
 
+  // WHO UV index bands.
+  function uvLabel(uv) {
+    if (uv === null || uv === undefined || !isFinite(uv)) return "--"
+    if (uv < 3) return "Low"
+    if (uv < 6) return "Moderate"
+    if (uv < 8) return "High"
+    if (uv < 11) return "Very high"
+    return "Extreme"
+  }
+
+  function fmtPercent(v) {
+    return typeof v === "number" && isFinite(v) ? Math.round(v) + "%" : "--"
+  }
+
   function fmtTemp(t) {
-    return (isFinite(t) ? Math.round(t) : "--") + "°F"
+    return (t !== null && t !== undefined && isFinite(t) ? Math.round(t) : "--") + "°F"
   }
 
   function fmtHour(iso) {
@@ -328,6 +383,7 @@ Singleton {
   }
 
   function fmtClock(iso) {
+    if (!iso) return "--"
     const d = Date.fromLocaleString(Qt.locale(), iso, "yyyy-MM-ddThh:mm")
     return isNaN(d.getTime()) ? iso.substring(11, 16)
                               : Qt.formatDateTime(d, "h:mm AP")

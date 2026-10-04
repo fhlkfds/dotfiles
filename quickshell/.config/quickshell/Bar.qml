@@ -72,6 +72,13 @@ Scope {
   }
 
   IpcHandler {
+    target: "dashboard"
+    function toggle(): void {
+      DashboardState.togglePanel(bar.focusedScreen())
+    }
+  }
+
+  IpcHandler {
     target: "visualizer"
     function toggle(): void {
       VisualizerState.toggle()
@@ -505,16 +512,19 @@ Scope {
           }
         }
 
+        // The time and the weather beside it are one target: either opens
+        // the dashboard (overview, media, system, weather).
         MouseArea {
           id: clockClickGuard
           anchors.fill: clockLabel
           acceptedButtons: Qt.LeftButton
-          onClicked: calendarPopup.visible = !calendarPopup.visible
+          cursorShape: Qt.PointingHandCursor
+          onClicked: DashboardState.togglePanel(panel.modelData.name)
         }
 
-        CalendarPopup {
-          id: calendarPopup
+        DashboardPanel {
           anchorItem: clockLabel
+          ownerScreen: panel.modelData.name
         }
 
         Row {
@@ -530,7 +540,7 @@ Scope {
         }
 
         // The media panel anchors to the centered clock and opens through the
-        // `media` IPC target. Left-clicking the clock opens the calendar.
+        // `media` IPC target. Left-clicking the clock opens the dashboard.
         MediaPanel {
           anchorItem: clockLabel
           ownerScreen: panel.modelData.name

@@ -196,13 +196,18 @@ Singleton {
 
   onActiveChanged: root.resyncPosition()
 
+  // Something on screen is showing the timeline: this panel or the clock
+  // dashboard. Nothing else reads the extrapolated position.
+  readonly property bool timelineShown: root.panelVisible || (DashboardState.panelVisible
+    && (DashboardState.activeTab === "overview" || DashboardState.activeTab === "media"))
+
   // Smooth local extrapolation for the timeline and lyric sync.
-  // Only while the panel shows the timeline and lyrics; nothing else reads it.
+  // Only while a timeline is on screen.
   Timer {
     interval: 100
     repeat: true
     triggeredOnStart: true
-    running: root.panelVisible && root.active !== null && root.active.isPlaying && !root.dragging
+    running: root.timelineShown && root.active !== null && root.active.isPlaying && !root.dragging
     onTriggered: {
       const p = root.active
       if (!p)
@@ -218,7 +223,7 @@ Singleton {
     interval: 2000
     repeat: true
     triggeredOnStart: true
-    running: root.panelVisible && root.active !== null && root.active.isPlaying
+    running: root.timelineShown && root.active !== null && root.active.isPlaying
     onTriggered: {
       const p = root.active
       if (!p || root.dragging)

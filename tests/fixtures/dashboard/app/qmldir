@@ -1,0 +1,21 @@
+singleton Theme 1.0 Theme.qml
+singleton DashboardState 1.0 DashboardState.qml
+singleton SysState 1.0 SysState.qml
+singleton WeatherState 1.0 WeatherState.qml
+singleton ClockState 1.0 ClockState.qml
+singleton MediaState 1.0 MediaState.qml
+singleton CavaState 1.0 CavaState.qml
+singleton LyricsState 1.0 LyricsState.qml
+singleton NetworkState 1.0 NetworkState.qml
+DashboardView 1.0 DashboardView.qml
+DashOverview 1.0 DashOverview.qml
+DashMedia 1.0 DashMedia.qml
+DashSystem 1.0 DashSystem.qml
+DashWeather 1.0 DashWeather.qml
+DashCard 1.0 DashCard.qml
+WaveProgress 1.0 WaveProgress.qml
+Sparkline 1.0 Sparkline.qml
+Gauge 1.0 Gauge.qml
+IconButton 1.0 IconButton.qml
+VolumeSlider 1.0 VolumeSlider.qml
+LyricsView 1.0 LyricsView.qml

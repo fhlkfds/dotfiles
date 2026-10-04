@@ -14,6 +14,9 @@ Item {
   property int size: Theme.fs(72)
   property int thickness: Theme.fs(7)
   property bool available: true
+  // Degrees of ring drawn. Below 360 the gap is centred at the bottom, which
+  // gives the open speedometer arc the dashboard's memory and disk use.
+  property real sweep: 360
 
   implicitWidth: size
   implicitHeight: size + (label !== "" ? Theme.fs(16) : 0)
@@ -31,9 +34,15 @@ Item {
     property real v: root.available ? root.clamped : 0
     property color track: root.trackColor
     property color fill: root.ringColor
+    property real sweepRad: root.sweep * Math.PI / 180
     onVChanged: requestPaint()
     onTrackChanged: requestPaint()
     onFillChanged: requestPaint()
+    onSweepRadChanged: requestPaint()
+    onWidthChanged: requestPaint()
+    onHeightChanged: requestPaint()
+    property int strokeWidth: root.thickness
+    onStrokeWidthChanged: requestPaint()
 
     onPaint: {
       const ctx = getContext("2d")
@@ -41,20 +50,21 @@ Item {
       const cx = width / 2
       const cy = height / 2
       const r = (Math.min(width, height) - root.thickness) / 2
-      const start = -Math.PI / 2
+      const start = sweepRad >= Math.PI * 2 ? -Math.PI / 2
+                                            : Math.PI / 2 + (Math.PI * 2 - sweepRad) / 2
 
       ctx.lineWidth = root.thickness
       ctx.lineCap = "round"
 
       ctx.beginPath()
       ctx.strokeStyle = track
-      ctx.arc(cx, cy, r, 0, Math.PI * 2)
+      ctx.arc(cx, cy, r, start, start + sweepRad)
       ctx.stroke()
 
       if (v > 0) {
         ctx.beginPath()
         ctx.strokeStyle = fill
-        ctx.arc(cx, cy, r, start, start + Math.PI * 2 * v)
+        ctx.arc(cx, cy, r, start, start + sweepRad * v)
         ctx.stroke()
       }
     }
