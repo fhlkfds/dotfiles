@@ -31,6 +31,12 @@ grep -Fq 'ExecStart=%h/.config/hypr/scripts/night-light-schedule.py apply' \
   "$repo_root/systemd/.config/systemd/user/night-light-schedule.service" || fail 'the service does not run apply'
 grep -Fq 'OnCalendar=minutely' "$repo_root/systemd/.config/systemd/user/night-light-schedule.timer" ||
   fail 'the timer does not run every minute'
+grep -Fq 'systemctl --user start --no-block location-detect.service' \
+  "$repo_root/hypr/.config/hypr/conf/autostart.lua" || fail 'autostart does not detect the location at login'
+location_unit="$repo_root/systemd/.config/systemd/user/location-detect.service"
+grep -Fq 'ExecStart=%h/.config/hypr/scripts/night-light-schedule.py detect-location' "$location_unit" ||
+  fail 'the location service does not run detect-location'
+grep -Fq 'Restart=on-failure' "$location_unit" || fail 'the location service does not retry while offline'
 python3 - "$repo_root/menu/.config/lmenu/menu.jsonc" <<'PY' || fail 'lmenu rows are wrong'
 import json, re, sys
 text = re.sub(r'^\s*//.*$', '', open(sys.argv[1]).read(), flags=re.M)
@@ -196,6 +202,25 @@ printf '{"loc": "40.7128,-74.0060", "city": "New York", "region": "New York", "t
 NIGHT_LIGHT_LOCATION_FIXTURE="$test_root/ipinfo.json" at 2026-09-27T12:00 detect-location >/dev/null
 python3 -c 'import json,sys; l=json.load(open(sys.argv[1]))["location"]; assert l=={"latitude":40.7128,"longitude":-74.006,"place":"New York, New York","timezone":"America/New_York"}, l' \
   "$NIGHT_LIGHT_SCHEDULE_DIR/schedule.json" || fail 'detect-location did not save the detected location'
+
+# A login with the same IP location leaves the file and a manual toggle alone.
+at 2026-09-27T19:00 set mode=fixed on=21:00 off=07:00 >/dev/null
+touch "$FIXTURE_LIT"
+: >"$FIXTURE_CALLS"
+saved_before=$(<"$NIGHT_LIGHT_SCHEDULE_DIR/schedule.json")
+unchanged_output=$(NIGHT_LIGHT_LOCATION_FIXTURE="$test_root/ipinfo.json" at 2026-09-27T19:01 detect-location)
+[[ "$unchanged_output" == *'location unchanged'* ]] || fail "unchanged location was rewritten: $unchanged_output"
+expect "$(<"$NIGHT_LIGHT_SCHEDULE_DIR/schedule.json")" "$saved_before" 'unchanged location file'
+expect "$(lit)" on 'manual toggle after an unchanged detection'
+[[ ! -s $FIXTURE_CALLS ]] || fail 'an unchanged detection switched the light'
+
+# A failed lookup exits non-zero so the login service retries, and keeps the
+# saved location.
+printf 'not json\n' >"$test_root/ipinfo-bad.json"
+if NIGHT_LIGHT_LOCATION_FIXTURE="$test_root/ipinfo-bad.json" at 2026-09-27T19:02 detect-location 2>/dev/null; then
+  fail 'a failed detection exited zero'
+fi
+expect "$(<"$NIGHT_LIGHT_SCHEDULE_DIR/schedule.json")" "$saved_before" 'location after a failed detection'
 
 reset dry-run
 before_calls=$(<"$FIXTURE_CALLS")

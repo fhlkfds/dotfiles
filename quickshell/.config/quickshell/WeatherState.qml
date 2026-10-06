@@ -11,9 +11,10 @@ import QtQuick
 Singleton {
   id: root
 
-  // Location: the one saved from the night-light panel (Super+Shift+N) wins,
-  // since it is the user's own; weather.json next to this file is the default,
-  // and Chicago the last resort.
+  // Location: the one in the night-light state file wins. location-detect.service
+  // fills it from the IP address at each login, and the night-light panel
+  // (Super+Shift+N) can set it by hand. weather.json next to this file is the
+  // default, and Chicago the last resort.
   property real latitude: 41.8781
   property real longitude: -87.6298
   property string timezone: "America/Chicago"
@@ -72,8 +73,9 @@ Singleton {
           root.savedLocation = true
         else if (root.applyLocation(loc))
           root.savedLocation = true
-        if (root.savedLocation && typeof loc.place === "string")
-          root.place = loc.place
+        // A new location without a name must not keep the old one's.
+        if (root.savedLocation)
+          root.place = typeof loc.place === "string" ? loc.place : ""
       } catch (e) {}
     }
   }
