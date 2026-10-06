@@ -89,6 +89,19 @@ aur_helper() {
   command -v yay
 }
 
+# --sudoloop keeps the credential alive by running "$sudobin -v" in a loop.
+# doas has no -v, so with sudobin=doas every iteration printed a usage error
+# into the upgrade terminal. Only sudo supports it; anything else, including a
+# config yay cannot print, runs without the loop.
+sudo_supports_loop() {
+  local config sudobin
+
+  config=$("$1" -Pg 2>/dev/null) || return 1
+  [[ $config =~ \"sudobin\":[[:space:]]*\"([^\"]*)\" ]] || return 1
+  sudobin=${BASH_REMATCH[1]}
+  [[ ${sudobin##*/} == sudo ]]
+}
+
 apt_updates() {
   local output
   output=$(LC_ALL=C apt list --upgradable 2>/dev/null) || return 1
@@ -214,8 +227,9 @@ run_update() (
 
   if helper=$(aur_helper); then
     manager=aur
-    flags=(--noconfirm --noremovemake --sudoloop
+    flags=(--noconfirm --noremovemake
            --answerclean None --answerdiff None --answeredit None)
+    sudo_supports_loop "$helper" && flags+=(--sudoloop)
   elif command -v pacman >/dev/null 2>&1; then
     manager=pacman
   elif command -v apt >/dev/null 2>&1; then

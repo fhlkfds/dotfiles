@@ -150,6 +150,21 @@ grep -Fq 'read -rp "Done. Press Enter to close. "' "$fixture/update.log"
 # The upgrade's exit status has to survive, or the widget cannot tell a failed
 # update from a clean one and wrongly zeroes its count.
 grep -Fq 'exit $status' "$fixture/update.log"
+# --sudoloop runs "$sudobin -v", which doas rejects on every iteration. It is
+# passed only when yay's configured sudobin is sudo, and never when the config
+# cannot be read.
+! grep -Fx -- '--sudoloop' "$fixture/update.log" >/dev/null ||
+  { printf 'FAIL: --sudoloop passed without a readable yay config\n' >&2; exit 1; }
+cp "$fixture/yay" "$fixture/yay.orig"
+for case in 'doas|no' '/usr/bin/doas|no' 'sudo|yes' '/usr/bin/sudo|yes'; do
+  IFS='|' read -r sudobin want_loop <<< "$case"
+  printf '#!/bin/sh\n[ "$1" = -Pg ] && printf "{\\n\\t\\"sudobin\\": \\"%s\\",\\n\\t\\"sudoflags\\": \\"\\"\\n}\\n"\nexit 0\n' "$sudobin" > "$fixture/yay"
+  run_update_stub
+  if grep -Fx -- '--sudoloop' "$fixture/update.log" >/dev/null; then got_loop=yes; else got_loop=no; fi
+  [[ $got_loop == "$want_loop" ]] ||
+    { printf 'FAIL: sudobin %s gave --sudoloop=%s\n' "$sudobin" "$got_loop" >&2; exit 1; }
+done
+mv -f "$fixture/yay.orig" "$fixture/yay"
 
 # Cache invalidation must not turn a failed terminal run into widget success.
 printf '#!/bin/sh\nexit 23\n' > "$fixture/failterm"
@@ -171,7 +186,8 @@ grep -Fxq updated "$fixture/executed.log"
 # The prompt: Enter means both, "p" is pacman alone, "a" is the AUR alone, all
 # through yay. The side that ran is printed so the widget only clears that
 # count; a partial update must not zero the other one.
-printf '#!/bin/sh\necho "$@" > "$ARCH_UPDATES_TEST_LOG"\n' > "$fixture/with space/yay"
+# The config query (-Pg) is read-only and runs before the terminal opens.
+printf '#!/bin/sh\n[ "$1" = -Pg ] && exit 0\necho "$@" > "$ARCH_UPDATES_TEST_LOG"\n' > "$fixture/with space/yay"
 printf '#!/bin/sh\nshift 2\nprintf "%%s\\n\\n" "$ARCH_UPDATES_ANSWER" | "$@" >/dev/null\n' > "$fixture/answer-term"
 chmod +x "$fixture/with space/yay" "$fixture/answer-term"
 for case in '|all|-Syu --noconfirm' 'B|all|-Syu --noconfirm' 'p|repo|-Syu --repo --noconfirm' 'a|aur|-Sua --noconfirm'; do
