@@ -1,0 +1,16 @@
+[Unit]
+Description=Detect the location from the IP address for weather and night light
+# Retries cover the network still coming up at login; after the limit the
+# last saved location stays in use.
+StartLimitIntervalSec=10min
+StartLimitBurst=10
+
+# Started from Hyprland's autostart rather than enabled, like the night-light
+# timer, so it runs once per session. The location is written to
+# $XDG_STATE_HOME/night-light/schedule.json, which the Quickshell weather
+# watches.
+[Service]
+Type=oneshot
+ExecStart=%h/.config/hypr/scripts/night-light-schedule.py detect-location
+Restart=on-failure
+RestartSec=30s

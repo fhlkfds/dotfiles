@@ -197,6 +197,15 @@ Sunset and sunrise are calculated offline, every day, from the saved location.
 **Detect** asks `ipinfo.io` once for an approximate location based on your IP
 address. Nothing else goes over the network.
 
+`location-detect.service` (in the `systemd` package) runs the same detection at
+every login, so the dashboard weather and the sunset schedule follow the
+machine. Hyprland's autostart starts it; it is not enabled. It retries every
+30 seconds for up to 10 minutes while the network comes up, and keeps the last
+saved location if the lookup never succeeds. An unchanged location is not
+rewritten and does not force the light. A location typed into the panel is
+replaced at the next login. Behind a VPN, the detected location is the VPN
+exit's location.
+
 `night-light-schedule.timer` (in the `systemd` package) runs
 `night-light-schedule.py apply` every minute. Hyprland's autostart starts it;
 it is not enabled. `apply` only switches the light when a scheduled time has

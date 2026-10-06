@@ -20,7 +20,9 @@ caught up on the next one. `--force` sets the scheduled state now; `set` and
 
 Sunrise and sunset come from the sunrise equation (NOAA/Meeus approximation,
 within a minute or two), so no network or extra package is needed after the
-location is known. Only `detect-location` touches the network.
+location is known. Only `detect-location` touches the network; the
+location-detect user service runs it at login so the location follows the
+machine's IP address. An unchanged location is left alone.
 """
 
 from __future__ import annotations
@@ -463,6 +465,12 @@ def main(argv: list[str]) -> int:
                         raise ScheduleError("usage: set-location LAT LON [PLACE]")
                     updated = dict(settings, location=parse_location(*rest[:2], rest[2] if len(rest) == 3 else None))
                 else:
+                    # Login runs this every session; an unchanged location
+                    # must not force the light and undo a manual toggle.
+                    if detected == settings["location"]:
+                        print("location unchanged")
+                        print(apply(settings, force=False, dry_run=dry_run))
+                        return 0
                     updated = dict(settings, location=detected)
                 if dry_run:
                     print("+ write " + str(settings_path()) + ": " + json.dumps(stored_settings(updated)))

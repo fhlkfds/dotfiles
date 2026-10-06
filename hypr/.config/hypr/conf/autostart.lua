@@ -20,6 +20,9 @@ hl.on("hyprland.start", function()
     -- Night-light schedule (Super+Shift+N). Started, not enabled, for the same
     -- reason: it should only run inside a Hyprland session.
     start("systemctl --user start night-light-schedule.timer")
+    -- Weather and sunset follow the IP address's location, looked up once
+    -- per login.
+    start("systemctl --user start --no-block location-detect.service")
     -- Wallpaper sync between machines through the dotfiles repository.
     start("systemctl --user start wallpaper-sync.timer wallpaper-sync.path")
     start("helium-browser", { workspace = "2 silent" })
