@@ -160,8 +160,8 @@ Covered in full on
 
 | Idle | Action |
 | --- | --- |
-| 180 s | launch the ASCII screensaver, if enabled, unlocked, and no audio is playing |
-| 300 s | lock, unless stay-awake is active |
+| 1,200 s | launch the ASCII screensaver, if enabled, unlocked, and no audio is playing |
+| 1,200 s | lock, unless stay-awake is active |
 | 1,200 s | DPMS off; restore on activity |
 | 1,800 s | `systemctl suspend` |
 

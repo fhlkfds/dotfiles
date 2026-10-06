@@ -17,8 +17,8 @@ listeners:
 
 | Timeout | Action | Condition |
 | --- | --- | --- |
-| 180 s | `ascii-screensaver idle` | `ascii-screensaver condition` — retries every 5 s while locked, disabled, already running, or while a PipeWire output stream is playing |
-| 300 s | `loginctl lock-session` | `desktop-mode condition lock` — retries every 5 s while stay-awake is active |
+| 1,200 s | `ascii-screensaver idle` | `ascii-screensaver condition` — retries every 5 s while locked, disabled, already running, or while a PipeWire output stream is playing |
+| 1,200 s | `loginctl lock-session` | `desktop-mode condition lock` — retries every 5 s while stay-awake is active |
 | 1,200 s | DPMS off, restored on resume | none |
 | 1,800 s | `systemctl suspend` | none |
 
@@ -27,7 +27,7 @@ Setup > Security > Idle settings provides four profiles:
 | Profile | Screensaver | Lock | DPMS off | Suspend |
 | --- | ---: | ---: | ---: | ---: |
 | Quick | 1 min | 3 min | 10 min | 20 min |
-| Balanced | 3 min | 5 min | 20 min | 30 min |
+| Balanced | 20 min | 20 min | 20 min | 30 min |
 | Relaxed | 5 min | 10 min | 30 min | 60 min |
 | Never suspend | 3 min | 5 min | 20 min | disabled |
 
@@ -49,7 +49,7 @@ Plus, in `general`:
 Both condition commands are guarded inline (`test -x ... &&`, or `test ! -x ... ||`)
 so an undeployed package does not break the timer.
 
-**Hypridle cannot cancel the 300-second lock when the screensaver is
+**Hypridle cannot cancel the 1200-second lock when the screensaver is
 dismissed.** Keyboard input resets both timers; dismissing by focus loss alone
 does not. The comment at the top of the file says so explicitly.
 

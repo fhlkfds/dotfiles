@@ -32,8 +32,8 @@ Dedicated black, opaque, 18-point, zero-padding configurations live under
 
 ## Idle and lock policy
 
-The primary `hypr/.config/hypr/hypridle.conf` starts the screensaver after 180
-idle seconds when no PipeWire output stream is running, and locks after 300
+The primary `hypr/.config/hypr/hypridle.conf` starts the screensaver after 1200
+idle seconds when no PipeWire output stream is running, and locks after 1200
 seconds. While audio is playing, Hypridle retries the condition every five
 seconds. The persistent off flag is
 `$XDG_STATE_HOME/toggles/screensaver-off` (normally
@@ -45,7 +45,7 @@ runtime config, and then starts Hyprlock. The selected layout is stored at
 `$XDG_STATE_HOME/hyprland-desktop/lock-layout`; changing it does not edit the
 Stow source. Hypridle cannot reproduce
 the source implementation's conditional cancellation of the pending lock when
-the screensaver loses focus: the 300-second timeout still fires unless real
+the screensaver loses focus: the 1200-second timeout still fires unless real
 input resets Hypridle's timers.
 
 ## Logo

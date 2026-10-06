@@ -331,7 +331,7 @@ if grep -Fq 'keyword cursor:invisible' "$bin_root/ascii-screensaver-render"; the
   fail 'renderer still uses the legacy config provider for cursor visibility'
 fi
 
-grep -Fq 'timeout = 180' "$repo_root/hypr/.config/hypr/hypridle.conf" || fail 'screensaver idle timeout is not three minutes'
+grep -Fq 'timeout = 1200' "$repo_root/hypr/.config/hypr/hypridle.conf" || fail 'screensaver idle timeout is not twenty minutes'
 grep -Fq 'ascii-screensaver" idle' "$repo_root/hypr/.config/hypr/hypridle.conf" || fail 'Hypridle does not use the audio-aware launch mode'
 grep -Fq 'ascii-screensaver" condition' "$repo_root/hypr/.config/hypr/hypridle.conf" || fail 'Hypridle does not poll the audio-aware condition'
 grep -Fq 'ascii-screensaver force' "$repo_root/hypr/.config/hypr/conf/keybindings.lua" || fail 'Lua config omits the manual screensaver binding'
