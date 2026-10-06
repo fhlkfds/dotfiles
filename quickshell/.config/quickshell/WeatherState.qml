@@ -73,8 +73,9 @@ Singleton {
           root.savedLocation = true
         else if (root.applyLocation(loc))
           root.savedLocation = true
-        if (root.savedLocation && typeof loc.place === "string")
-          root.place = loc.place
+        // A new location without a name must not keep the old one's.
+        if (root.savedLocation)
+          root.place = typeof loc.place === "string" ? loc.place : ""
       } catch (e) {}
     }
   }

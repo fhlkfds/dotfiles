@@ -466,10 +466,10 @@ def main(argv: list[str]) -> int:
                     updated = dict(settings, location=parse_location(*rest[:2], rest[2] if len(rest) == 3 else None))
                 else:
                     # Login runs this every session; an unchanged location
-                    # must not force the light and undo a manual toggle.
+                    # must not force the light and undo a manual toggle. The
+                    # minutely timer still applies the schedule.
                     if detected == settings["location"]:
                         print("location unchanged")
-                        print(apply(settings, force=False, dry_run=dry_run))
                         return 0
                     updated = dict(settings, location=detected)
                 if dry_run:

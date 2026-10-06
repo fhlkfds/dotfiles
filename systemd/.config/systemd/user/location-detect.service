@@ -1,9 +1,9 @@
 [Unit]
 Description=Detect the location from the IP address for weather and night light
-# Retries cover the network still coming up at login; after the limit the
-# last saved location stays in use.
+# Retries cover the network still coming up at login: 20 starts 30 seconds
+# apart span the 10 minutes. After that the last saved location stays in use.
 StartLimitIntervalSec=10min
-StartLimitBurst=10
+StartLimitBurst=20
 
 # Started from Hyprland's autostart rather than enabled, like the night-light
 # timer, so it runs once per session. The location is written to
