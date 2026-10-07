@@ -126,8 +126,10 @@ state written through that symlink.
 ## ASCII Screensaver
 
 The `screensaver` package runs an original `ttfx` ASCII logo on each active
-Hyprland monitor. Hypridle starts it after three idle minutes when no audio is
-playing, then locks at 300 seconds.
+Hyprland monitor. The default Balanced profile attempts automatic launch after
+20 idle minutes when enabled and no audio is playing. It also locks and turns
+displays off at 20 minutes, so the automatic screensaver normally has no
+visible interval. Audio only defers the screensaver; it does not defer locking.
 
 ```bash
 ascii-screensaver force                 # manual fullscreen launch

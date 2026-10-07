@@ -139,7 +139,7 @@ the other profiles:
 | 1,800 seconds | suspend the system through `systemctl` |
 
 Setup > Security > Idle settings selects Quick (1/3/10/20 minutes), Balanced
-(3/5/20/30), Relaxed (5/10/30/60), or Never suspend (3/5/20 with no suspend
+(20/20/20/30), Relaxed (5/10/30/60), or Never suspend (3/5/20 with no suspend
 listener). `hypridle-profile` stores the selection under
 `$XDG_STATE_HOME/hyprland-desktop/idle-profile`, renders a private runtime
 config, and restarts Hypridle. Invalid state falls back to Balanced. The menu

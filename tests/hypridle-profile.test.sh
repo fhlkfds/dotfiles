@@ -78,6 +78,23 @@ export HYPRIDLE_PROFILE_CALLS="$test_root/calls.log"
 
 [[ $($profile current) == balanced ]] || fail 'missing state did not select the balanced profile'
 
+# Assert the ordered timeouts, including duplicates, for every offered profile.
+for selected in quick balanced relaxed never-suspend; do
+  $profile render "$selected" > "$test_root/$selected.conf"
+  case $selected in
+    quick) expected='60 180 600 1200' ;;
+    balanced) expected='1200 1200 1200 1800' ;;
+    relaxed) expected='300 600 1800 3600' ;;
+    never-suspend) expected='180 300 1200' ;;
+  esac
+  actual=$(awk '/^[[:space:]]*timeout =/ { print $3 }' "$test_root/$selected.conf" | paste -sd ' ')
+  [[ $actual == "$expected" ]] || fail "$selected profile has incorrect timeouts: $actual"
+done
+cmp "$source_config" "$test_root/balanced.conf" || fail 'balanced rendering differs from the source defaults'
+$profile status > "$test_root/status.out"
+grep -Fxq 'screensaver: 1200s' "$test_root/status.out" || fail 'default status has the wrong screensaver timeout'
+grep -Fxq 'lock: 1200s' "$test_root/status.out" || fail 'default status has the wrong lock timeout'
+
 $profile render quick > "$test_root/quick.conf"
 for timeout in 60 180 600 1200; do
   grep -Eq "^[[:space:]]*timeout = $timeout$" "$test_root/quick.conf" \
@@ -137,6 +154,8 @@ grep -Fxq "hypridle --config $test_root/runtime/hypridle.conf" "$HYPRIDLE_PROFIL
 
 printf 'not-a-profile\n' > "$HYPRIDLE_PROFILE_STATE_FILE"
 [[ $($profile current) == balanced ]] || fail 'invalid state did not fail closed to balanced'
+$profile render > "$test_root/fallback.conf"
+cmp "$test_root/balanced.conf" "$test_root/fallback.conf" || fail 'invalid state did not render balanced defaults'
 
 grep -Fq "\$HOME/.config/hypr/scripts/hypridle-profile daemon" \
   "$repo_root/hypr/.config/hypr/conf/autostart.lua" \
