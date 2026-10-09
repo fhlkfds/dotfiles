@@ -33,7 +33,7 @@ hl.config({
             color = "{{ hypr_rgba(shadow, shadow_opacity) }}",
         },
         blur = {
-            enabled = {{ on(blur) }},
+            enabled = true,
             size = {{ blur_size }},
             passes = {{ blur_passes }},
             ignore_opacity = true,
@@ -45,4 +45,19 @@ hl.config({
             vibrancy = {{ blur_vibrancy }},
         },
     },
+})
+
+-- Kitty needs compositor blur even when the theme disables it elsewhere.
+hl.window_rule({
+    name = "theme-no-blur-except-kitty",
+    enabled = {{ on(not blur) }},
+    match = { class = "negative:^kitty$" },
+    no_blur = true,
+})
+
+hl.layer_rule({
+    name = "theme-no-layer-blur",
+    enabled = {{ on(not blur) }},
+    match = { namespace = ".*" },
+    blur = false,
 })

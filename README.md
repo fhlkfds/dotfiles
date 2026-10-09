@@ -558,6 +558,8 @@ Each theme consistently updates:
 - **Hyprland** — active/inactive border colours, rounding, gaps, opacity, shadow, blur
 - **Quickshell** — shell palette via generated `themes/.active/theme.json`
 - **Kitty** — 16-colour ANSI palette, foreground/background, selection, cursor
+  and background transparency. Hyprland blurs behind Kitty using the theme's
+  blur strength, including on themes that disable blur for other applications.
 - **T3 Code** — generated environment theme with matching surfaces, status and
   terminal colours; connected clients repaint through T3's watched theme file
 - **System-aware apps** — light/dark preference for Electron, GTK, Chromium and
