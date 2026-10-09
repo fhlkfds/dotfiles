@@ -14,6 +14,7 @@ Row {
 
   // Fixed 1-10 mapping. Not derived from Hyprland.workspaces (which only
   // lists workspaces that have actually been visited this session).
+  // Workspace 9 (Spotify) is intentionally left off the bar.
   // Glyph codepoints verified against the installed "JetBrainsMono Nerd
   // Font" cmap; svg entries are bundled brand icons (icons/*.svg).
   readonly property var slots: [
@@ -25,7 +26,6 @@ Row {
     { id: 6, svg: "icons/qemu.svg" },
     { id: 7, glyph: "" },                 // cod-folder
     { id: 8, glyph: "" },                 // fa-telegram
-    { id: 9, glyph: "" },                 // fa-spotify
     { id: 10, glyph: "" }                 // fa-terminal
   ]
 
