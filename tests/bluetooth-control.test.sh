@@ -287,6 +287,23 @@ assert_contains "$state" 'ListModel { id: connectedModel }'
 assert_contains "$state" 'ListModel { id: pairedModel }'
 assert_contains "$state" 'ListModel { id: discoveredModel }'
 
+# --- low-battery alerts -------------------------------------------------------
+
+alerts_logic="$shell_dir/BluetoothBatteryAlerts.js"
+if command -v node >/dev/null 2>&1; then
+  node "$repo_root/tests/bluetooth-battery-alerts.logic.test.js" "$alerts_logic" \
+    || fail 'bluetooth battery alert logic fixtures failed'
+else
+  printf 'skip: node is not installed, bluetooth battery alert fixtures not run\n'
+fi
+assert_contains "$state" 'import "BluetoothBatteryAlerts.js" as BluetoothBatteryAlerts'
+assert_contains "$state" '"-a", "Battery"'
+assert_contains "$state" 'boolean:swaync-bypass-dnd:true'
+assert_contains "$state" '"pw-play"'
+assert_contains "$shell_dir/shell.qml" 'bluetoothState: BluetoothState'
+grep -qx 'sound-theme-freedesktop' "$repo_root/setup/manifests/hyprland.txt" \
+  || fail 'the alert sound package is missing from the Hyprland manifest'
+
 # --- QML logic smoke ----------------------------------------------------------
 
 if command -v quickshell >/dev/null 2>&1; then
