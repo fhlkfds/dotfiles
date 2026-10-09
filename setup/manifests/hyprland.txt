@@ -24,4 +24,5 @@ xdg-desktop-portal-hyprland
 hyprpolkitagent
 pipewire
 wireplumber
+sound-theme-freedesktop
 pavucontrol

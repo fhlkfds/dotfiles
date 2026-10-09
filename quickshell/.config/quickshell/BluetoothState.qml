@@ -2,6 +2,7 @@ pragma Singleton
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "BluetoothBatteryAlerts.js" as BluetoothBatteryAlerts
 
 // Bluetooth adapter and device state, backed by `bluetooth-control status`.
 //
@@ -384,6 +385,35 @@ Singleton {
     }
     if (deviceModel.count > list.length)
       deviceModel.remove(list.length, deviceModel.count - list.length)
+  }
+
+  // --- low-battery alerts ----------------------------------------------------
+  //
+  // Every poll that changes `devices` is checked for a device crossing 10%,
+  // 5%, or dying. Alerts use the Battery app name so they bypass DND like the
+  // laptop battery's, and play a sound because the notification daemon does
+  // not. BlueZ battery changes arrive on the D-Bus monitor below, so alerts
+  // follow within a second or two rather than waiting for the backstop poll.
+  property var batteryAlertState: ({})
+  readonly property string batteryAlertSound:
+    "/usr/share/sounds/freedesktop/stereo/dialog-warning.oga"
+
+  onDevicesChanged: {
+    const result = BluetoothBatteryAlerts.update(root.batteryAlertState,
+      root.available && root.powered, root.devices)
+    root.batteryAlertState = result.state
+    for (let i = 0; i < result.alerts.length; i++)
+      root.sendBatteryAlert(result.alerts[i])
+  }
+
+  function sendBatteryAlert(alert) {
+    const text = BluetoothBatteryAlerts.message(alert)
+    Quickshell.execDetached(["notify-send", "-a", "Battery",
+      "-u", alert.level === "low" ? "normal" : "critical",
+      "-i", alert.icon || "bluetooth",
+      "-h", "boolean:swaync-bypass-dnd:true",
+      text.title, text.body])
+    Quickshell.execDetached(["pw-play", root.batteryAlertSound])
   }
 
   // Raw stdout of the previous poll. Identical output means nothing moved, so

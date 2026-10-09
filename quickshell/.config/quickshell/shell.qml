@@ -4,6 +4,8 @@ import "notifications" as Notifications
 Scope {
   // Instantiate battery monitoring even when no bar battery widget is present.
   readonly property var batteryState: BatteryState
+  // Likewise for Bluetooth device low-battery alerts.
+  readonly property var bluetoothState: BluetoothState
 
   Bar {}
   Variants {
