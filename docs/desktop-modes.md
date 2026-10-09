@@ -56,7 +56,7 @@ desktop-mode doctor --json
 `desktop-mode action screensaver` (or `ascii-screensaver force`) is the manual
 launch command and ignores the automatic toggle. Automatic activation is
 enabled with `desktop-mode enable screensaver-auto`; the primary Hypridle
-configuration applies the 180-second delay and waits for active audio playback
+configuration applies the 1200-second delay and waits for active audio playback
 to stop.
 
 Durations are positive integers followed by `s`, `m`, or `h`. Timers apply only

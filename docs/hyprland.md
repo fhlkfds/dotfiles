@@ -133,13 +133,13 @@ the other profiles:
 
 | Idle time | Action |
 | --- | --- |
-| 180 seconds | launch the ASCII screensaver when enabled, unlocked, and no audio is playing |
-| 300 seconds | lock the session unless selective stay-awake is active |
+| 1,200 seconds | launch the ASCII screensaver when enabled, unlocked, and no audio is playing |
+| 1,200 seconds | lock the session unless selective stay-awake is active |
 | 1,200 seconds | turn displays off with DPMS; restore them on activity |
 | 1,800 seconds | suspend the system through `systemctl` |
 
 Setup > Security > Idle settings selects Quick (1/3/10/20 minutes), Balanced
-(3/5/20/30), Relaxed (5/10/30/60), or Never suspend (3/5/20 with no suspend
+(20/20/20/30), Relaxed (5/10/30/60), or Never suspend (3/5/20 with no suspend
 listener). `hypridle-profile` stores the selection under
 `$XDG_STATE_HOME/hyprland-desktop/idle-profile`, renders a private runtime
 config, and restarts Hypridle. Invalid state falls back to Balanced. The menu
@@ -149,8 +149,8 @@ Before system sleep it locks the login session; after resume it turns displays
 back on. `inhibit_sleep = 3` is also set. `SUPER+L` provides immediate manual
 locking.
 
-The primary Hypridle configuration launches `ascii-screensaver` at 180 seconds
-and locks at 300 seconds. If a PipeWire output stream is running, Hypridle
+The primary Hypridle configuration launches `ascii-screensaver` at 1200 seconds
+and locks at 1200 seconds. If a PipeWire output stream is running, Hypridle
 rechecks every five seconds and launches after playback stops, provided the
 session is still idle. Locking calls `screensaver-lock`, which stops `ttfx` and
 closes the fullscreen terminals before starting Hyprlock. Automatic launch can

@@ -50,7 +50,7 @@ nothing in the live session reaches it.
 hypr/.config/hypr/
 ├── hyprland.lua              entry point: monitors, env, input, gestures, requires
 ├── hyprland.conf             parallel hyprlang graph, kept as a rollback path
-├── hypridle.conf             four idle listeners: 180 / 300 / 1200 / 1800 s
+├── hypridle.conf             four idle listeners: 1200 / 1200 / 1200 / 1800 s
 ├── hyprlock.conf             lock wrapper; sources generated colours + a layout
 ├── hyprpaper.conf            IPC on, splash off, no preloaded image
 ├── hyprsunset.conf           identity profile; night-light.sh drives it

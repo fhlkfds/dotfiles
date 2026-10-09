@@ -34,6 +34,11 @@ cleanup() {
 trap 'cleanup 0' INT TERM HUP QUIT
 trap 'cleanup $?' EXIT
 
+# A terminal can map after the lock handoff has already cleaned up windows.
+if pgrep -x hyprlock >/dev/null 2>&1; then
+  exit 0
+fi
+
 command -v ttfx >/dev/null 2>&1 || {
   printf 'ascii-screensaver-render: ttfx is required\n' >&2
   exit 1
@@ -61,6 +66,8 @@ grace_until=${SCREENSAVER_GRACE_UNTIL:-0}
 
 in_focus() {
   local out
+  # Locking always wins, including during the monitor startup grace window.
+  ! pgrep -x hyprlock >/dev/null 2>&1 || return 1
   ((EPOCHSECONDS >= grace_until)) || return 0
   out=$("$hyprctl_command" activewindow -j 2>/dev/null) || return 0
   [[ -n $out ]] || return 0

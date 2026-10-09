@@ -151,7 +151,7 @@ launch used `--keep-alive`.
 | --- | --- | --- |
 | Quickshell | active | `hl.exec_cmd("quickshell")` in `conf/autostart.lua` |
 | Hyprpaper, Hypridle, Hyprsunset | active | `conf/autostart.lua` |
-| ASCII screensaver | on demand, and after 180 idle seconds without audio | `hypridle.conf` |
+| ASCII screensaver | on demand, and after 1200 idle seconds without audio | `hypridle.conf` |
 | desktop-mode daemon | active when the package is deployed | `conf/autostart.lua` |
 | Rofi | active on demand | `SUPER+A` and helper scripts |
 | Kitty | active default terminal | `conf/variables.lua` |

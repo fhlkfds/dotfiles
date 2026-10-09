@@ -27,6 +27,20 @@ export SCREENSAVER_TERMINAL_ID=kitty.desktop
 export SCREENSAVER_MONITORS_JSON='[{"name":"DP-1","focused":true},{"name":"HDMI-A-1","focused":false}]'
 export SCREENSAVER_RENDERER="$bin_root/ascii-screensaver-render"
 
+# Isolate process checks from any desktop session running these tests.
+export LOCK_ACTIVE_FILE="$test_root/lock-active"
+cat >"$test_root/bin/pgrep" <<'SH'
+#!/usr/bin/env bash
+[[ $* == '-x hyprlock' && -e $LOCK_ACTIVE_FILE ]]
+SH
+# The cleanup fixture only records calls; it must never kill desktop processes.
+export SCREENSAVER_KILL_LOG="$test_root/kill.log"
+cat >"$test_root/bin/pkill" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$SCREENSAVER_KILL_LOG"
+SH
+chmod +x "$test_root/bin/pgrep" "$test_root/bin/pkill"
+
 cat >"$test_root/bin/pw-dump" <<'SH'
 #!/usr/bin/env bash
 if [[ ${AUDIO_FIXTURE:-idle} == running ]]; then
@@ -76,6 +90,12 @@ grep -Fq -- '--override' "$test_root/kitty.desktop.out" || fail 'Kitty overrides
 cat >"$test_root/bin/socat" <<'SH'
 #!/usr/bin/env bash
 printf 'socket-open\n' >>"$ORDER_LOG"
+if [[ ${LOCK_AFTER_SPAWN:-0} == 1 ]]; then
+  for _ in {1..100}; do
+    [[ ! -e $LOCK_ACTIVE_FILE ]] || break
+    sleep .01
+  done
+fi
 printf '%s\n' \
   'openwindow>>abc,1,io.github.fhlkfds.screensaver,one' \
   'openwindow>>def,1,io.github.fhlkfds.screensaver,two'
@@ -104,10 +124,16 @@ if [[ $1 == dispatch && $2 == *window.fullscreen* ]]; then
   # Toggle, exactly like the real dispatcher.
   if [[ $(<"$f") == 2 ]]; then printf '0' >"$f"; else printf '2' >"$f"; fi
 fi
+if [[ ${LOCK_DURING_FOCUS:-0} == 1 && $1 == eval && $2 == *'monitor = "DP-1"'* ]]; then
+  touch "$LOCK_ACTIVE_FILE"
+fi
 SH
 cat >"$test_root/bin/kitty" <<'SH'
 #!/usr/bin/env bash
 printf 'spawn %s\n' "$*" >>"$ORDER_LOG"
+if [[ ${LOCK_AFTER_SPAWN:-0} == 1 ]]; then
+  touch "$LOCK_ACTIVE_FILE"
+fi
 SH
 chmod +x "$test_root/bin/socat" "$test_root/bin/hyprctl" "$test_root/bin/kitty"
 export ORDER_LOG="$test_root/order.log"
@@ -171,6 +197,50 @@ grep -F 'window.fullscreen' "$ORDER_LOG" | grep -qF 'address:0xabc' &&
   fail 'launcher toggled fullscreen on a window that was already fullscreen'
 : >"$ORDER_LOG"
 rm -f "$FS_STATE_DIR"/*
+
+# Hyprlock starting during focus must prevent even the first terminal spawn.
+rm -f "$test_root/state/toggles/screensaver-off"
+LOCK_DURING_FOCUS=1 "$bin_root/ascii-screensaver" idle
+! grep -q '^spawn ' "$ORDER_LOG" || fail 'launcher spawned after locking during focus'
+grep -Fxq -- '-f [i]o.github.fhlkfds.screensaver' "$SCREENSAVER_KILL_LOG" || fail 'locked launcher did not clean up terminals'
+rm -f "$LOCK_ACTIVE_FILE"
+: >"$ORDER_LOG"
+
+# A terminal starts locking while the launcher is still placing monitors.
+LOCK_AFTER_SPAWN=1 "$bin_root/ascii-screensaver" idle
+[[ $(grep -c '^spawn ' "$ORDER_LOG") == 1 ]] || fail 'launcher kept spawning after Hyprlock started'
+! grep -q 'window.move' "$ORDER_LOG" || fail 'launcher moved windows after Hyprlock started'
+[[ $(grep -Fc 'hyprctl eval hl.dispatch(hl.dsp.focus({ monitor = "DP-1" }))' "$ORDER_LOG") == 1 ]] || fail 'launcher restored focus while locked'
+rm -f "$LOCK_ACTIVE_FILE"
+: >"$ORDER_LOG"
+
+cat >"$test_root/bin/ttfx" <<'SH'
+#!/usr/bin/env bash
+printf 'effect\n' >>"$ORDER_LOG"
+touch "$LOCK_ACTIVE_FILE"
+exec sleep 2
+SH
+cat >"$test_root/bin/stty" <<'SH'
+#!/usr/bin/env bash
+printf '40 120\n'
+SH
+chmod +x "$test_root/bin/ttfx" "$test_root/bin/stty"
+
+# A late renderer must not hide the cursor or start an effect under Hyprlock.
+touch "$LOCK_ACTIVE_FILE"
+SCREENSAVER_LOGO="$repo_root/screensaver/.config/branding/screensaver.txt" \
+  "$bin_root/ascii-screensaver-render" >"$test_root/locked-render.out"
+! grep -q 'invisible = true' "$ORDER_LOG" || fail 'late renderer hid the lock cursor'
+! grep -q '^effect$' "$ORDER_LOG" || fail 'late renderer started an effect under Hyprlock'
+rm -f "$LOCK_ACTIVE_FILE"
+
+# Locking overrides the startup grace period even for an already running effect.
+SCREENSAVER_LOGO="$repo_root/screensaver/.config/branding/screensaver.txt" \
+  SCREENSAVER_GRACE_UNTIL=$((EPOCHSECONDS + 60)) \
+  "$real_timeout" 3s "$bin_root/ascii-screensaver-render" < <(sleep 4) >"$test_root/grace-render.out" \
+  || fail 'renderer ignored locking during startup grace'
+grep -Fq 'invisible = false' "$ORDER_LOG" || fail 'renderer did not restore the cursor on lock'
+rm -f "$LOCK_ACTIVE_FILE"
 fi
 
 mkdir -p "$test_root/home/.config/hypr/scripts"
@@ -331,7 +401,19 @@ if grep -Fq 'keyword cursor:invisible' "$bin_root/ascii-screensaver-render"; the
   fail 'renderer still uses the legacy config provider for cursor visibility'
 fi
 
-grep -Fq 'timeout = 180' "$repo_root/hypr/.config/hypr/hypridle.conf" || fail 'screensaver idle timeout is not three minutes'
+python3 - "$repo_root/hypr/.config/hypr/hypridle.conf" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+blocks = re.findall(r"^listener\s*\{\n(.*?)^\}", Path(sys.argv[1]).read_text(), re.M | re.S)
+assert len(blocks) == 4, "expected four idle listeners"
+for block, timeout, action in zip(blocks, (1200, 1200, 1200, 1800),
+                                  ('ascii-screensaver" idle', 'loginctl lock-session',
+                                   'hl.dsp.dpms', 'systemctl suspend')):
+    assert int(re.search(r"^\s*timeout\s*=\s*(\d+)\s*$", block, re.M)[1]) == timeout, action
+    assert action in re.search(r"^\s*on-timeout\s*=\s*(.+)$", block, re.M)[1], action
+PY
 grep -Fq 'ascii-screensaver" idle' "$repo_root/hypr/.config/hypr/hypridle.conf" || fail 'Hypridle does not use the audio-aware launch mode'
 grep -Fq 'ascii-screensaver" condition' "$repo_root/hypr/.config/hypr/hypridle.conf" || fail 'Hypridle does not poll the audio-aware condition'
 grep -Fq 'ascii-screensaver force' "$repo_root/hypr/.config/hypr/conf/keybindings.lua" || fail 'Lua config omits the manual screensaver binding'

@@ -159,7 +159,7 @@ under `~/.config/windows`.
 | --- | --- | --- |
 | Quickshell | Active | `hl.exec_cmd("quickshell")` |
 | Hyprpaper, Hypridle, Hyprsunset | Active | `conf/autostart.lua` |
-| ASCII screensaver | On demand and after 180 seconds idle without audio playback | `hypridle.conf` |
+| ASCII screensaver | On demand and after 1200 seconds idle without audio playback | `hypridle.conf` |
 | Desktop-mode daemon | Active when package is deployed | `conf/autostart.lua` |
 | Rofi | Active on demand | `SUPER+A` and helper scripts |
 | Kitty | Active/default terminal | `conf/variables.lua` |

@@ -269,8 +269,8 @@ config; see
 
 The `screensaver/` package provides the `ttfx` renderer, per-monitor terminal
 launcher, branding commands, and persistent automatic-off flag. The primary
-Hypridle process launches it after 180 idle seconds without audio playback and
-locks at 300 seconds. Manual force-launch ignores the automatic setting. See
+Hypridle process launches it after 1200 idle seconds without audio playback and
+locks at 1200 seconds. Manual force-launch ignores the automatic setting. See
 [ASCII screensaver](./screensaver.md).
 
 ## Terminal and shell
