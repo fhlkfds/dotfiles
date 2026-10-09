@@ -25,6 +25,8 @@ Scope {
     onTriggered: Qt.quit()
   }
 
+  BluetoothBattery { id: splitBattery; level: 42; label: "L 0% · R 42% · Case 0%" }
+
   property int failures: 0
 
   function check(name, condition) {
@@ -53,6 +55,16 @@ Scope {
           n.paired === true && n.connected === false && n.trusted === false)
     const withBattery = s.normalise({ address: "A", name: "B", battery: 87.4 })
     check("normalise rounds a battery reading", withBattery.battery === 87)
+
+    const split = s.normalise({ address: "A", battery: 42,
+      batteryLabel: "L 0% · R 42% · Case 0%" })
+    check("normalise preserves LibrePods detail", split.batteryLabel === splitBattery.label)
+    check("ordinary battery labels default to empty", withBattery.batteryLabel === "")
+    check("battery widget renders all three readings", splitBattery.children[0].text === split.batteryLabel)
+    s.syncModel([Object.assign({}, split, { connected: true })])
+    check("connected model carries LibrePods detail", s.connected.get(0).batteryLabel === split.batteryLabel)
+    s.syncModel([Object.assign({}, split, { connected: true, batteryLabel: "" })])
+    check("model clears details when LibrePods disappears", s.connected.get(0).batteryLabel === "")
 
     // --- ordering ------------------------------------------------------------
     const unsorted = [

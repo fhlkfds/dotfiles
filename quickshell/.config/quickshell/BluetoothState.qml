@@ -37,8 +37,8 @@ Singleton {
 
   // Keep the backend below the already-linked Hyprland config tree so adding
   // this widget does not require a separate ~/.local/bin Stow link.
-  readonly property string backend: Quickshell.env("HOME")
-    + "/.config/hypr/scripts/bluetooth-control"
+  readonly property string backend: Quickshell.env("BLUETOOTH_CONTROL_BACKEND")
+    || (Quickshell.env("HOME") + "/.config/hypr/scripts/bluetooth-control")
 
   readonly property int connectedCount: devices.filter(device => device.connected).length
 
@@ -341,6 +341,7 @@ Singleton {
       connected: entry.connected === true,
       trusted: entry.trusted === true,
       icon: String(entry.icon || ""),
+      batteryLabel: String(entry.batteryLabel || ""),
       battery: (typeof entry.battery === "number" && isFinite(entry.battery))
         ? Math.round(entry.battery) : -1
     }

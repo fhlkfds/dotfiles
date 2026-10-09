@@ -160,6 +160,22 @@ Open the Quickshell panel with `SUPER+ALT+M`. See the
 [desktop modes guide](docs/desktop-modes.md) for boundaries, timers, recovery,
 and all commands.
 
+## AirPods battery in the Bluetooth panel
+
+Keep LibrePods running (its `--hide` option starts it in the background). When
+BlueZ and UPower have no battery reading, the panel reads LibrePods' tray tooltip
+over the user D-Bus and displays left, right, and case percentages. The bar and
+low-battery alerts use the higher earbud reading because LibrePods may report
+zero for an absent bud. No additional AirPods connection is opened.
+
+The fallback requires `busctl`, one connected AirPods device identified by its
+Apple identity and service UUID, and one LibrePods process. Missing, malformed,
+or ambiguous readings stay unknown. The tooltip format is specific to the
+installed LibrePods version; a future change to it may need a parser update.
+
+Validate with `bash tests/librepods-battery.test.sh` and
+`bash tests/bluetooth-control.test.sh`.
+
 ## Network speed test
 
 `network-speedtest` resolves the active interface through `ip route`, runs eight

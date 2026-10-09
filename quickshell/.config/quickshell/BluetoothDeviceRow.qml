@@ -17,6 +17,7 @@ Rectangle {
   property bool trusted: false
   property string icon: ""
   property int battery: -1
+  property string batteryLabel: ""
 
   // Rebuilt as a plain object so the state helpers, which are written against
   // the poll's device shape, can be reused unchanged.
@@ -193,6 +194,7 @@ Rectangle {
           anchors.verticalCenter: parent.verticalCenter
           visible: !root.failed && !root.busy && root.battery >= 0
           level: root.battery
+          label: root.batteryLabel
           barColor: Theme.textDim
           textSize: Theme.fs(9)
         }

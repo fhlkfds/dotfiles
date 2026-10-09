@@ -9,6 +9,7 @@ import QtQuick
 Row {
   id: root
   property int level: -1
+  property string label: ""
   property color barColor: Theme.accent
   property int barWidth: Theme.fs(34)
   property int textSize: Theme.fs(10)
@@ -18,7 +19,7 @@ Row {
 
   Text {
     anchors.verticalCenter: parent.verticalCenter
-    text: root.level + "%"
+    text: root.label || (root.level + "%")
     color: Theme.textDim
     font.pixelSize: root.textSize
     font.bold: true

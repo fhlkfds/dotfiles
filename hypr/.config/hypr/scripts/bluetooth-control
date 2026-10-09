@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Read peripheral state for the resident shell, including AirPods telemetry
+# already collected by LibrePods rather than opening another device connection.
 set -euo pipefail
 
 usage() {
@@ -163,6 +165,38 @@ device_battery() {
   fi
 }
 
+# LibrePods' control CLI cannot read batteries, but its standard tray tooltip
+# exposes all three readings. Resolve its changing D-Bus name each status run;
+# never keep a battery value after the app exits or returns malformed data.
+librepods_battery() {
+  local busctl_command="${BLUETOOTH_CONTROL_BUSCTL:-busctl}" connections owners owner reply readings
+  command -v "$busctl_command" >/dev/null 2>&1 || return 1
+  connections=$("$busctl_command" --user --json=short --timeout=0.5 list 2>/dev/null) || return 1
+  owners=$(jq -er '
+    [.[] | select(.process == "librepods" and (.name | startswith(":")))]
+    | select(length > 0 and length <= 4 and ([.[].pid] | unique | length) == 1)
+    | .[].name' <<< "$connections" 2>/dev/null) || return 1
+  while IFS= read -r owner; do
+    reply=$("$busctl_command" --user --json=short --timeout=0.5 get-property \
+      "$owner" /StatusNotifierItem org.kde.StatusNotifierItem ToolTip 2>/dev/null) || continue
+    readings=$(jq -ce '
+      select(.type == "(sa(iiay)ss)") | .data[2]
+      | capture("^Battery Status: Left: (?<left>[0-9]{1,3})%, Right: (?<right>[0-9]{1,3})%, Case: (?<case>[0-9]{1,3})%$")
+      | with_entries(.value |= tonumber)
+      | select(all(.[]; . >= 0 and . <= 100))' <<< "$reply" 2>/dev/null) || continue
+    printf '%s\n' "$readings"
+    return 0
+  done <<< "$owners"
+  return 1
+}
+
+is_airpods() {
+  # The alias may be renamed: match Apple's device identity and proprietary
+  # AirPods service instead. The tooltip lacks a MAC, so ambiguous connections
+  # are deliberately left without a LibrePods reading.
+  [[ "$1" == *"bluetooth:v004Cp"* && "$1" == *"74ec2172-0bad-4d01-8f77-997b2be0722a"* ]]
+}
+
 # --- status -------------------------------------------------------------------
 
 status_json() {
@@ -199,7 +233,7 @@ status_json() {
   # One tab-separated row per device, parsed by a single jq below. The previous
   # version spawned two jq processes per device to append to a JSON array.
   local rows="" prefix address upper name paired connected trusted icon info
-  local battery trusted_field
+  local battery trusted_field airpods_count=0 airpods_address="" airpods_battery=""
   while IFS=' ' read -r prefix address name; do
     [[ "$prefix" == Device ]] || continue
     valid_mac "$address" || continue
@@ -240,6 +274,11 @@ status_json() {
       [[ "$trusted_field" == no ]] && trusted=0
       if [[ "$connected" == 1 ]]; then
         battery=$(device_battery "$info" "$address" || true)
+        if is_airpods "$info"; then
+          airpods_count=$((airpods_count + 1))
+          airpods_address="$upper"
+          airpods_battery="$battery"
+        fi
       fi
     fi
 
@@ -259,7 +298,13 @@ status_json() {
   done
   save_icon_cache
 
+  local librepods='null'
+  if [[ "$airpods_count" == 1 && -z "$airpods_battery" ]]; then
+    librepods=$(librepods_battery) || librepods='null'
+  fi
+
   printf '%s' "$rows" | jq -Rs \
+    --arg airpods_address "$airpods_address" --argjson librepods "$librepods" \
     --argjson powered "$powered" --argjson scanning "$scanning" '
     {
       available: true,
@@ -277,8 +322,15 @@ status_json() {
             connected: (.[3] == "1"),
             trusted: (.[4] == "1"),
             icon: (.[5] // ""),
-            battery: (if (.[6] // "") == "" then null else (.[6] | tonumber) end)
+            battery: (if (.[6] // "") == "" then null else (.[6] | tonumber) end),
+            batteryLabel: ""
           })
+        | map(if .address == $airpods_address and .battery == null and $librepods != null then
+            # Zero can also mean an absent bud. The bar/alerts track the higher
+            # earbud reading, while the label preserves all three exact values.
+            .battery = ([$librepods.left, $librepods.right] | max)
+            | .batteryLabel = "L \($librepods.left)% · R \($librepods.right)% · Case \($librepods.case)%"
+          else . end)
       )
     }'
 }

@@ -14,6 +14,7 @@ Rectangle {
   property string name: ""
   property string icon: ""
   property int battery: -1
+  property string batteryLabel: ""
 
   readonly property var device: ({
     address: root.address, name: root.name, paired: true,
@@ -96,6 +97,7 @@ Rectangle {
     BluetoothBattery {
       visible: !root.failed && !root.busy
       level: root.battery
+      label: root.batteryLabel
     }
   }
 
