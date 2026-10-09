@@ -7,6 +7,8 @@ import configparser
 import io
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -159,6 +161,39 @@ class ThemeGeneratorTest(unittest.TestCase):
         self.assertEqual(
             preferred["org.freedesktop.impl.portal.Settings"], "gtk;"
         )
+
+    @unittest.skipUnless(shutil.which("lua"), "skip: lua not installed")
+    def test_kitty_blur_preserves_other_apps_across_theme_switches(self) -> None:
+        paths = []
+        for slug, theme in self.themes.items():
+            render_all(theme, self.root / slug)
+            paths.extend([
+                str(self.root / slug / "stage/hyprland-decorations.lua"),
+                str(not theme.style["blur"]).lower(),
+            ])
+        # Re-evaluate in the same Lua state, as theme switching does via eval.
+        subprocess.run(["lua", "-", *paths, *paths], input=r'''
+local windows, layers = {}, {}
+hl = {
+    config = function(config)
+        local blur = config.decoration.blur
+        assert(blur.enabled and blur.size >= 1 and blur.passes >= 1)
+        assert(blur.new_optimizations, "blur must keep compositor optimizations")
+    end,
+    window_rule = function(rule) windows[rule.name] = rule end,
+    layer_rule = function(rule) layers[rule.name] = rule end,
+}
+for i = 1, #arg, 2 do
+    dofile(arg[i])
+    local disabled = arg[i + 1] == "true"
+    local window = assert(windows["theme-no-blur-except-kitty"])
+    assert(window.match.class == "negative:^kitty$", "only Kitty may bypass the theme")
+    assert(window.no_blur and window.enabled == disabled)
+    local layer = assert(layers["theme-no-layer-blur"])
+    assert(layer.match.namespace == ".*" and layer.blur == false)
+    assert(layer.enabled == disabled, "layer surfaces must keep the theme's blur policy")
+end
+''', text=True, check=True)
 
     def test_prefix_preview_renders_targets_deployed_in_live_config(self) -> None:
         theme = self.themes["tokyo-night"]
