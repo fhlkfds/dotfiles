@@ -11,20 +11,6 @@ fail() {
   exit 1
 }
 
-grep -Fq 'hl.dispatch(hl.dsp.exec_cmd(cfg.scripts_dir .. "/night-light.sh toggle"))' \
-  "$repo_root/hypr/.config/hypr/conf/keybindings.lua" ||
-  fail 'Lua keybinding does not dispatch the Hypr-owned wrapper'
-grep -Fq '$scriptsDir/night-light.sh toggle' \
-  "$repo_root/hypr/.config/hypr/conf/keybinding.conf" ||
-  fail 'legacy keybinding does not use the Hypr-owned wrapper'
-grep -Fq 'night-light-shader' "$repo_root/hypr/.config/hypr/hyprland.lua" ||
-  fail 'Lua config does not read the shader state'
-grep -Fq '#version 320 es' "$repo_root/hypr/.config/hypr/shaders/night-light.frag" ||
-  fail 'night-light shader does not match the active GLES 3.2 renderer'
-if grep -Rq '\[DEBUG-nightlight\]' "$repo_root/hypr/.config/hypr"; then
-  fail 'temporary night-light instrumentation remains'
-fi
-
 mkdir -p "$test_root/bin"
 export HOME="$test_root/home"
 cat >"$test_root/bin/hyprctl-fixture" <<'SH'

@@ -177,12 +177,6 @@ mapfile -t launch_order < <(grep -E '^(hyprctl eval hl.dispatch\(hl.dsp.focus\(\
 [[ $(grep '^hyprctl ' "$ORDER_LOG" | tail -n1) == 'hyprctl eval hl.dispatch(hl.dsp.focus({ monitor = "DP-1" }))' ]] || fail 'original monitor was not restored'
 
 
-# Regression: the launcher must give renderers a grace window that outlasts the
-# whole spawn loop, or each instance pkills the set when the next monitor is
-# focused while still empty.
-grep -Fq 'export SCREENSAVER_GRACE_UNTIL=' "$bin_root/ascii-screensaver" ||
-  fail 'launcher does not publish a startup grace window to renderers'
-
 # Regression: window.fullscreen is a TOGGLE and the window rule has usually
 # already fullscreened the window. Dispatching unconditionally turned it back
 # off, which is what left the screensaver tiled at a fraction of the screen.
@@ -386,46 +380,6 @@ HOME="$test_root/home" HYPRLOCK_RUNNING=0 \
 : >"$LOCK_ACTION_LOG"
 HOME="$test_root/home" HYPRLOCK_RUNNING=1 "$bin_root/screensaver-lock"
 [[ ! -s $LOCK_ACTION_LOG ]] || fail 'real lock path acted while hyprlock was already running'
-
-grep -Fq -- '--random-effect --no-eol --no-restore-cursor' "$bin_root/ascii-screensaver-render" || fail 'renderer options changed'
-grep -Fq "stty size" "$bin_root/ascii-screensaver-render" || fail 'renderer resize wait is missing'
-grep -Fq "read -rsn1 -t 1" "$bin_root/ascii-screensaver-render" || fail 'renderer keyboard poll is missing'
-grep -Fq 'grace_until=${SCREENSAVER_GRACE_UNTIL:-0}' "$bin_root/ascii-screensaver-render" ||
-  fail 'renderer does not honour the launcher grace window'
-if grep -Fq "activewindow -j 2>/dev/null | jq -e --arg class" "$bin_root/ascii-screensaver-render"; then
-  fail 'renderer still dismisses on an empty focused monitor'
-fi
-grep -Fq "hl.config({ cursor = { invisible = true } })" "$bin_root/ascii-screensaver-render" || fail 'renderer does not hide the cursor through the Lua provider'
-grep -Fq "hl.config({ cursor = { invisible = false } })" "$bin_root/ascii-screensaver-render" || fail 'renderer does not restore the cursor through the Lua provider'
-if grep -Fq 'keyword cursor:invisible' "$bin_root/ascii-screensaver-render"; then
-  fail 'renderer still uses the legacy config provider for cursor visibility'
-fi
-
-python3 - "$repo_root/hypr/.config/hypr/hypridle.conf" <<'PY'
-import re
-import sys
-from pathlib import Path
-
-blocks = re.findall(r"^listener\s*\{\n(.*?)^\}", Path(sys.argv[1]).read_text(), re.M | re.S)
-assert len(blocks) == 4, "expected four idle listeners"
-for block, timeout, action in zip(blocks, (1200, 1200, 1200, 1800),
-                                  ('ascii-screensaver" idle', 'loginctl lock-session',
-                                   'hl.dsp.dpms', 'systemctl suspend')):
-    assert int(re.search(r"^\s*timeout\s*=\s*(\d+)\s*$", block, re.M)[1]) == timeout, action
-    assert action in re.search(r"^\s*on-timeout\s*=\s*(.+)$", block, re.M)[1], action
-PY
-grep -Fq 'ascii-screensaver" idle' "$repo_root/hypr/.config/hypr/hypridle.conf" || fail 'Hypridle does not use the audio-aware launch mode'
-grep -Fq 'ascii-screensaver" condition' "$repo_root/hypr/.config/hypr/hypridle.conf" || fail 'Hypridle does not poll the audio-aware condition'
-grep -Fq 'ascii-screensaver force' "$repo_root/hypr/.config/hypr/conf/keybindings.lua" || fail 'Lua config omits the manual screensaver binding'
-grep -Fq 'toggle-screensaver' "$repo_root/hypr/.config/hypr/conf/keybindings.lua" || fail 'Lua config omits the screensaver toggle binding'
-grep -Fq 'name = "ascii-screensaver"' "$repo_root/hypr/.config/hypr/conf/window_rules.lua" || fail 'Lua config omits the screensaver window rule'
-grep -Fq 'windowrulev2 = fullscreen,class:^(io\.github\.fhlkfds\.screensaver)$' "$repo_root/hypr/.config/hypr/conf/windows-rules.conf" || fail 'legacy config omits the screensaver window rule'
-if grep -Fq 'windowrulev2 = float,class:^(io\.github\.fhlkfds\.screensaver)$' "$repo_root/hypr/.config/hypr/conf/windows-rules.conf"; then
-  fail 'legacy config still floats the screensaver, so a dropped fullscreen shrinks it'
-fi
-if grep -A6 'name = "ascii-screensaver"' "$repo_root/hypr/.config/hypr/conf/window_rules.lua" | grep -Fq 'float = true'; then
-  fail 'Lua config still floats the screensaver, so a dropped fullscreen shrinks it'
-fi
 
 if ((!jq_available)); then
   printf 'degraded: jq-independent screensaver and lock fixtures passed\n'

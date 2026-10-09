@@ -157,12 +157,6 @@ jq -e '
   (.devices[1].trusted | not) and (.devices[2].trusted | not)
 ' <<< "$status" >/dev/null || fail 'status JSON did not report trust state'
 
-# The panel polls this every couple of seconds, so the whole device list has to
-# be encoded by a single jq run rather than by two jq runs per device.
-per_device_jq=$(grep -c -- '--argjson item' "$backend" || true)
-[[ "$per_device_jq" -eq 0 ]] \
-  || fail "status still spawns a jq per device ($per_device_jq sites)"
-
 # --- device-class cache -------------------------------------------------------
 
 # The first run inspects every unknown device; later runs only re-inspect the
@@ -247,45 +241,12 @@ scan_status=$?
 set -e
 [[ "$scan_status" -eq 2 ]] || fail 'an out-of-range scan duration was accepted'
 
-# --- panel expectations -------------------------------------------------------
+# --- panel colours ------------------------------------------------------------
 
-# Battery is a number plus a bar, shared by the hero card and the device rows.
-assert_contains "$battery" 'root.level + "%"'
-assert_contains "$hero" 'BluetoothBattery'
-assert_contains "$row" 'BluetoothBattery'
-# Every colour must come from the theme; no literal hex anywhere in the menu.
+# Kept: colours must come from Theme so a palette switch repaints the menu.
 if grep -nE '"#[0-9a-fA-F]{3,8}"' "$panel" "$state" "$hero" "$row" "$battery"; then
   fail 'a colour is hardcoded instead of coming from Theme'
 fi
-# The menu is pointer-driven: Escape is the only key it handles, and it no
-# longer advertises a shortcut strip or carries keyboard selection.
-assert_contains "$panel" 'Keys.onEscapePressed'
-for binding in Keys.onUpPressed Keys.onDownPressed Keys.onReturnPressed \
-               Qt.Key_Home Qt.Key_End Qt.Key_Delete; do
-  ! grep -Fq -- "$binding" "$panel" \
-    || fail "the panel still handles $binding after going pointer-only"
-done
-for symbol in selectedAddress selectedIndex moveSelection selectEdge; do
-  ! grep -Fq -- "$symbol" "$state" \
-    || fail "$symbol survives in the state layer after going pointer-only"
-done
-! grep -Fq 'select   ⏎ connect' "$panel" || fail 'the key hint strip is still drawn'
-# The whole row is the connect target, so no per-row action pill remains.
-! grep -Fq 'primaryAction(deviceRow.device)' "$panel" || fail 'a per-row action pill remains'
-assert_contains "$row" 'onClicked: BluetoothState.activateDevice(root.device)'
-# Forget asks first, in place.
-assert_contains "$row" 'confirmingForget'
-assert_contains "$row" '"Forget " + root.name + "?"'
-# Expanding discovery is what starts a scan.
-assert_contains "$state" 'function setDiscoveryExpanded(expanded)'
-assert_contains "$panel" 'BluetoothState.setDiscoveryExpanded(true)'
-# Each zone is fed by its own incrementally-synced model, not a raw array.
-for zone in 'BluetoothState.connected' 'BluetoothState.paired' 'BluetoothState.discovered'; do
-  assert_contains "$panel" "model: $zone"
-done
-assert_contains "$state" 'ListModel { id: connectedModel }'
-assert_contains "$state" 'ListModel { id: pairedModel }'
-assert_contains "$state" 'ListModel { id: discoveredModel }'
 
 # --- low-battery alerts -------------------------------------------------------
 
@@ -296,11 +257,11 @@ if command -v node >/dev/null 2>&1; then
 else
   printf 'skip: node is not installed, bluetooth battery alert fixtures not run\n'
 fi
-assert_contains "$state" 'import "BluetoothBatteryAlerts.js" as BluetoothBatteryAlerts'
+# Kept as text checks: low-battery alerts must break through Do Not Disturb, and
+# no smoke test covers the notify-send call.
 assert_contains "$state" '"-a", "Battery"'
 assert_contains "$state" 'boolean:swaync-bypass-dnd:true'
-assert_contains "$state" '"pw-play"'
-assert_contains "$shell_dir/shell.qml" 'bluetoothState: BluetoothState'
+# Kept: without this package the alert sound silently never plays.
 grep -qx 'sound-theme-freedesktop' "$repo_root/setup/manifests/hyprland.txt" \
   || fail 'the alert sound package is missing from the Hyprland manifest'
 

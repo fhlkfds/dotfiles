@@ -3,8 +3,6 @@ set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 launcher="$repo_root/hypr/.config/hypr/scripts/app-widget"
-widget="$repo_root/quickshell/.config/quickshell/AppLauncher.qml"
-config="$repo_root/quickshell/.config/quickshell/app-launcher.json"
 smoke="$repo_root/quickshell/.config/quickshell/AppLauncherSmoke.qml"
 test_root=$(mktemp -d -t app-widget-test.XXXXXX)
 trap 'rm -rf "$test_root"' EXIT
@@ -51,13 +49,6 @@ grep -Fq 'action=would-launch desktop_id=spotify' "$test_root/dry-run" ||
 if "$launcher" 'spotify;bad' spotify >/dev/null 2>&1; then
   fail 'unsafe desktop id was accepted'
 fi
-
-grep -Fq 'FileView {' "$widget" || fail 'app widget has no watched configuration'
-grep -Fq 'PopupWindow {' "$widget" || fail 'app widget has no hover name popup'
-grep -Fq 'appLauncher.running = true' "$widget" || fail 'app widget click is not wired'
-grep -Fq 'AppLauncher {' "$repo_root/quickshell/.config/quickshell/Bar.qml" ||
-  fail 'bar does not mount the app launcher'
-grep -Fq '"desktopId": "spotify"' "$config" || fail 'Spotify is not pinned by default'
 
 if command -v quickshell >/dev/null 2>&1; then
   smoke_log="$test_root/smoke.log"

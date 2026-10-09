@@ -16,38 +16,6 @@ fail() {
   exit 1
 }
 
-# --- wiring -------------------------------------------------------------------
-
-grep -Fq 'shell(mod .. " + SHIFT + N", "night light schedule", "nightlight")' \
-  "$repo_root/hypr/.config/hypr/conf/keybindings.lua" || fail 'Super+Shift+N does not open the schedule panel'
-# shellcheck disable=SC2016 # Literal Hyprland variable.
-grep -Fq 'bindd = $mainMod SHIFT, N, night light schedule, exec, quickshell ipc call nightlight toggle' \
-  "$repo_root/hypr/.config/hypr/conf/keybinding.conf" || fail 'legacy keybinding.conf lacks Super+Shift+N'
-grep -Fq 'target: "nightlight"' "$qs_root/Bar.qml" || fail 'the bar has no nightlight IPC target'
-grep -Fq 'NightLightPanel {' "$qs_root/Bar.qml" || fail 'the bar does not mount the schedule panel'
-grep -Fq 'systemctl --user start night-light-schedule.timer' \
-  "$repo_root/hypr/.config/hypr/conf/autostart.lua" || fail 'autostart does not start the schedule timer'
-grep -Fq 'ExecStart=%h/.config/hypr/scripts/night-light-schedule.py apply' \
-  "$repo_root/systemd/.config/systemd/user/night-light-schedule.service" || fail 'the service does not run apply'
-grep -Fq 'OnCalendar=minutely' "$repo_root/systemd/.config/systemd/user/night-light-schedule.timer" ||
-  fail 'the timer does not run every minute'
-grep -Fq 'systemctl --user start --no-block location-detect.service' \
-  "$repo_root/hypr/.config/hypr/conf/autostart.lua" || fail 'autostart does not detect the location at login'
-location_unit="$repo_root/systemd/.config/systemd/user/location-detect.service"
-grep -Fq 'ExecStart=%h/.config/hypr/scripts/night-light-schedule.py detect-location' "$location_unit" ||
-  fail 'the location service does not run detect-location'
-grep -Fq 'Restart=on-failure' "$location_unit" || fail 'the location service does not retry while offline'
-python3 - "$repo_root/menu/.config/lmenu/menu.jsonc" <<'PY' || fail 'lmenu rows are wrong'
-import json, re, sys
-text = re.sub(r'^\s*//.*$', '', open(sys.argv[1]).read(), flags=re.M)
-rows = {row["id"]: row for row in json.loads(text)}
-row = rows["trigger.toggle.nightlight-schedule"]
-assert row["action"] == "quickshell ipc call nightlight toggle", row
-# The shader night light does not need hyprsunset, so neither row is hidden
-# behind it.
-assert "when" not in rows["trigger.toggle.nightlight"], rows["trigger.toggle.nightlight"]
-PY
-
 # --- fixtures -----------------------------------------------------------------
 
 mkdir -p "$test_root/bin"

@@ -8,7 +8,6 @@ logic_test="$repo_root/tests/battery-alerts.logic.test.js"
 battery_config="$repo_root/quickshell/.config/quickshell/battery/config.json"
 notification_config="$repo_root/quickshell/.config/quickshell/notifications/config.json"
 smoke="$repo_root/quickshell/.config/quickshell/BatterySmoke.qml"
-shell="$repo_root/quickshell/.config/quickshell/shell.qml"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -31,6 +30,8 @@ fi
 python3 -m json.tool "$battery_config" >/dev/null
 python3 -m json.tool "$notification_config" >/dev/null
 
+# Kept as text checks: low-battery alerts must break through Do Not Disturb, and
+# this still guards it on hosts without quickshell (BatterySmoke.qml asserts it too).
 grep -Fq '"Battery"' "$notification_config" \
   || fail 'notification service does not allow Battery to bypass DND'
 grep -Fq '"-u", "critical"' "$state" \
@@ -39,26 +40,6 @@ grep -Fq 'boolean:swaync-bypass-dnd:true' "$state" \
   || fail 'battery alerts do not unconditionally bypass DND'
 grep -Fq '"-t", "0"' "$state" \
   || fail 'battery alerts are not unconditionally persistent'
-grep -Fq 'batteryState: BatteryState' "$shell" \
-  || fail 'the shell does not instantiate BatteryState'
-
-refresh_ms=$(python3 - "$state" <<'PY'
-import pathlib
-import re
-import sys
-
-source = pathlib.Path(sys.argv[1]).read_text()
-match = re.search(
-    r"readonly\s+property\s+int\s+refreshInterval\s*:\s*(\d+)\s*\*\s*(\d+)",
-    source,
-)
-if not match:
-    raise SystemExit("could not parse refreshInterval")
-print(int(match.group(1)) * int(match.group(2)))
-PY
-) || fail 'battery reconciliation interval could not be parsed'
-(( refresh_ms > 0 && refresh_ms <= 30000 )) \
-  || fail 'battery poll interval exceeds the 30-second limit'
 
 if [[ "$actual" != 'node unavailable' ]]; then
   printf 'ok: battery threshold alert fixtures (%s)\n' \

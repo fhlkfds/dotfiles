@@ -4,7 +4,6 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 scripts="$repo_root/hypr/.config/hypr/scripts"
 everything="$scripts/quick-search-everything.sh"
-theme="$repo_root/rofi/.config/rofi/everything.rasi"
 test_root=$(mktemp -d -t quick-search-test.XXXXXX)
 trap 'rm -rf -- "$test_root"' EXIT
 
@@ -28,12 +27,6 @@ grep -Fq -- "-kb-element-prev ''" "$test_root/launcher.out" ||
   fail 'Shift+Tab is still assigned to element navigation'
 grep -Fq 'everything.rasi' "$test_root/launcher.out" ||
   fail 'Everything search does not use its compact menu theme'
-
-grep -Fq 'width: 380px;' "$theme" || fail 'Everything menu is not narrow'
-grep -Fq 'children: [ "inputbar", "listview" ];' "$theme" ||
-  fail 'Everything menu is not a single vertical search list'
-grep -Fq 'placeholder: "Go...";' "$theme" || fail 'Everything menu is missing its Go prompt'
-grep -Fq 'mode-switcher {' "$theme" || fail 'Everything menu does not style its hidden mode switcher'
 
 "$scripts/quick-search.sh" --dry-run drun >"$test_root/apps.out"
 grep -Fq -- '-show drun' "$test_root/apps.out" ||

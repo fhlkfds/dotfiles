@@ -173,7 +173,12 @@ partial=("$test_root/recordings/"*.mp4)
   printf 'FAIL: failed recorder deleted its partial output\n' >&2; exit 1;
 }
 
-python3 - "$repo_root" <<'PY'
+if ! command -v quickshell >/dev/null 2>&1; then
+  printf 'skip: quickshell is not installed; NotificationSmoke.qml was not run\n'
+elif ! command -v dbus-run-session >/dev/null 2>&1; then
+  printf 'skip: dbus-run-session is not installed; NotificationSmoke.qml was not run\n'
+else
+  python3 - "$repo_root" <<'PY'
 import os
 from pathlib import Path
 import subprocess
@@ -193,5 +198,6 @@ with tempfile.TemporaryDirectory(prefix='notification-smoke.') as tmp:
     output = result.stdout + result.stderr
     assert 'ok: notification action rendering and invocation' in output and 'FAIL' not in output, output
 PY
+fi
 
 printf 'ok: screenshot Edit/Save buttons, deferred saving, cleanup, save failures, --copy/--save\n'

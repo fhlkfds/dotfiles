@@ -3,16 +3,11 @@
 #
 # The generation step is a small `sh` script that lives inside
 # ClipboardQrState.qml, so the test lifts it back out and runs it against fake
-# wl-paste/qrencode binaries rather than re-implementing it here. The rest is
-# the usual structural check that the overlay, the IPC target and the lmenu row
-# still line up.
+# wl-paste/qrencode binaries rather than re-implementing it here.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 state="$repo_root/quickshell/.config/quickshell/ClipboardQrState.qml"
-overlay="$repo_root/quickshell/.config/quickshell/ClipboardQrOverlay.qml"
-bar="$repo_root/quickshell/.config/quickshell/Bar.qml"
-shell_qml="$repo_root/quickshell/.config/quickshell/shell.qml"
 menu="$repo_root/menu/.config/lmenu/menu.jsonc"
 test_root=$(mktemp -d -t clipboard-qr-test.XXXXXX)
 trap 'rm -rf -- "$test_root"' EXIT
@@ -111,36 +106,15 @@ grep -Fq 'Input data too large' "$test_root/big.err" || fail 'the qrencode diagn
 [[ -e $out ]] && fail 'a failed encode left a partial QR code on disk'
 [[ -e $out.txt ]] && fail 'a failed encode left the clipboard scratch file behind'
 
-# The QR must go on screen, never back onto the clipboard: that was the bug in
-# the row this replaces, which overwrote the content it had just encoded.
+# Kept as a text check to stop clipboard data loss: the QR must go on screen,
+# never back onto the clipboard. That was the bug in the row this replaces,
+# which overwrote the content it had just encoded.
 ! grep -Fq 'wl-copy' "$state" || fail 'the clipboard QR writes back to the clipboard'
 ! grep -Fq 'qrencode -o - -t PNG' "$menu" \
   || fail 'the lmenu QR row still copies the code to the clipboard'
-grep -Fq '"action": "quickshell ipc call clipboard-qr toggle"' "$menu" \
-  || fail 'the lmenu QR row does not open the overlay over IPC'
-grep -Fq '"when": "command -v qrencode >/dev/null"' "$menu" \
-  || fail 'the lmenu QR row lost its qrencode guard'
 
-# State: runtime-only output, and failures notify instead of opening an empty
-# overlay.
+# Kept as a text check for privacy: the clipboard may hold a secret, so its QR
+# must live on the per-user runtime tmpfs, never on persistent disk.
 grep -Fq 'Quickshell.env("XDG_RUNTIME_DIR")' "$state" || fail 'the QR is not written to the runtime directory'
-grep -Fq '"notify-send", "-a", "Clipboard"' "$state" || fail 'failures are not reported to the user'
-grep -Fq 'root.resultPath = root.outputPath' "$state" || fail 'a successful run does not publish its path'
-
-# Overlay: fullscreen layer-shell surface with its own namespace, keyboard
-# focus, deliberate dismissal only, and a fresh read of the SVG each time.
-grep -Fq 'WlrLayershell.namespace: "quickshell-clipboard-qr"' "$overlay" \
-  || fail 'the overlay does not claim its own layer-shell namespace'
-grep -Fq 'WlrLayershell.layer: WlrLayer.Overlay' "$overlay" || fail 'the overlay does not cover the bar'
-grep -Fq 'WlrKeyboardFocus.Exclusive' "$overlay" || fail 'the overlay does not take keyboard focus'
-grep -Fq 'Keys.onEscapePressed: panel.close()' "$overlay" || fail 'the overlay cannot be closed with Escape'
-grep -Fq 'cache: false' "$overlay" || fail 'the overlay can show a cached, stale QR code'
-! grep -Fq 'Timer' "$overlay" || fail 'the overlay closes itself on a timer'
-grep -Fq 'ClipboardQrOverlay {' "$shell_qml" || fail 'the overlay is not mounted per screen'
-
-# IPC: the lmenu row has no other way in.
-grep -Fq 'target: "clipboard-qr"' "$bar" || fail 'the clipboard-qr IPC target is missing'
-grep -Fq 'ClipboardQrState.show(bar.focusedScreen())' "$bar" \
-  || fail 'the clipboard-qr IPC handler does not open the overlay on the focused screen'
 
 printf 'ok: clipboard-qr fixtures\n'

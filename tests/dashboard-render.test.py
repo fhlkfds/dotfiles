@@ -7,6 +7,11 @@ time.tzset()
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 os.environ.setdefault('QT_QUICK_BACKEND','software')
 os.environ.setdefault('QML_XHR_ALLOW_FILE_READ','1')
+try:
+    import PySide6  # noqa: F401
+except ImportError:
+    print('skip: PySide6 is not installed, dashboard render fixture not run')
+    sys.exit(0)
 from PySide6.QtCore import QUrl, QTimer, QPointF, QPoint, QRect, Qt, qInstallMessageHandler
 from PySide6.QtTest import QTest
 from PySide6.QtGui import QGuiApplication, QFontDatabase, QImage, QColor, QPainter, QPen, QBrush

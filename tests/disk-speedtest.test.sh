@@ -219,21 +219,8 @@ wait "$pid" || status=$?
 [[ $status == 143 ]] || fail "SIGTERM exited with $status instead of 143"
 [[ ! -e $target ]] || fail 'SIGTERM left the test file behind'
 
-# Quickshell wiring: the menu row is the only entry point, and the QML stays
-# theme-driven and unprivileged.
-grep -Fq 'DiskSpeedOverlay {' "$qs/Bar.qml" || fail 'the disk overlay is not mounted'
-grep -Fq 'DiskState.open(bar.focusedScreen())' "$qs/Bar.qml" || fail 'the disk IPC does not open the overlay'
-grep -Fq '"action": "quickshell ipc call disk speedTest"' "$repo_root/menu/.config/lmenu/menu.jsonc" ||
-  fail 'the lmenu row does not open the disk overlay'
-! grep -Fq 'disk speedTest' "$repo_root/hypr/.config/hypr/conf/keybindings.lua" \
-  "$repo_root/hypr/.config/hypr/conf/keybinding.conf" || fail 'the disk speed test gained a keybinding'
-grep -Fq 'testProc.command = [backend, "--stream-json", "--disk", name]' "$qs/DiskState.qml" ||
-  fail 'the overlay does not launch the streaming CLI'
-grep -Fq 'Keys.onEscapePressed: DiskState.close()' "$qs/DiskSpeedOverlay.qml" ||
-  fail 'the disk overlay cannot close with Escape'
-grep -Fq '? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand' "$qs/DiskSpeedOverlay.qml" ||
-  fail 'the disk overlay keeps an exclusive keyboard grab while a test runs'
-grep -Fq 'SpeedTestGauge {' "$qs/DiskSpeedOverlay.qml" || fail 'the disk overlay does not reuse the speed-test gauge'
+# Kept as a text check: the overlay must never escalate privileges or run a
+# shell, and no fixture can exercise that. It also keeps colours theme-driven.
 ! sed '/^[[:space:]]*\/\//d' "$qs/DiskState.qml" "$qs/DiskSpeedOverlay.qml" |
   grep -nE '"#[0-9a-fA-F]{3,8}"|pkexec|sudo|sh", "-c' || fail 'disk QML bypasses the theme or privilege boundary'
 

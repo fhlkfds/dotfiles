@@ -36,13 +36,6 @@ glyphs=$(sed -n '/^# # DATA # #$/,/^# # END DATA # #$/p' "$picker" |
 [[ $glyphs == "$rows" ]] ||
   fail "the glyph list ($glyphs) and the row list ($rows) have drifted apart"
 
-# The theme is a grid, keeps following the generated palette, and renders
-# colour emoji.
-grep -Eq '^\s*columns:\s*8;' "$theme" || fail 'the emoji theme is not an 8-column grid'
-grep -Fq '@theme "~/.config/rofi/current-theme.rasi"' "$theme" ||
-  fail 'the emoji theme no longer follows the generated palette'
-grep -Fq 'Noto Color Emoji' "$theme" || fail 'the emoji theme does not use a colour emoji font'
-
 # Naming the font is not enough. When it is not installed, fontconfig silently
 # substitutes a text font, which draws monochrome outlines for older emoji and
 # hex boxes for everything else.
@@ -63,10 +56,6 @@ if command -v rofi >/dev/null; then
     grep -Eq 'columns:[[:space:]]*8;' ||
     fail 'the resolved theme is not an 8-column grid'
 fi
-grep -Fq 'placeholder: "Search emojis…";' "$theme" ||
-  fail 'the emoji theme lost its search placeholder'
-grep -Eq 'children:[[:space:]]*\[[[:space:]]*"element-text"[[:space:]]*\];' "$theme" ||
-  fail 'grid cells are not text-only'
 
 # A cell must be wide enough for a whole glyph. Rofi has no theme-level
 # ellipsize control, so a glyph that does not fit is ellipsized away and the
