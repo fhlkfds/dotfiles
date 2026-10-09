@@ -11,6 +11,7 @@ Hyprland starts `quickshell`, which loads `shell.qml`:
 ```qml
 Scope {
   readonly property var batteryState: BatteryState
+  readonly property var bluetoothState: BluetoothState
   Bar {}
   Variants {
     model: Quickshell.screens
@@ -25,9 +26,9 @@ Scope {
 }
 ```
 
-Six things: battery monitoring, the bar, one desktop clock and one Spotify
-now-playing card per screen, the notification service, and the browser-video
-progress service.
+Six things: battery monitoring (laptop and Bluetooth devices), the bar, one
+desktop clock and one Spotify now-playing card per screen, the notification
+service, and the browser-video progress service.
 
 ## Bar layout
 
@@ -123,6 +124,13 @@ still clears the island on both sides.
   choice runs nothing, and failed upgrades preserve the counts.
 - **Battery**: shows charge percentage and state; hidden when no laptop battery
   is present. Clicking opens the battery panel.
+- **Bluetooth battery alerts**: any connected device that reports a battery
+  (headphones, keyboard, mouse) notifies with a sound at 10% ("AirPods at
+  10%"), again at 5%, and once more when it dies — a 0% reading, or a
+  disconnect at 5% or below. Alerts use the `Battery` app name, so they bypass
+  DND like the laptop alerts; the sound is `pw-play` of the freedesktop
+  `dialog-warning` sound. A device re-arms once it reads above 15%.
+  ![Bluetooth battery alerts](../docs/bluetooth-battery-alerts.png)
 - **Windows VM icon**: appears while the container runs. Pulses amber while
   installation or startup waits for RDP, then goes solid accent when RDP is
   ready. Disappears when the VM stops.
@@ -281,7 +289,7 @@ dropdown.
 | Disk speed test | `DiskState.qml`, `DiskSpeedOverlay.qml` (reuses `SpeedTestGauge.qml`) |
 | Audio and media | `AudioState/Icon/Panel.qml`, `AudioPanelContent.qml`, `VolumeSlider.qml`, `MediaState/Icon/Panel.qml`, `MediaPreviewCard.qml`, `LyricsState.qml`, `LyricsView.qml`, `SpotifyState.qml`, `DesktopNowPlaying.qml`, `DesktopNowPlayingCard.qml` |
 | Visualiser | `CavaState.qml`, `CavaBars.qml`, `CavaEdgeVisualizer.qml`, `VisualizerState.qml` |
-| Bluetooth | `BluetoothState/Icon/Panel/HeroCard/DeviceRow/Battery.qml` |
+| Bluetooth | `BluetoothState/Icon/Panel/HeroCard/DeviceRow/Battery.qml`, `BluetoothBatteryAlerts.js` |
 | Display | `DisplayState/Icon/Panel.qml` |
 | Clipboard | `ClipboardState/Icon/Panel.qml` |
 | Notifications | `notifications/` (see [Notifications](Notifications.md)), `NotifyState.qml`, `NotifyIcon.qml`, `DndIcon.qml` |
