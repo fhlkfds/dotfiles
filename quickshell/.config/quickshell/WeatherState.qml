@@ -11,14 +11,21 @@ import QtQuick
 Singleton {
   id: root
 
-  // Location: the one in the night-light state file wins. location-detect.service
-  // fills it from the IP address at each login, and the night-light panel
-  // (Super+Shift+N) can set it by hand. weather.json next to this file is the
-  // default, and Chicago the last resort.
+  // Location: a city picked on the dashboard weather tab wins, and one saved
+  // there with "Set as default" wins on every boot. Otherwise the night-light
+  // state file: location-detect.service fills it from the IP address at each
+  // login, and the night-light panel (Super+Shift+N) can set it by hand.
+  // weather.json next to this file is the default, and Chicago the last resort.
   property real latitude: 41.8781
   property real longitude: -87.6298
   property string timezone: "America/Chicago"
   property bool savedLocation: false
+  property bool userChoice: false
+  readonly property string stateHome: Quickshell.env("XDG_STATE_HOME")
+                                      || Quickshell.env("HOME") + "/.local/state"
+  // locationKey of the saved default; "" until one is loaded or saved.
+  property string defaultKey: ""
+  readonly property bool isDefault: defaultKey !== "" && defaultKey === locationKey
   // The night-light panel saves a place name with its location; weather.json
   // has none, so fall back to the city in the timezone id.
   property string place: ""
@@ -48,7 +55,7 @@ Singleton {
     printErrors: false
     onFileChanged: reload()
     onLoaded: {
-      if (root.savedLocation)
+      if (root.savedLocation || root.userChoice)
         return
       try {
         root.applyLocation(JSON.parse(text()))
@@ -57,12 +64,13 @@ Singleton {
   }
 
   FileView {
-    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state")
-          + "/night-light/schedule.json"
+    path: root.stateHome + "/night-light/schedule.json"
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
     onLoaded: {
+      if (root.userChoice)
+        return
       try {
         const loc = JSON.parse(text()).location
         const same = loc && loc.latitude === root.latitude && loc.longitude === root.longitude
@@ -77,6 +85,98 @@ Singleton {
         if (root.savedLocation)
           root.place = typeof loc.place === "string" ? loc.place : ""
       } catch (e) {}
+    }
+  }
+
+  FileView {
+    id: defaultFile
+    path: root.stateHome + "/hyprland-desktop/weather/location.json"
+    printErrors: false
+    onLoaded: {
+      // Only the first load counts; saving the default must not refetch.
+      if (root.defaultKey !== "")
+        return
+      try {
+        root.selectCity(JSON.parse(text()))
+        if (root.userChoice)
+          root.defaultKey = root.locationKey
+      } catch (e) {}
+    }
+  }
+
+  function selectCity(c) {
+    if (!root.applyLocation(c))
+      return
+    root.userChoice = true
+    root.place = typeof c.place === "string" ? c.place : ""
+  }
+
+  function saveDefault() {
+    root.defaultKey = root.locationKey
+    defaultFile.setText(JSON.stringify({latitude: root.latitude, longitude: root.longitude,
+      timezone: root.timezone, place: root.place}, null, 2) + "\n")
+  }
+
+  // --- city search -----------------------------------------------------------
+
+  // Open-Meteo's geocoder, same service as the forecast. Its matching is
+  // fuzzy, so only places whose name starts with the typed text are kept.
+  property var cityResults: []
+  property string cityQuery: ""
+  property string searchedQuery: ""
+
+  function searchCities(query) {
+    root.cityQuery = query.trim()
+    if (root.cityQuery.length < 2) {
+      root.cityResults = []
+      return
+    }
+    if (searchProc.running)
+      return
+    root.searchedQuery = root.cityQuery
+    searchProc.command = ["curl", "-sS", "--max-time", "10", "-G",
+      "--data-urlencode", "name=" + root.searchedQuery,
+      "--data-urlencode", "count=50",
+      "--data-urlencode", "language=en",
+      "https://geocoding-api.open-meteo.com/v1/search"]
+    searchProc.running = true
+  }
+
+  function parseCities(text, query) {
+    var d = null
+    try {
+      d = JSON.parse(text)
+    } catch (e) {
+      return []
+    }
+    const q = query.toLowerCase()
+    return ((d && Array.isArray(d.results)) ? d.results : [])
+      .filter(r => r && typeof r.name === "string" && r.name.toLowerCase().startsWith(q)
+              // PPL* are populated places; drops peaks, parks and countries.
+              && String(r.feature_code).startsWith("PPL")
+              && typeof r.latitude === "number" && typeof r.longitude === "number")
+      .sort((a, b) => (b.population || 0) - (a.population || 0))
+      .slice(0, 8)
+      .map(r => {
+        const detail = [r.admin1, r.country_code].filter(s => typeof s === "string" && s !== "").join(", ")
+        return {name: r.name, detail: detail, latitude: r.latitude, longitude: r.longitude,
+                timezone: typeof r.timezone === "string" ? r.timezone : "",
+                place: detail !== "" ? r.name + ", " + detail : r.name}
+      })
+  }
+
+  Process {
+    id: searchProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        if (root.searchedQuery === root.cityQuery)
+          root.cityResults = root.parseCities(text, root.searchedQuery)
+      }
+    }
+    onExited: {
+      // The user kept typing while this request ran.
+      if (root.searchedQuery !== root.cityQuery)
+        Qt.callLater(() => root.searchCities(root.cityQuery))
     }
   }
 

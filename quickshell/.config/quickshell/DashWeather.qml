@@ -67,6 +67,8 @@ Item {
 
   DashCard {
     id: nowCard
+    // Above the later cards, so the city suggestions overlay them.
+    z: 1
     width: parent.width
     height: Theme.fs(130)
     glyph: String.fromCodePoint(0xf034e) // md-map_marker
@@ -74,6 +76,138 @@ Item {
 
     trailing: Row {
       spacing: Theme.gapM
+
+      // Type a city; matches whose name starts with the text drop down below.
+      Rectangle {
+        id: cityField
+        anchors.verticalCenter: parent.verticalCenter
+        width: Theme.fs(180)
+        height: Theme.fs(22)
+        radius: Theme.radiusCell
+        color: Theme.withAlpha(Theme.foreground, 0.05)
+        border.width: Theme.borderWidth
+        border.color: cityInput.activeFocus ? Theme.accent : Theme.hairline
+
+        function pick(c) {
+          WeatherState.selectCity(c)
+          cityInput.text = ""
+          root.forceActiveFocus()
+        }
+
+        TextInput {
+          id: cityInput
+          anchors.fill: parent
+          anchors.leftMargin: Theme.gapS
+          anchors.rightMargin: Theme.gapS
+          verticalAlignment: TextInput.AlignVCenter
+          color: Theme.text
+          font.family: Theme.glyphFamily
+          font.pixelSize: Theme.fs(11)
+          selectByMouse: true
+          clip: true
+          onTextChanged: searchDelay.restart()
+          // Enter takes the top match.
+          onAccepted: {
+            if (WeatherState.cityResults.length > 0)
+              cityField.pick(WeatherState.cityResults[0])
+          }
+          // Escape clears the search first, then closes the dashboard.
+          Keys.onEscapePressed: event => {
+            if (text !== "")
+              text = ""
+            else
+              event.accepted = false
+          }
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            visible: cityInput.text === ""
+            text: String.fromCodePoint(0xf0349) + " Search city" // md-magnify
+            color: Theme.textMuted
+            font: cityInput.font
+          }
+        }
+
+        Timer {
+          id: searchDelay
+          interval: 250
+          onTriggered: WeatherState.searchCities(cityInput.text)
+        }
+
+        Rectangle {
+          y: parent.height + Theme.gapXS
+          width: Theme.fs(300)
+          anchors.right: parent.right
+          height: cityList.height + Theme.gapXS * 2
+          visible: cityInput.activeFocus && cityInput.text.trim().length >= 2
+                   && WeatherState.cityResults.length > 0
+          radius: Theme.radiusCell
+          color: Theme.bg
+          border.width: Theme.borderWidth
+          border.color: Theme.hairline
+
+          Column {
+            id: cityList
+            x: Theme.gapXS
+            y: Theme.gapXS
+            width: parent.width - Theme.gapXS * 2
+            Repeater {
+              model: WeatherState.cityResults
+              Rectangle {
+                id: cityRow
+                required property var modelData
+                width: cityList.width
+                height: Theme.fs(26)
+                radius: Theme.radiusCell
+                color: cityHover.containsMouse ? Theme.withAlpha(Theme.accent, 0.15) : "transparent"
+                Row {
+                  anchors.left: parent.left
+                  anchors.leftMargin: Theme.gapS
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Theme.gapS
+                  Text {
+                    text: cityRow.modelData.name
+                    color: Theme.text
+                    font.family: Theme.glyphFamily
+                    font.pixelSize: Theme.fs(12)
+                    font.bold: true
+                  }
+                  Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: cityRow.modelData.detail
+                    color: Theme.textMuted
+                    font.family: Theme.glyphFamily
+                    font.pixelSize: Theme.fs(10)
+                  }
+                }
+                MouseArea {
+                  id: cityHover
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: cityField.pick(cityRow.modelData)
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Saves the shown city so it is still the weather city after a reboot.
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: (WeatherState.isDefault ? String.fromCodePoint(0xf04ce) + " Default" // md-star
+                                      : String.fromCodePoint(0xf04d2) + " Set as default") // md-star_outline
+        color: WeatherState.isDefault ? Theme.accent : Theme.textDim
+        font.family: Theme.glyphFamily
+        font.pixelSize: Theme.fs(11)
+        MouseArea {
+          anchors.fill: parent
+          anchors.margins: -Theme.gapXS
+          enabled: !WeatherState.isDefault
+          cursorShape: Qt.PointingHandCursor
+          onClicked: WeatherState.saveDefault()
+        }
+      }
       Text {
         anchors.verticalCenter: parent.verticalCenter
         visible: WeatherState.lastFetchMs > 0

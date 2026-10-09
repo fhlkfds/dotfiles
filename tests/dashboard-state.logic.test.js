@@ -133,6 +133,34 @@ check('invalid saved coordinates cannot change the location', () => {
   for (const latitude of [null, '', 91, NaN])
     assert.equal(w.applyLocation({latitude, longitude: 0}), false);
 });
+check('city search keeps populated places starting with the text, largest first', () => {
+  const w = context('WeatherState.qml', {});
+  const place = (name, population, feature_code = 'PPL', admin1 = 'X') =>
+    ({name, population, feature_code, admin1, country_code: 'US', latitude: 1, longitude: 2, timezone: 'America/New_York'});
+  const cities = w.parseCities(JSON.stringify({results: [
+    place('Newark', 281944), place('Sacramento', 500000), place('New York', 8804190, 'PPLA', 'New York'),
+    place('New York Peak', null, 'MT'), place('Newt', undefined, 'PPL', null)]}), 'New');
+  assert.equal(cities.map(c => c.name).join('|'), 'New York|Newark|Newt');
+  assert.equal(cities[0].place, 'New York, New York, US');
+  assert.equal(cities[2].place, 'Newt, US');
+  assert.equal(w.parseCities('not json', 'new').length, 0);
+  assert.equal(w.parseCities('{}', 'new').length, 0);
+});
+check('a picked city is the default only after it is saved', () => {
+  let saved = '';
+  const weather = {latitude: 0, longitude: 0, timezone: 'America/Chicago', place: '', defaultKey: '',
+    userChoice: false, get locationKey() { return this.latitude + ',' + this.longitude + ',' + this.timezone; }};
+  const w = context('WeatherState.qml', weather, {defaultFile: {setText: t => { saved = t; }},
+    fetchProc: {running: true}});
+  w.selectCity({latitude: 40.7, longitude: -74, timezone: 'America/New_York', place: 'New York, New York, US'});
+  assert.equal(weather.userChoice, true);
+  assert.equal(weather.defaultKey, '');
+  w.saveDefault();
+  assert.equal(weather.defaultKey, weather.locationKey);
+  assert.deepEqual(JSON.parse(saved), {latitude: 40.7, longitude: -74, timezone: 'America/New_York', place: 'New York, New York, US'});
+  w.selectCity({latitude: 'bad', longitude: 0});
+  assert.equal(weather.place, 'New York, New York, US');
+});
 check('media position ticks only when a timeline is visible', () => {
   const source = fs.readFileSync(path.join(qs, 'MediaState.qml'), 'utf8');
   const expression = source.match(/readonly property bool timelineShown:([\s\S]*?)\n\n/)[1];
