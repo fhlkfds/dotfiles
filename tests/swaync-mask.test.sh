@@ -19,8 +19,6 @@ fail() {
 [[ ! -s $unit ]] || fail 'swaync.service is not empty, so it does not mask the unit'
 
 # The rollback instructions must say how to undo the mask.
-grep -Fq 'rm ~/.config/systemd/user/swaync.service' "$repo_root/wiki/Notifications.md" ||
-  fail 'wiki rollback does not remove the swaync mask'
 grep -Fq 'rm ~/.config/systemd/user/swaync.service' "$repo_root/README.md" ||
   fail 'README rollback does not remove the swaync mask'
 

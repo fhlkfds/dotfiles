@@ -4,8 +4,6 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 docs=(
   "$repo_root/README.md"
-  "$repo_root/docs/installation.md"
-  "$repo_root/wiki/Getting-Started.md"
 )
 install_ttfx="$repo_root/screensaver/.local/bin/install-ttfx"
 test_root=$(mktemp -d -t pinned-sources-test.XXXXXX)

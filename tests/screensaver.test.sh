@@ -55,7 +55,7 @@ if command -v jq >/dev/null 2>&1; then
   jq_available=1
 else
   jq_available=0
-  printf 'WARNING: jq is not installed; skipping jq-dependent screensaver fixtures\n' >&2
+  printf 'skip: jq is not installed; jq-dependent screensaver fixtures not run\n' >&2
 fi
 
 if ((jq_available)); then
