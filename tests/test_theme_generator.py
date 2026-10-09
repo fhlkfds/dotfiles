@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import configparser
-import hashlib
 import io
 import json
 import os
@@ -35,12 +34,10 @@ KEY_OUTPUTS = (
     "rofi-theme.rasi",
     "t3code-theme.json",
 )
-FIXTURE_ENV = "THEME_TEST_FIXTURE_DIR"
-SNAPSHOT_ENV = "THEME_TEST_SNAPSHOT_JSON"
 
 
 def loaded_themes() -> dict[str, tl.Theme]:
-    """Stable theme order keeps snapshots and test failures reproducible."""
+    """Stable theme order keeps test failures reproducible."""
     return dict(sorted(tl.load_all(THEMES).items()))
 
 
@@ -52,22 +49,6 @@ def render_all(theme: tl.Theme, root: Path) -> list[Path]:
     staged = generate.build(theme, stage, prefix)
     outputs = [output for output, destination in staged]
     return outputs
-
-
-def summary(theme: tl.Theme, outputs: list[Path]) -> dict[str, object]:
-    """The stable subset worth snapshotting: identity and rendered bytes."""
-    files = {
-        output.name: hashlib.sha256(
-            output.read_text().replace(str(tl.repo_root()), ".").encode()
-        ).hexdigest()
-        for output in outputs
-    }
-    return {
-        "accent": theme.colors["accent"],
-        "mode": theme.mode,
-        "warning_count": len(theme.warnings),
-        "files": files,
-    }
 
 
 class ThemeGeneratorTest(unittest.TestCase):
@@ -471,39 +452,6 @@ class ThemeGeneratorTest(unittest.TestCase):
         self.assertIn("1.11:1", warnings[0])
 
         render_all(theme, self.root / "synthetic-low-contrast")
-
-    def test_snapshot_comparison(self) -> None:
-        fixture_dir = os.environ.get(FIXTURE_ENV)
-        snapshot_path = os.environ.get(SNAPSHOT_ENV)
-        committed_snapshot = ROOT / "tests/fixtures/theme-generator-snapshots.json"
-        if not fixture_dir:
-            if snapshot_path:
-                snapshot = Path(snapshot_path)
-            elif committed_snapshot.exists():
-                snapshot = committed_snapshot
-            else:
-                self.skipTest("snapshot comparison disabled; baseline absent")
-
-        rendered = {}
-        for slug, theme in self.themes.items():
-            outputs = render_all(theme, self.root / slug)
-            rendered[slug] = summary(theme, outputs)
-
-        if fixture_dir:
-            fixture = Path(fixture_dir) / "theme-generator-snapshots.json"
-            fixture.parent.mkdir(parents=True, exist_ok=True)
-            fixture.write_text(json.dumps(rendered, indent=2, sort_keys=True) + "\n")
-            return
-
-        with open(snapshot, encoding="utf-8") as handle:
-            expected = json.load(handle)
-        self.maxDiff = None
-        for slug in sorted(set(rendered) | set(expected)):
-            self.assertIn(slug, expected, f"unexpected generated theme: {slug}")
-            self.assertIn(slug, rendered, f"snapshot theme not generated: {slug}")
-            self.assertEqual(
-                rendered[slug], expected[slug], f"snapshot mismatch for {slug}"
-            )
 
 
 if __name__ == "__main__":

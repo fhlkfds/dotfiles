@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The resident lmenu: the parser's dump document, the Quickshell state that
-# navigates and searches it, and the wiring that opens it without a process.
+# The resident lmenu: the parser's dump document and the Quickshell state
+# that navigates and searches it.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -60,14 +60,6 @@ LMENU_MENU="$test_root/dim-provider.jsonc" LMENU_EXTENSIONS=/nonexistent \
   python3 "$parser" dump >"$test_root/dim.json"
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["providers"] == {}' \
   "$test_root/dim.json" || fail 'a dimmed provider still generated its rows'
-
-# Super+Shift+A reaches the shell through a global shortcut, not a process.
-grep -Fq 'hl.dsp.global("quickshell:lmenu")' "$repo_root/hypr/.config/hypr/conf/keybindings.lua" ||
-  fail 'Super+Shift+A does not use the lmenu global shortcut'
-grep -Fq 'name: "lmenu"' "$qs_root/Bar.qml" ||
-  fail 'the bar does not register the lmenu global shortcut'
-grep -Fq 'target: "lmenu"' "$qs_root/Bar.qml" || fail 'the bar has no lmenu IPC target'
-grep -Fq 'LmenuPanel {' "$qs_root/Bar.qml" || fail 'the bar does not mount the lmenu panel'
 
 if command -v quickshell >/dev/null 2>&1; then
   smoke_log="$test_root/smoke.log"

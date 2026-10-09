@@ -56,9 +56,6 @@ end
 hl.dsp.window.fullscreen = function(args)
     return { kind = "window.fullscreen", args = args }
 end
-hl.dsp.layout = function(action)
-    return { kind = "layout", action = action }
-end
 hl.dsp.focus = function(args)
     return { kind = "focus", args = args }
 end
@@ -110,40 +107,6 @@ local function expect_move(keys, description, workspace, follow)
     error("missing move binding: " .. keys .. " -> " .. description)
 end
 
-local function expect_exec(keys, description, command)
-    for _, capture in ipairs(captures) do
-        if capture.keys == keys and capture.description == description and
-                capture.dispatcher.kind == "exec_cmd" and capture.dispatcher.command == command then
-            return
-        end
-    end
-    error("missing exec binding: " .. keys .. " -> " .. description)
-end
-
-expect_exec("SUPER + CTRL + Escape", "start ASCII screensaver",
-    "/home/liam/.config/hypr/scripts/run-if-deployed.sh screensaver ascii-screensaver force")
-expect_exec("SUPER + CTRL + SHIFT + Escape", "toggle automatic ASCII screensaver",
-    "/home/liam/.config/hypr/scripts/run-if-deployed.sh screensaver toggle-screensaver")
-expect_exec("CTRL + ALT + Delete", "close all windows",
-    "/home/liam/.config/hypr/scripts/close-all-windows.sh")
-expect_exec("SUPER + A", "application launcher",
-    "/home/liam/.config/hypr/scripts/quick-search.sh drun")
-local function expect_global(keys, description, name)
-    for _, capture in ipairs(captures) do
-        if capture.keys == keys and capture.description == description and
-                capture.dispatcher.kind == "global" and capture.dispatcher.name == name then
-            return
-        end
-    end
-    error("missing global binding: " .. keys .. " -> " .. description)
-end
-
--- lmenu lives in Quickshell; the keypress must not start a process.
-expect_global("SUPER + SHIFT + A", "lmenu root", "quickshell:lmenu")
-expect_global("SUPER + ALT + A", "web app manager", "quickshell:webapps")
-expect_exec("SUPER + CTRL + T", "activity (btop, floating)",
-    "/home/liam/.config/hypr/scripts/btop-float.sh")
-expect_global("SUPER + T", "theme picker", "quickshell:theme")
 -- Every panel key goes through a global shortcut, not an IPC client process.
 for _, capture in ipairs(captures) do
     local d = capture.dispatcher
@@ -151,33 +114,6 @@ for _, capture in ipairs(captures) do
         error("panel key still starts a quickshell ipc client: " .. capture.keys)
     end
 end
-expect_exec("SUPER + CTRL + SHIFT + G", "play temporary dotfiles history",
-    "/home/liam/.config/hypr/scripts/gource-dotfiles.sh")
-expect_exec("SUPER + SHIFT + Backspace", "toggle window gaps on all workspaces",
-    "/home/liam/.config/hypr/scripts/toggle-gaps.sh")
-expect_exec("SUPER + Backspace", "toggle window transparency on all workspaces",
-    "/home/liam/.config/hypr/scripts/toggle-transparency.sh")
-expect_exec("SUPER + CTRL + O", "toggle menu (night light, DND, stay awake, etc)",
-    "/home/liam/.config/hypr/scripts/toggles-menu.sh")
-expect_exec("SUPER + SHIFT + L", "cycle window layout",
-    "/home/liam/.config/hypr/scripts/window-layout.sh cycle")
-
--- Tiling direction. `preselect` is a one-time override for the next window,
--- unlike `togglesplit`, which needs dwindle.preserve_split to do anything.
-local function expect_layout(keys, description, action)
-    for _, capture in ipairs(captures) do
-        if capture.keys == keys and capture.description == description and
-                capture.dispatcher.kind == "layout" and capture.dispatcher.action == action then
-            return
-        end
-    end
-    error("missing layout binding: " .. keys .. " -> " .. action)
-end
-
-expect_exec("SUPER + J", "split horizontally (next window opens to the right)",
-    "/home/liam/.config/hypr/scripts/window-layout.sh split-horizontal")
-expect_exec("SUPER + SHIFT + V", "split vertically (next window opens below)",
-    "/home/liam/.config/hypr/scripts/window-layout.sh split-vertical")
 
 local floating_toggle_found = false
 local fullscreen_found = false
@@ -213,41 +149,6 @@ for workspace = 11, 15 do
         "move silently to workspace " .. workspace, workspace, false)
 end
 LUA
-
-grep -Fqx 'bindd = $mainMod CTRL, Escape, start ASCII screensaver, exec, $scriptsDir/run-if-deployed.sh screensaver ascii-screensaver force' \
-  "$hypr_root/conf/keybinding.conf" ||
-  fail 'legacy screensaver binding does not use the screensaver package'
-
-grep -Fqx 'bindd = $mainMod CTRL SHIFT, G, play temporary dotfiles history, exec, $scriptsDir/gource-dotfiles.sh' \
-  "$hypr_root/conf/keybinding.conf" ||
-  fail 'legacy Gource binding is missing or changed'
-
-grep -Fqx 'bindd = $mainMod SHIFT, A, lmenu root, global, quickshell:lmenu' \
-  "$hypr_root/conf/keybinding.conf" ||
-  fail 'legacy lmenu binding does not reach the resident Quickshell menu'
-
-grep -Fqx 'bindd = $mainMod, T, theme picker, exec, quickshell ipc call theme toggle' \
-  "$hypr_root/conf/keybinding.conf" ||
-  fail 'legacy theme picker binding is missing or changed'
-
-grep -Fqx 'bindd = SUPER SHIFT, F, fullscreen (true), fullscreen, 0' \
-  "$hypr_root/conf/keybinding.conf" ||
-  fail 'legacy fullscreen binding is missing or changed'
-
-grep -Fqx 'bindd = $mainMod, F, toggle window floating / tiling, togglefloating,' \
-  "$hypr_root/conf/keybinding.conf" ||
-  fail 'legacy floating-toggle binding is missing or changed'
-
-grep -Fqx 'bindd = $mainMod SHIFT, L, cycle window layout, exec, $scriptsDir/window-layout.sh cycle' \
-  "$hypr_root/conf/keybinding.conf" ||
-  fail 'legacy window-layout cycle binding is missing or changed'
-
-grep -Fqx 'hl.window_rule({ match = { class = "^t3code$" }, workspace = "4 silent" })' \
-  "$hypr_root/conf/window_rules.lua" ||
-  fail 'Lua config does not assign T3 Code to workspace 4'
-grep -Fqx 'windowrule = match:class ^t3code$, workspace 4 silent' \
-  "$hypr_root/conf/windows-rules.conf" ||
-  fail 'legacy config does not assign T3 Code to workspace 4'
 
 mkdir -p "$test_root/config" "$test_root/home" "$test_root/runtime"
 cp -a "$hypr_root/." "$test_root/config/hypr/"

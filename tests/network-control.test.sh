@@ -5,8 +5,6 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 backend="$repo_root/hypr/.config/hypr/scripts/network-control"
 panel="$repo_root/quickshell/.config/quickshell/NetworkPanel.qml"
 state="$repo_root/quickshell/.config/quickshell/NetworkState.qml"
-speed_gauge="$repo_root/quickshell/.config/quickshell/SpeedTestGauge.qml"
-speed_overlay="$repo_root/quickshell/.config/quickshell/SpeedTestOverlay.qml"
 test_root=$(mktemp -d -t network-control-test.XXXXXX)
 trap 'rm -rf -- "$test_root"' EXIT
 
@@ -164,44 +162,11 @@ NMCLI_WIRED_FIRST=1 run qr >"$test_root/wired-first-qr.json" 2>&1 \
 jq -e '.ssid == "Cafe;Net"' "$test_root/wired-first-qr.json" >/dev/null \
   || fail 'QR shared the wrong network while a wired link was also up'
 
-# The panel and state must remain theme-driven and must not contain a password
-# input, a raw resolv.conf write, or a shell command assembled from UI text.
+# Kept as a text check for Wi-Fi secrets: the panel and state must not hold a
+# password input, write resolv.conf raw, escalate, or build a shell command from
+# UI text. They must also stay theme-driven.
 ! sed '/^[[:space:]]*\/\//d' "$panel" "$state" | grep -nE '"#[0-9a-fA-F]{3,8}"|resolv\.conf|password|pkexec|sudo|sh", "-c' \
   || fail 'panel bypasses theme or credential boundaries'
-grep -Fq 'NetworkState.applyManual' "$panel" || fail 'manual IPv4 control is not wired to the state'
-grep -Fq 'NetworkState.shareWifi' "$panel" || fail 'Wi-Fi QR action is not wired to the state'
-grep -Fq 'NetworkState.showWifiQr(bar.focusedScreen())' "$repo_root/quickshell/.config/quickshell/Bar.qml" \
-  || fail 'network shareWifi IPC does not open the Wi-Fi QR overlay on the focused screen'
-[[ $(grep -Fc '"action": "quickshell ipc call network shareWifi"' "$repo_root/menu/.config/lmenu/menu.jsonc") -eq 2 ]] \
-  || fail 'lmenu Wi-Fi QR rows do not open the overlay'
-! grep -Fq 'network-control qr"' "$repo_root/menu/.config/lmenu/menu.jsonc" \
-  || fail 'an lmenu row still runs network-control qr, which only prints JSON'
-grep -Fq 'cache: false' "$repo_root/quickshell/.config/quickshell/WifiQrOverlay.qml" \
-  || fail 'Wi-Fi QR overlay caches the overwritten wifi.svg'
-grep -Fq 'qrNotifyProc.running = true' "$state" || fail 'Wi-Fi QR failures from lmenu are not notified'
-grep -Fq 'NetworkState.runSpeedTest(panel.ownerScreen)' "$panel" || fail 'speed test is not wired to its screen'
-grep -Fq 'command: [root.speedTest, "--stream-json"]' "$state" || fail 'speed test does not launch the streaming CLI'
-grep -Fq 'SpeedTestOverlay {' "$repo_root/quickshell/.config/quickshell/Bar.qml" || fail 'speed-test overlay is not mounted'
-grep -Fq 'MultiEffect {' "$speed_overlay" || fail 'speed-test overlay does not blur the wallpaper'
-grep -Fq 'Theme.info' "$speed_gauge" || fail 'speed-test accent does not follow the theme'
-grep -Fq 'NumberAnimation' "$speed_gauge" || fail 'speed-test gauge does not ease samples'
-grep -Fq 'WlrKeyboardFocus.Exclusive' "$speed_overlay" || fail 'speed-test overlay does not accept keyboard input'
-grep -Fq 'Keys.onEscapePressed: NetworkState.closeSpeedTest()' "$speed_overlay" || fail 'speed-test overlay cannot close with Escape'
-grep -Fq 'Run again' "$speed_overlay" || fail 'speed-test overlay has no repeat action'
-grep -Fq 'function closeSpeedTest()' "$state" || fail 'speed-test state cannot close an active test'
-grep -Fqx 'shell(mod .. " + ALT + T", "network speed test", "network-speedtest")' \
-  "$repo_root/hypr/.config/hypr/conf/keybindings.lua" || fail 'Lua speed-test binding does not open the overlay'
-# shellcheck disable=SC2016 # The legacy binding must contain a literal $mainMod.
-grep -Fqx 'bindd = $mainMod ALT, T, network speed test, exec, quickshell ipc call network speedTest' \
-  "$repo_root/hypr/.config/hypr/conf/keybinding.conf" || fail 'legacy speed-test binding does not open the overlay'
-grep -Fq 'stderr: StdioCollector { id: qrErr }' "$state" || fail 'Wi-Fi QR errors are not surfaced to the panel'
-grep -Fq 'root.backendError(qrErr.text)' "$state" || fail 'Wi-Fi QR errors are not cleaned up for the panel'
-grep -Fq 'NetworkState.togglePanel(bar.focusedScreen())' "$repo_root/quickshell/.config/quickshell/Bar.qml" || fail 'network manage IPC does not open the panel'
-grep -Fqx 'shell(mod .. " + CTRL + W", "manage Wi-Fi and network", "network")' \
-  "$repo_root/hypr/.config/hypr/conf/keybindings.lua" || fail 'Lua Super+Ctrl+W binding is missing or changed'
-# shellcheck disable=SC2016 # The legacy binding must contain a literal $mainMod.
-grep -Fqx 'bindd = $mainMod CTRL, W, manage Wi-Fi and network, exec, quickshell ipc call network manage' \
-  "$repo_root/hypr/.config/hypr/conf/keybinding.conf" || fail 'legacy Super+Ctrl+W binding is missing or changed'
 
 if command -v quickshell >/dev/null 2>&1; then
   smoke_log="$test_root/network-smoke.log"

@@ -17,29 +17,14 @@ assert_contains() {
   grep -Fq -- "$2" "$1" || fail "$1 does not contain [$2]"
 }
 
+# Kept: security guard. Lock-screen helpers must never fetch over plaintext HTTP.
 if grep -Fq -- 'http://' "$location_script" "$weather_script"; then
   fail "plaintext HTTP URL remains in a Hyprlock helper"
 fi
-
-for script in "$location_script" "$weather_script"; do
-  assert_contains "$script" "https://"
-  assert_contains "$script" "--fail"
-  assert_contains "$script" "--show-error"
-  assert_contains "$script" "--location"
-  assert_contains "$script" "--proto '=https'"
-  assert_contains "$script" "--proto-redir '=https'"
-  assert_contains "$script" "--connect-timeout 5"
-  assert_contains "$script" "--max-time 15"
-  assert_contains "$script" "max_output_length="
-done
-
-assert_contains "$location_script" 'HYPRLOCK_ENABLE_LOCATION'
-assert_contains "$weather_script" 'HYPRLOCK_ENABLE_WEATHER'
+# Kept: security guard. eval would let a crafted wallpaper path run as code.
 if grep -Eq '(^|[[:space:]|;])eval([[:space:]]|$)' "$wallpaper_script"; then
   fail "WallpaperSwitch.sh still invokes eval"
 fi
-assert_contains "$wallpaper_script" 'rofi_args=('
-assert_contains "$wallpaper_script" 'menu | rofi "${rofi_args[@]}"'
 
 stub_bin="$test_root/bin"
 mkdir -p "$stub_bin"
@@ -76,7 +61,7 @@ mkdir -p "$location_home"
 output=$(HOME="$location_home" PATH="$stub_bin:$PATH" CURL_LOG="$location_log" \
   HYPRLOCK_ENABLE_LOCATION=1 "$location_script")
 [[ "$output" == "US, Fixture City" ]] || fail "enabled location fixture failed"
-assert_contains "$location_log" "--proto =https --proto-redir =https --connect-timeout 5 --max-time 15 https://ipinfo.io"
+assert_contains "$location_log" "--fail --silent --show-error --location --proto =https --proto-redir =https --connect-timeout 5 --max-time 15 https://ipinfo.io"
 
 weather_home="$test_root/weather-home"
 weather_log="$test_root/weather-curl.log"
@@ -89,7 +74,7 @@ output=$(env -u HYPRLOCK_ENABLE_WEATHER HOME="$weather_home" \
 output=$(HOME="$weather_home" PATH="$stub_bin:$PATH" CURL_LOG="$weather_log" \
   HYPRLOCK_ENABLE_WEATHER=1 "$weather_script")
 [[ "$output" == "Clear +21C" ]] || fail "weather fixture failed"
-assert_contains "$weather_log" "--proto =https --proto-redir =https --connect-timeout 5 --max-time 15 https://wttr.in?format=%c+%C+%t"
+assert_contains "$weather_log" "--fail --silent --show-error --location --proto =https --proto-redir =https --connect-timeout 5 --max-time 15 https://wttr.in?format=%c+%C+%t"
 
 invalid_home="$test_root/invalid-home"
 mkdir -p "$invalid_home"

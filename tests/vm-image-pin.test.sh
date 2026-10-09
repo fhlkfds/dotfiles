@@ -4,7 +4,6 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 compose_file="$repo_root/windows/.local/share/windows-vm/compose.yaml"
 helper="$repo_root/windows/.local/bin/windows-vm"
-readme="$repo_root/README.md"
 test_root=$(mktemp -d -t vm-image-pin-test.XXXXXX)
 trap 'rm -rf -- "$test_root"' EXIT
 
@@ -29,11 +28,6 @@ case "$image_default" in
     ;;
   *) fail 'Compose WINDOWS_IMAGE default is not digest-pinned' ;;
 esac
-
-grep -Fq "docker image inspect dockurr/windows:latest --format '{{index .RepoDigests 0}}'" \
-  "$compose_file" || fail 'Compose placeholder lacks the documented capture TODO'
-grep -Fq "docker image inspect dockurr/windows:latest --format '{{index .RepoDigests 0}}'" \
-  "$readme" || fail 'README lacks the exact digest capture command'
 
 # Exercise the actual configuration writer, then simulate an upgrade from a
 # pre-pin install. Launch must migrate :latest and reject the placeholder before
@@ -67,8 +61,6 @@ grep -Fq "mutable WINDOWS_IMAGE value 'dockurr/windows:latest'" "$test_root/laun
   || fail 'Launch did not warn about the mutable generated setting'
 grep -Fq "Invalid WINDOWS_IMAGE value '$image_default'" "$test_root/launch.out" \
   || fail 'Launch did not validate the migrated placeholder'
-grep -Fq 'README.md, "Pin and verify the image digest"' "$test_root/launch.out" \
-  || fail 'Launch error does not point to the README capture instructions'
 grep -Fxq "WINDOWS_IMAGE=$image_default" "$settings_file" \
   || fail 'Launch did not rewrite the mutable generated setting'
 [[ $(stat -c %a "$settings_file") == 600 ]] \

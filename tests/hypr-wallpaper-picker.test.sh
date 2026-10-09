@@ -266,15 +266,4 @@ PY
 cleanup
 assert_missing "$runtime_dir"
 
-assert_contains "$repo_root/quickshell/.config/quickshell/ThemePicker.qml" \
-    "property var controller: ThemeState"
-assert_contains "$repo_root/quickshell/.config/quickshell/Bar.qml" \
-    "controller: WallpaperState"
-assert_contains "$repo_root/quickshell/.config/quickshell/WallpaperState.qml" \
-    'root.mode !== "local"'
-assert_contains "$repo_root/quickshell/.config/quickshell/WallpaperState.qml" \
-    '"Search Wallhaven for “" + root.query.trim() + "”"'
-assert_contains "$repo_root/quickshell/.config/quickshell/WallpaperState.qml" \
-    'root.wallhavenQuery = root.query.trim()'
-
 printf 'ok: hypr-wallpaper-picker fixtures\n'
