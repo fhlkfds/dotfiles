@@ -248,6 +248,7 @@ PopupWindow {
               name: model.name
               icon: model.icon
               battery: model.battery
+              batteryLabel: model.batteryLabel
             }
           }
 
@@ -291,6 +292,7 @@ PopupWindow {
                   trusted: model.trusted
                   icon: model.icon
                   battery: model.battery
+                  batteryLabel: model.batteryLabel
                 }
               }
             }
@@ -408,6 +410,7 @@ PopupWindow {
                   trusted: model.trusted
                   icon: model.icon
                   battery: model.battery
+                  batteryLabel: model.batteryLabel
                 }
               }
             }

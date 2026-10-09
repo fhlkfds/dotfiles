@@ -269,7 +269,8 @@ grep -qx 'sound-theme-freedesktop' "$repo_root/setup/manifests/hyprland.txt" \
 
 if command -v quickshell >/dev/null 2>&1; then
   smoke_log="$test_root/smoke.log"
-  QT_QPA_PLATFORM=offscreen timeout 60 quickshell -p "$smoke" > "$smoke_log" 2>&1 || true
+  PATH="$test_root/bin:$PATH" BLUETOOTH_CONTROL_BACKEND="$backend" \
+    QT_QPA_PLATFORM=offscreen timeout 60 quickshell -p "$smoke" > "$smoke_log" 2>&1 || true
   grep -Fq 'ok: BluetoothState logic' "$smoke_log" \
     || { sed -n '1,80p' "$smoke_log" >&2; fail 'BluetoothSmoke.qml did not report success'; }
   if grep -Fq 'FAIL' "$smoke_log"; then
