@@ -142,6 +142,11 @@ opens it on the focused monitor.
 | System | hostname and kernel, CPU with history, per-core bars, temperature, clock and load; memory and swap; root filesystem; GPU with history, VRAM and power; network rates and totals; a Mission Center button |
 | Weather | a city search (type a few letters, pick a match) with **Set as default** to keep it across reboots; conditions, humidity, wind, rain, UV, sunrise and sunset; a 24-hour temperature curve with rain chance; seven days of ranges on a shared scale |
 
+**Default** confirms a successful save. If the button shows **Save failed · Retry**,
+click it to retry. To resume IP-based weather, delete
+`$XDG_STATE_HOME/hyprland-desktop/weather/location.json` (under `~/.local/state`
+when `XDG_STATE_HOME` is unset), then restart Quickshell or reboot.
+
 It is built to feel instant. Every page is created with the bar and kept
 alive, so opening only maps the window and switching tabs only flips
 `visible`. The window is one fixed size for every tab, so a switch never

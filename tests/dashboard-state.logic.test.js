@@ -148,18 +148,116 @@ check('city search keeps populated places starting with the text, largest first'
 });
 check('a picked city is the default only after it is saved', () => {
   let saved = '';
-  const weather = {latitude: 0, longitude: 0, timezone: 'America/Chicago', place: '', defaultKey: '',
+  const weather = {latitude: 0, longitude: 0, timezone: 'America/Chicago', place: '', defaultKey: '', savingDefault: false,
     userChoice: false, get locationKey() { return this.latitude + ',' + this.longitude + ',' + this.timezone; }};
-  const w = context('WeatherState.qml', weather, {defaultFile: {setText: t => { saved = t; }},
+  const w = context('WeatherState.qml', weather, {defaultWriter: {setText: t => { saved = t; }},
     fetchProc: {running: true}});
   w.selectCity({latitude: 40.7, longitude: -74, timezone: 'America/New_York', place: 'New York, New York, US'});
   assert.equal(weather.userChoice, true);
   assert.equal(weather.defaultKey, '');
   w.saveDefault();
+  assert.equal(weather.defaultKey, '');
+  assert.equal(weather.savingDefault, true);
+  w.finishDefaultSave(true);
   assert.equal(weather.defaultKey, weather.locationKey);
   assert.deepEqual(JSON.parse(saved), {latitude: 40.7, longitude: -74, timezone: 'America/New_York', place: 'New York, New York, US'});
   w.selectCity({latitude: 'bad', longitude: 0});
   assert.equal(weather.place, 'New York, New York, US');
+});
+check('failed default writes preserve the previous default and allow retry', () => {
+  let writes = 0;
+  const weather = {latitude: 1, longitude: 2, timezone: 'UTC', place: 'Test',
+    locationKey: '1,2,UTC', defaultKey: 'old', userChoice: false, savingDefault: false};
+  const w = context('WeatherState.qml', weather, {defaultWriter: {setText() { writes++; }}});
+  w.saveDefault();
+  w.saveDefault();
+  assert.equal(writes, 1);
+  assert.equal(weather.defaultKey, 'old');
+  w.finishDefaultSave(false);
+  assert.equal(weather.defaultKey, 'old');
+  assert.equal(weather.userChoice, false);
+  assert.ok(weather.defaultError);
+  assert.equal(weather.savingDefault, false);
+  w.saveDefault();
+  assert.equal(writes, 2);
+  assert.equal(weather.defaultError, '');
+  // A city picked during the write must not become the saved default.
+  weather.locationKey = '3,4,UTC';
+  w.finishDefaultSave(true);
+  assert.equal(weather.defaultKey, '1,2,UTC');
+  assert.equal(weather.userChoice, true);
+});
+check('late saved-default loads preserve an explicit choice, and ignore malformed files', () => {
+  const weather = {latitude: 10, longitude: 20, timezone: 'UTC', place: 'Picked',
+    userChoice: true, defaultLoaded: false, savingDefault: false, defaultKey: ''};
+  const w = context('WeatherState.qml', weather, {fetchProc: {running: true}});
+  w.loadDefault('{"latitude":1,"longitude":2,"timezone":"UTC","place":"Saved"}');
+  assert.equal(weather.place, 'Picked');
+  assert.equal(weather.latitude, 10);
+  assert.equal(weather.defaultKey, '1,2,UTC');
+  weather.defaultLoaded = false;
+  w.loadDefault('not json');
+  assert.equal(weather.place, 'Picked');
+  weather.defaultLoaded = false;
+  w.loadDefault('{"latitude":91,"longitude":2}');
+  assert.equal(weather.defaultKey, '1,2,UTC');
+});
+check('a valid boot default is applied once with automatic timezone fallback', () => {
+  const weather = {userChoice: false, defaultLoaded: false, savingDefault: false, timezone: 'UTC'};
+  const w = context('WeatherState.qml', weather, {fetchProc: {running: true}});
+  w.loadDefault('{"latitude":1,"longitude":2,"place":"Saved"}');
+  assert.equal(weather.userChoice, true);
+  assert.equal(weather.place, 'Saved');
+  assert.equal(weather.timezone, 'auto');
+  assert.equal(weather.defaultKey, '1,2,auto');
+  w.loadDefault('{"latitude":3,"longitude":4}');
+  assert.equal(weather.latitude, 1);
+});
+check('query changes and clearing immediately invalidate suggestions and Enter', () => {
+  const weather = {cityQuery: 'new', searchedQuery: 'new', resultsQuery: 'new',
+    cityResults: [{name: 'New York'}], citySearchStatus: 'ok'};
+  const proc = {running: true};
+  const later = [];
+  const w = context('WeatherState.qml', weather, {searchProc: proc, Qt: {callLater: fn => later.push(fn)}});
+  assert.equal(w.canPickCity('new'), true);
+  w.updateCityQuery('chi');
+  assert.equal(w.canPickCity('chi'), false);
+  assert.equal(weather.cityResults.length, 0);
+  w.searchCities('chi');
+  assert.equal(weather.searchedQuery, 'new');
+  w.finishCitySearch(0, '{"results":[{"name":"New York"}]}');
+  assert.equal(weather.cityResults.length, 0);
+  proc.running = false;
+  later.shift()();
+  assert.equal(weather.searchedQuery, 'chi');
+  assert.equal(proc.command[proc.command.indexOf('--data-urlencode') + 1], 'name=chi');
+  proc.running = false;
+  w.finishCitySearch(0, JSON.stringify({results: [{name: 'Chicago', feature_code: 'PPL', latitude: 41, longitude: -87}]}));
+  assert.equal(w.canPickCity('chi'), true);
+  assert.equal(weather.cityResults[0].timezone, 'auto');
+  w.updateCityQuery('');
+  assert.equal(w.canPickCity(''), false);
+  assert.equal(weather.cityResults.length, 0);
+});
+check('city search handles failed, malformed, empty and invalid-coordinate responses', () => {
+  const weather = {cityQuery: 'test', searchedQuery: 'test'};
+  const w = context('WeatherState.qml', weather);
+  for (const [code, text] of [[22, '{}'], [0, 'invalid'], [0, '{"error":true}']]) {
+    w.finishCitySearch(code, text);
+    assert.equal(weather.citySearchStatus, 'error');
+    assert.equal(w.canPickCity('test'), false);
+  }
+  w.finishCitySearch(0, '{}');
+  assert.equal(weather.citySearchStatus, 'ok');
+  assert.equal(weather.cityResults.length, 0);
+  const invalid = [null, 91, -91, '1'].map(latitude =>
+    ({name: 'Test', feature_code: 'PPL', latitude, longitude: 1}));
+  assert.equal(w.parseCities(JSON.stringify({results: invalid}), 'test').length, 0);
+  const valid = Array.from({length: 12}, (_, i) =>
+    ({name: 'Test ' + i, feature_code: 'PPL', latitude: 1, longitude: 2, population: i}));
+  const cities = w.parseCities(JSON.stringify({results: valid}), 'test');
+  assert.equal(cities.length, 8);
+  assert.equal(cities[0].name, 'Test 11');
 });
 check('media position ticks only when a timeline is visible', () => {
   const source = fs.readFileSync(path.join(qs, 'MediaState.qml'), 'utf8');

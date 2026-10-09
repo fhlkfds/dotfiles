@@ -11,6 +11,18 @@ Window {
   property QtObject fixtureView: view
   property string themeSlug: Theme.themeSlug
   property string selectedTab: DashboardState.activeTab
+  property QtObject fixtureWeather: WeatherState
+  property bool dashboardOpen: DashboardState.panelVisible
+  function openDashboard() { DashboardState.panelVisible = true }
+  function seedCities(query) {
+    WeatherState.searchedQuery = query
+    WeatherState.finishCitySearch(0, JSON.stringify({results: [
+      {name: "New York with a very long display name", admin1: "New York", country_code: "US",
+       latitude: 40.7, longitude: -74, timezone: "America/New_York", population: 8804190, feature_code: "PPL"},
+      {name: "Newark", admin1: "New Jersey", country_code: "US",
+       latitude: 40.73, longitude: -74.17, timezone: "America/New_York", population: 281944, feature_code: "PPL"}
+    ]}))
+  }
   function reloadPalette() { Theme.reloadPalette() }
   function setScale(s) { Theme.fontScale = s }
   function missingData() {

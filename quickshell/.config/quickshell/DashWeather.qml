@@ -89,13 +89,16 @@ Item {
         border.color: cityInput.activeFocus ? Theme.accent : Theme.hairline
 
         function pick(c) {
-          WeatherState.selectCity(c)
+          if (!WeatherState.canPickCity(cityInput.text) || !WeatherState.selectCity(c))
+            return
           cityInput.text = ""
           root.forceActiveFocus()
         }
 
         TextInput {
           id: cityInput
+          objectName: "weatherCityInput"
+          maximumLength: 128
           anchors.fill: parent
           anchors.leftMargin: Theme.gapS
           anchors.rightMargin: Theme.gapS
@@ -105,10 +108,21 @@ Item {
           font.pixelSize: Theme.fs(11)
           selectByMouse: true
           clip: true
-          onTextChanged: searchDelay.restart()
+          onTextChanged: {
+            WeatherState.updateCityQuery(text)
+            searchDelay.restart()
+          }
+          // Each monitor retains its own input; search state is shared.
+          onActiveFocusChanged: {
+            if (activeFocus) {
+              WeatherState.updateCityQuery(text)
+              if (!WeatherState.canPickCity(text))
+                searchDelay.restart()
+            }
+          }
           // Enter takes the top match.
           onAccepted: {
-            if (WeatherState.cityResults.length > 0)
+            if (WeatherState.canPickCity(text))
               cityField.pick(WeatherState.cityResults[0])
           }
           // Escape clears the search first, then closes the dashboard.
@@ -134,16 +148,34 @@ Item {
         }
 
         Rectangle {
+          objectName: "weatherCitySuggestions"
           y: parent.height + Theme.gapXS
           width: Theme.fs(300)
           anchors.right: parent.right
-          height: cityList.height + Theme.gapXS * 2
-          visible: cityInput.activeFocus && cityInput.text.trim().length >= 2
-                   && WeatherState.cityResults.length > 0
+          height: Math.max(cityList.height, searchFeedback.visible ? searchFeedback.height : 0) + Theme.gapXS * 2
+          visible: root.live && cityInput.activeFocus && cityInput.text.trim().length >= 2
+                   && WeatherState.cityQuery === cityInput.text.trim()
           radius: Theme.radiusCell
           color: Theme.bg
           border.width: Theme.borderWidth
           border.color: Theme.hairline
+
+          Text {
+            id: searchFeedback
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: Theme.gapS
+            y: Theme.gapXS
+            height: Theme.fs(26)
+            verticalAlignment: Text.AlignVCenter
+            visible: WeatherState.cityResults.length === 0
+            text: WeatherState.citySearchStatus === "error" ? "Search failed; edit the city to retry"
+                : WeatherState.citySearchStatus === "ok" ? "No matching cities"
+                : "Searching…"
+            color: WeatherState.citySearchStatus === "error" ? Theme.error : Theme.textMuted
+            font.pixelSize: Theme.fs(10)
+            elide: Text.ElideRight
+          }
 
           Column {
             id: cityList
@@ -159,25 +191,33 @@ Item {
                 height: Theme.fs(26)
                 radius: Theme.radiusCell
                 color: cityHover.containsMouse ? Theme.withAlpha(Theme.accent, 0.15) : "transparent"
-                Row {
+                Text {
                   anchors.left: parent.left
+                  anchors.right: parent.right
                   anchors.leftMargin: Theme.gapS
+                  anchors.rightMargin: Theme.gapS
                   anchors.verticalCenter: parent.verticalCenter
-                  spacing: Theme.gapS
-                  Text {
-                    text: cityRow.modelData.name
-                    color: Theme.text
-                    font.family: Theme.glyphFamily
-                    font.pixelSize: Theme.fs(12)
-                    font.bold: true
-                  }
-                  Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: cityRow.modelData.detail
-                    color: Theme.textMuted
-                    font.family: Theme.glyphFamily
-                    font.pixelSize: Theme.fs(10)
-                  }
+                  text: cityRow.modelData.name
+                  color: Theme.text
+                  font.family: Theme.glyphFamily
+                  font.pixelSize: Theme.fs(11)
+                  textFormat: Text.PlainText
+                  elide: Text.ElideRight
+                  // Prefer state/country over the end of an unusually long name.
+                  rightPadding: cityDetail.width + Theme.gapS
+                }
+                Text {
+                  id: cityDetail
+                  anchors.right: parent.right
+                  anchors.rightMargin: Theme.gapS
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Math.min(implicitWidth, parent.width * 0.55)
+                  text: cityRow.modelData.detail
+                  color: Theme.textMuted
+                  font.family: Theme.glyphFamily
+                  font.pixelSize: Theme.fs(10)
+                  textFormat: Text.PlainText
+                  elide: Text.ElideRight
                 }
                 MouseArea {
                   id: cityHover
@@ -194,16 +234,19 @@ Item {
 
       // Saves the shown city so it is still the weather city after a reboot.
       Text {
+        objectName: "weatherDefaultButton"
         anchors.verticalCenter: parent.verticalCenter
-        text: (WeatherState.isDefault ? String.fromCodePoint(0xf04ce) + " Default" // md-star
+        text: WeatherState.savingDefault ? "Saving…"
+            : WeatherState.defaultError !== "" ? "Save failed · Retry"
+            : (WeatherState.isDefault ? String.fromCodePoint(0xf04ce) + " Default" // md-star
                                       : String.fromCodePoint(0xf04d2) + " Set as default") // md-star_outline
-        color: WeatherState.isDefault ? Theme.accent : Theme.textDim
+        color: WeatherState.defaultError !== "" ? Theme.error : WeatherState.isDefault ? Theme.accent : Theme.textDim
         font.family: Theme.glyphFamily
         font.pixelSize: Theme.fs(11)
         MouseArea {
           anchors.fill: parent
           anchors.margins: -Theme.gapXS
-          enabled: !WeatherState.isDefault
+          enabled: !WeatherState.isDefault && !WeatherState.savingDefault
           cursorShape: Qt.PointingHandCursor
           onClicked: WeatherState.saveDefault()
         }

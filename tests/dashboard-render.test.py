@@ -154,6 +154,47 @@ def capture_narrow():
         # Timings describe this normal offscreen Qt window, not a Wayland popup.
         win.setScale(1.0); win.setProperty('viewportWidth',0); win.setProperty('viewportHeight',0)
         flick.setProperty('contentX',0); flick.setProperty('contentY',0); QTest.qWait(200)
+        # Actual picker key/mouse handlers; fixture IO remains inert.
+        win.setProperty('tab','weather'); win.openDashboard(); QTest.qWait(50)
+        weather=win.property('fixtureWeather')
+        field=next(o for o in nodes(win) if o.objectName()=='weatherCityInput')
+        popup=next(o for o in nodes(win) if o.objectName()=='weatherCitySuggestions')
+        button=next(o for o in nodes(win) if o.objectName()=='weatherDefaultButton')
+        field=shiboken6.wrapInstance(ptr(field),QQuickItem)
+        popup=shiboken6.wrapInstance(ptr(popup),QQuickItem)
+        button=shiboken6.wrapInstance(ptr(button),QQuickItem)
+        field.forceActiveFocus(); field.setProperty('text','new'); win.seedCities('new'); QTest.qWait(30)
+        assert popup.isVisible(),'City suggestions did not open'
+        assert win.grabWindow().save(str(H/'out/weather-city-suggestions.png'))
+        # A different monitor can change singleton state while this input stays.
+        view.forceActiveFocus(); weather.updateCityQuery('chi')
+        assert not popup.isVisible(),'Suggestions from another monitor remained visible'
+        field.forceActiveFocus()
+        assert weather.property('cityQuery')=='new','Retained input did not restore its query on focus'
+        win.seedCities('new')
+        previous=weather.property('latitude')
+        field.setProperty('text','chi'); QTest.keyClick(win,Qt.Key_Return)
+        assert weather.property('latitude')==previous,'Enter selected a stale suggestion'
+        field.setProperty('text','new'); win.seedCities('new'); QTest.qWait(30)
+        # Click the second result, including the part over the weather card body.
+        xy=popup.mapToScene(QPointF(popup.width()/2,3+26*1.5))
+        QTest.mouseClick(win,Qt.LeftButton,Qt.NoModifier,QPoint(round(xy.x()),round(xy.y())))
+        assert weather.property('latitude')==40.73,'Second city suggestion was not clickable'
+        assert field.property('text')=='','Picking a city did not clear the input'
+        xy=button.mapToScene(QPointF(button.width()/2,button.height()/2))
+        QTest.mouseClick(win,Qt.LeftButton,Qt.NoModifier,QPoint(round(xy.x()),round(xy.y()))); QTest.qWait(20)
+        assert weather.property('isDefault') and 'Default' in button.property('text'),'Default confirmation missing'
+        field.forceActiveFocus(); field.setProperty('text','new'); win.seedCities('new')
+        QTest.keyClick(win,Qt.Key_Return)
+        assert weather.property('latitude')==40.7,'Enter did not select the top current result'
+        field.forceActiveFocus(); field.setProperty('text','new'); win.seedCities('new')
+        QTest.keyClick(win,Qt.Key_Escape)
+        assert field.property('text')=='' and win.property('dashboardOpen'),'First Escape did not only clear input'
+        QTest.keyClick(win,Qt.Key_Return)
+        assert weather.property('latitude')==40.7,'Enter selected a hidden result after Escape'
+        QTest.keyClick(win,Qt.Key_Escape)
+        assert not win.property('dashboardOpen'),'Second Escape did not close dashboard'
+        report['weather_picker']='current-query Enter, second-result click, default confirmation, long-label render, retained-input focus, Escape clear/close passed'
         def next_frame(action):
             done=[]
             def swapped(): done.append(time.perf_counter())

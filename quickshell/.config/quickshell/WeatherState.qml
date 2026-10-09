@@ -25,6 +25,10 @@ Singleton {
                                       || Quickshell.env("HOME") + "/.local/state"
   // locationKey of the saved default; "" until one is loaded or saved.
   property string defaultKey: ""
+  property bool defaultLoaded: false
+  property bool savingDefault: false
+  property string pendingDefaultKey: ""
+  property string defaultError: ""
   readonly property bool isDefault: defaultKey !== "" && defaultKey === locationKey
   // The night-light panel saves a place name with its location; weather.json
   // has none, so fall back to the city in the timezone id.
@@ -33,10 +37,14 @@ Singleton {
     ? place.split(",")[0]
     : timezone.substring(timezone.lastIndexOf("/") + 1).replace(/_/g, " ")
 
+  function validLocation(c) {
+    return !!c && typeof c.latitude === "number" && typeof c.longitude === "number"
+      && isFinite(c.latitude) && isFinite(c.longitude)
+      && Math.abs(c.latitude) <= 90 && Math.abs(c.longitude) <= 180
+  }
+
   function applyLocation(c) {
-    if (!c || typeof c.latitude !== "number" || typeof c.longitude !== "number"
-        || !isFinite(c.latitude) || !isFinite(c.longitude)
-        || Math.abs(c.latitude) > 90 || Math.abs(c.longitude) > 180)
+    if (!root.validLocation(c))
       return false
     root.latitude = c.latitude
     root.longitude = c.longitude
@@ -55,7 +63,7 @@ Singleton {
     printErrors: false
     onFileChanged: reload()
     onLoaded: {
-      if (root.savedLocation || root.userChoice)
+      if (root.savedLocation || root.userChoice || root.savingDefault)
         return
       try {
         root.applyLocation(JSON.parse(text()))
@@ -69,7 +77,7 @@ Singleton {
     printErrors: false
     onFileChanged: reload()
     onLoaded: {
-      if (root.userChoice)
+      if (root.userChoice || root.savingDefault)
         return
       try {
         const loc = JSON.parse(text()).location
@@ -89,32 +97,74 @@ Singleton {
   }
 
   FileView {
-    id: defaultFile
     path: root.stateHome + "/hyprland-desktop/weather/location.json"
     printErrors: false
-    onLoaded: {
-      // Only the first load counts; saving the default must not refetch.
-      if (root.defaultKey !== "")
+    onLoaded: root.loadDefault(text())
+    onLoadFailed: root.defaultLoaded = true
+  }
+
+  FileView {
+    id: defaultWriter
+    preload: false
+    printErrors: false
+    onSaved: root.finishDefaultSave(true)
+    onSaveFailed: root.finishDefaultSave(false)
+  }
+
+  function loadDefault(text) {
+    // Read once; writes must not replace a newer selection or refetch weather.
+    if (root.defaultLoaded || root.savingDefault)
+      return
+    root.defaultLoaded = true
+    try {
+      const c = JSON.parse(text)
+      if (!root.validLocation(c))
         return
-      try {
-        root.selectCity(JSON.parse(text()))
-        if (root.userChoice)
-          root.defaultKey = root.locationKey
-      } catch (e) {}
-    }
+      const tz = typeof c.timezone === "string" && c.timezone !== "" ? c.timezone : "auto"
+      root.defaultKey = c.latitude + "," + c.longitude + "," + tz
+      if (!root.userChoice)
+        root.selectCity(c)
+    } catch (e) {}
   }
 
   function selectCity(c) {
-    if (!root.applyLocation(c))
-      return
+    if (!root.validLocation(c))
+      return false
+    // Missing geocoder timezones must not inherit the previous city's zone.
+    const tz = typeof c.timezone === "string" && c.timezone !== "" ? c.timezone : "auto"
+    root.applyLocation({latitude: c.latitude, longitude: c.longitude, timezone: tz})
     root.userChoice = true
     root.place = typeof c.place === "string" ? c.place : ""
+    root.defaultError = ""
+    return true
   }
 
   function saveDefault() {
-    root.defaultKey = root.locationKey
-    defaultFile.setText(JSON.stringify({latitude: root.latitude, longitude: root.longitude,
+    if (root.savingDefault)
+      return
+    root.savingDefault = true
+    root.defaultError = ""
+    root.pendingDefaultKey = root.locationKey
+    // FileView skips identical cached text even after a failed write. Reset
+    // this write-only view so every retry starts an actual atomic disk write.
+    defaultWriter.path = ""
+    defaultWriter.path = root.stateHome + "/hyprland-desktop/weather/location.json"
+    defaultWriter.setText(JSON.stringify({latitude: root.latitude, longitude: root.longitude,
       timezone: root.timezone, place: root.place}, null, 2) + "\n")
+  }
+
+  function finishDefaultSave(success) {
+    if (!root.savingDefault)
+      return
+    if (success) {
+      root.defaultKey = root.pendingDefaultKey
+      root.userChoice = true
+      root.defaultLoaded = true
+    } else {
+      root.defaultError = "Could not save default; check the weather state directory and retry."
+    }
+    root.pendingDefaultKey = ""
+    root.savingDefault = false
   }
 
   // --- city search -----------------------------------------------------------
@@ -124,17 +174,35 @@ Singleton {
   property var cityResults: []
   property string cityQuery: ""
   property string searchedQuery: ""
+  property string resultsQuery: ""
+  property string citySearchStatus: "idle"
+
+  function updateCityQuery(query) {
+    const q = query.trim()
+    if (root.cityQuery === q)
+      return
+    root.cityQuery = q
+    root.cityResults = []
+    root.resultsQuery = ""
+    root.citySearchStatus = "idle"
+  }
+
+  function canPickCity(query) {
+    return query.trim().length >= 2 && root.resultsQuery === query.trim()
+      && root.cityResults.length > 0
+  }
 
   function searchCities(query) {
-    root.cityQuery = query.trim()
+    root.updateCityQuery(query)
     if (root.cityQuery.length < 2) {
       root.cityResults = []
       return
     }
     if (searchProc.running)
       return
+    root.citySearchStatus = "loading"
     root.searchedQuery = root.cityQuery
-    searchProc.command = ["curl", "-sS", "--max-time", "10", "-G",
+    searchProc.command = ["curl", "-fsS", "--max-time", "10", "-G",
       "--data-urlencode", "name=" + root.searchedQuery,
       "--data-urlencode", "count=50",
       "--data-urlencode", "language=en",
@@ -154,29 +222,39 @@ Singleton {
       .filter(r => r && typeof r.name === "string" && r.name.toLowerCase().startsWith(q)
               // PPL* are populated places; drops peaks, parks and countries.
               && String(r.feature_code).startsWith("PPL")
-              && typeof r.latitude === "number" && typeof r.longitude === "number")
+              && root.validLocation(r))
       .sort((a, b) => (b.population || 0) - (a.population || 0))
       .slice(0, 8)
       .map(r => {
         const detail = [r.admin1, r.country_code].filter(s => typeof s === "string" && s !== "").join(", ")
         return {name: r.name, detail: detail, latitude: r.latitude, longitude: r.longitude,
-                timezone: typeof r.timezone === "string" ? r.timezone : "",
+                timezone: typeof r.timezone === "string" && r.timezone !== "" ? r.timezone : "auto",
                 place: detail !== "" ? r.name + ", " + detail : r.name}
       })
   }
 
   Process {
     id: searchProc
-    stdout: StdioCollector {
-      onStreamFinished: {
-        if (root.searchedQuery === root.cityQuery)
-          root.cityResults = root.parseCities(text, root.searchedQuery)
-      }
+    stdout: StdioCollector { id: searchOutput }
+    onExited: code => root.finishCitySearch(code, searchOutput.text)
+  }
+
+  function finishCitySearch(code, text) {
+    if (root.searchedQuery !== root.cityQuery) {
+      Qt.callLater(() => root.searchCities(root.cityQuery))
+      return
     }
-    onExited: {
-      // The user kept typing while this request ran.
-      if (root.searchedQuery !== root.cityQuery)
-        Qt.callLater(() => root.searchCities(root.cityQuery))
+    root.cityResults = []
+    root.resultsQuery = ""
+    try {
+      const d = JSON.parse(text)
+      if (code !== 0 || !d || d.error)
+        throw new Error("City search failed")
+      root.cityResults = root.parseCities(text, root.searchedQuery)
+      root.resultsQuery = root.searchedQuery
+      root.citySearchStatus = "ok"
+    } catch (e) {
+      root.citySearchStatus = "error"
     }
   }
 
