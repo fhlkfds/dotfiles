@@ -44,7 +44,7 @@ the output.
 ## Deployment
 
 **Package** — a top-level directory that GNU Stow symlinks into `~`. Every
-top-level directory except `docs/`, `wiki/`, `tests/` and `system/` is one.
+top-level directory except `tests/` and `system/` is one.
 
 **Package path** — the in-repo path of a file, such as
 `hypr/.config/hypr/hyprland.conf`. The authoritative copy. The live path under

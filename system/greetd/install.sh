@@ -4,8 +4,8 @@
 # instance. Dry-run by default: prints every command it would run and exits.
 # Pass --apply to actually copy anything or touch systemd state.
 #
-# This script never enables, starts, or restarts greetd -- see docs/installation.md
-# for the approval-gated commands to run manually once this has been applied.
+# This script never enables, starts, or restarts greetd; run those
+# approval-gated commands manually once this has been applied.
 set -euo pipefail
 
 PROGRAM=${0##*/}
@@ -32,7 +32,7 @@ With --apply: copy config.toml into $CONFIG_DEST (root, mode 644), backing up
 any existing file to $BACKUP_DEST the first time only.
 
 Never enables, starts, or restarts greetd -- that stays a separate, explicit
-step. See docs/installation.md.
+step.
 EOF
       exit 0
       ;;

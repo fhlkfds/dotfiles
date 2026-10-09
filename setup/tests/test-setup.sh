@@ -64,5 +64,5 @@ if ! command -v yay >/dev/null; then
   grep -q 'WARN: yay bootstrap declined' "$t/decline.out"
 fi
 if grep -Eqi 'BEGIN (OPENSSH|RSA) PRIVATE KEY|authorized_keys' "$t/decline.out"; then exit 1; fi
-if command -v shellcheck >/dev/null 2>&1; then shellcheck "$s"; else printf 'shellcheck unavailable (not installed); skipped\n'; fi
+if command -v shellcheck >/dev/null 2>&1; then shellcheck "$s"; else printf 'skip: shellcheck is not installed\n'; fi
 printf 'setup tests passed\n'

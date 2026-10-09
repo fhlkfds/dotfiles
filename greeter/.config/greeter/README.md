@@ -14,7 +14,7 @@ Themed regreet login screen. This package only holds the two files `theme set
 
 Edit the templates or `hypr/.config/hypr/theme/generate.py`, never these two
 generated files directly -- exactly the same rule as `hyprlock/colors.conf`,
-`swaync/style.css` etc. See `docs/themes.md`.
+`swaync/style.css` etc.
 
 ## Setup
 
@@ -58,8 +58,7 @@ terminal, when you actually want the login screen updated.
 at greeter startup, not live. Copying new files into `/etc/greetd/` restyles
 the *next* time the greeter starts, not the one already on screen. Force it
 immediately with `sudo systemctl restart greetd` -- but only from a TTY you are
-not currently logged in through (see `system/greetd/README` notes in
-`docs/installation.md`), since that kills whatever the greeter is currently
+not currently logged in through, since that kills whatever the greeter is currently
 showing on its VT.
 
 ## Permissions: the `greeter` system user needs to read your home directory

@@ -1,8 +1,7 @@
 pragma Singleton
 import QtQuick
 
-// Versioned, intentionally static shortcut references. Update these snapshots
-// only alongside their version/source notes in docs/keybindings.md.
+// Versioned, intentionally static shortcut references.
 QtObject {
   id: root
 

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Run every test in the repository; exit non-zero if any fails.
+# RUN_ALL_STRICT=1 (set by CI) also fails on skipped checks, except those that
+# cannot run headless (Quickshell UI smoke tests, Wayland, Docker).
+set -uo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
+export LC_ALL=C.UTF-8 # menu tests compare multibyte glyphs
+
+allowed_skips='quickshell|Wayland|docker'
+failed=() skipped=()
+
+run() {
+  local out
+  if out=$("$@" 2>&1); then
+    printf 'PASS  %s\n' "$*"
+  else
+    printf 'FAIL  %s\n%s\n' "$*" "$out"
+    failed+=("$*")
+  fi
+  while IFS= read -r line; do
+    skipped+=("$*: $line")
+  done < <(grep -E '^skip:|skipped=' <<<"$out")
+}
+
+for t in tests/*.test.sh setup/tests/test-setup.sh; do run bash "$t"; done
+# clipboard-pins.test.py is driven by clipboard-filter.test.sh.
+for t in tests/*.test.py tests/test_theme_generator.py; do
+  [[ $t == tests/clipboard-pins.test.py ]] || run python3 "$t"
+done
+run python3 -m unittest discover -s quickshell/.config/quickshell/notifications/tests -p 'test_*.py'
+run node quickshell/.config/quickshell/notifications/tests/notification_logic.test.js
+
+status=0
+if ((${#skipped[@]})); then
+  printf '\nSkipped:\n'
+  for s in "${skipped[@]}"; do
+    if [[ ${RUN_ALL_STRICT:-0} == 1 ]] && ! grep -Eqi -- "$allowed_skips" <<<"${s#*: }"; then
+      printf '  NOT ALLOWED  %s\n' "$s"; status=1
+    else
+      printf '  %s\n' "$s"
+    fi
+  done
+fi
+if ((${#failed[@]})); then
+  printf '\n%d failed:\n' "${#failed[@]}"; printf '  %s\n' "${failed[@]}"; status=1
+fi
+exit "$status"
