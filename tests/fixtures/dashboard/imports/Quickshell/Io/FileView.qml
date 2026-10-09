@@ -5,12 +5,17 @@ Item {
   property string path: ""
   property bool watchChanges: false
   property bool printErrors: true
+  property bool preload: true
   property string _text: ""
   signal fileChanged()
   signal loaded()
   signal loadFailed(int error)
   signal adapterUpdated()
+  signal saved()
+  signal saveFailed(int error)
   function text() { return _text }
+  // In-memory completion only: this fixture never writes outside its root.
+  function setText(value) { _text = value; Qt.callLater(() => saved()) }
   function reload() { Qt.callLater(_load) }
   function writeAdapter() {}
   function _load() {
@@ -21,5 +26,5 @@ Item {
     try { x.send() } catch (e) { loadFailed(3); return }
     if (x.responseText !== "") { _text = x.responseText; loaded() } else loadFailed(3)
   }
-  onPathChanged: Qt.callLater(_load)
+  onPathChanged: if (preload) Qt.callLater(_load)
 }

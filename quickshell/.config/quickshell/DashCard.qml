@@ -22,9 +22,11 @@ Rectangle {
     visible: root.hasHeader
     x: root.padding
     y: root.padding
+    width: Math.max(0, trailingSlot.x - x - Theme.gapS)
     spacing: Theme.gapS
 
     Text {
+      id: headerGlyph
       visible: root.glyph !== ""
       anchors.verticalCenter: parent.verticalCenter
       text: root.glyph
@@ -33,6 +35,9 @@ Rectangle {
       font.pixelSize: Theme.fs(14)
     }
     Text {
+      width: Math.max(0, header.width - (headerGlyph.visible ? headerGlyph.width + header.spacing : 0))
+      elide: Text.ElideRight
+      textFormat: Text.PlainText
       anchors.verticalCenter: parent.verticalCenter
       text: root.title
       color: Theme.text

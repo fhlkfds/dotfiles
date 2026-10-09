@@ -191,7 +191,12 @@ Toggle, opens a Quickshell panel with three modes: **Off**, **Set times**, and
 `scripts/night-light-schedule.py`, which stores its settings and location in
 `$XDG_STATE_HOME/night-light/schedule.json`. That file is outside the repo
 because every click rewrites it. The weather widget reads its location from
-the same file, with `quickshell/weather.json` as the default.
+the same file, with `quickshell/weather.json` as the default. A city picked in
+the dashboard's Weather tab overrides both, and **Set as default** saves it to
+`$XDG_STATE_HOME/hyprland-desktop/weather/location.json` so it survives a
+reboot and the login IP detection. Delete that file, then restart Quickshell
+or reboot, to follow the IP again. The button confirms **Default** only after
+the save succeeds; **Save failed · Retry** lets you try a failed write again.
 
 Sunset and sunrise are calculated offline, every day, from the saved location.
 **Detect** asks `ipinfo.io` once for an approximate location based on your IP
