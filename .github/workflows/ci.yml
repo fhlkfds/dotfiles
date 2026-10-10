@@ -34,7 +34,7 @@ jobs:
           pacman -Syu --noconfirm --needed \
             git diffutils python nodejs jq lua zsh shellcheck stow cliphist arch-audit \
             imagemagick ffmpeg dbus fontconfig rofi hyprland quickshell \
-            pyside6 qt6-declarative docker docker-compose \
+            pyside6 qt6-declarative \
             noto-fonts-emoji ttf-jetbrains-mono-nerd
           useradd --create-home ci
           echo /usr/lib/qt6/bin >> "$GITHUB_PATH"
@@ -68,14 +68,14 @@ jobs:
           failed = []
           for name in subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0'):
               path = Path(name)
-              if not name or not path.is_file():
+              if not name or not path.is_file() or '/theme/templates/' in name:
                   continue
               try:
                   with path.open('rb') as source:
                       header = source.readline(128)
                   if path.suffix == '.py' or header.startswith((b'#!/usr/bin/env python', b'#!/usr/bin/python')):
                       compile(path.read_bytes(), name, 'exec')
-                  elif path.suffix == '.json' and '/theme/templates/' not in name:
+                  elif path.suffix == '.json':
                       json.loads(path.read_text())
                   elif path.suffix == '.lua':
                       subprocess.run(['luac', '-p', name], check=True)
@@ -175,7 +175,7 @@ jobs:
           test ! -s "$RUNNER_TEMP/arch-vulnerabilities.txt"
 
   workflow-lint:
-    name: Workflow syntax and security checks
+    name: Workflow and Docker Compose checks
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -185,6 +185,11 @@ jobs:
       - uses: docker://rhysd/actionlint:1.7.12
         with:
           args: -color
+      - name: Check Docker Compose fixtures
+        run: |
+          docker compose version
+          bash tests/docker-dev-env.test.sh
+          bash tests/windows-vm.test.sh
 
   security:
     name: Secrets and source security

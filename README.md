@@ -362,7 +362,8 @@ and manual dispatch. The workflow contains the CI commands; no extra test
 helper scripts are needed. In an Arch Linux container it checks source syntax,
 whitespace, changed shell scripts with ShellCheck, and the existing fixture
 tests. Checks requiring a desktop backend or Wayland session are reported as
-skipped; missing required test tools fail CI.
+skipped; missing required test tools fail CI. Docker Compose fixture checks run
+on the Ubuntu runner, which already provides Docker.
 
 Deployment checks run `dots deploy --all --dry-run` and GNU Stow's simulation
 against an empty temporary target. They never apply dotfiles to a desktop.
