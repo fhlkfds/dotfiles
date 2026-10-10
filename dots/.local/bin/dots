@@ -106,7 +106,7 @@ head_sha=$(git -C "$repo" rev-parse --verify 'HEAD^{commit}') ||
 # its own worktree at origin/main rather than to this checkout's branch.
 is_excluded() {
   case $1 in
-    docs|wiki|tests|system|setup|dotfiles|neovim|obsidian|wallpaper) return 0 ;;
+    .github|docs|wiki|tests|system|setup|dotfiles|neovim|obsidian|wallpaper) return 0 ;;
     *) return 1 ;;
   esac
 }
