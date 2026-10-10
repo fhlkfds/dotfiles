@@ -166,6 +166,59 @@ fits when the menu has its own keybind.
 - New Stow package: `README.md` "Deploy with Stow". Preview deploys with
   `dots deploy --dry-run`.
 
+## PR review loop
+
+Claude makes the code changes. Codex reviews the changes and reports findings;
+Claude fixes them. Codex reviews the updated changes, and the cycle repeats.
+Codex must not edit or fix code.
+
+Run reviews with the local Codex CLI using GPT-5.6 Sol at high reasoning effort:
+
+    codex review -c 'model="gpt-5.6-sol"' -c 'model_reasoning_effort="high"' --base origin/main
+
+Post each review as a PR comment titled `### Codex review (round N)`. Include the
+commit that was reviewed. Each round covers fixing findings, pushing the changes,
+and reviewing the new commit.
+
+- For PRs labelled `small`, run one review round.
+- For PRs labelled `large`, run up to three review rounds.
+- If findings or failing checks remain at the round limit, add the
+  `needs-human-review` label, summarize the open issues in a PR comment, and stop.
+- If the Codex usage limit is reached before the review loop is complete, add
+  `needs-human-review`, summarize what remains, and stop.
+- Don’t merge until checks pass, findings are resolved, and the latest commit has
+  a Codex review comment.
+
+## Dotfiles review guidelines
+
+Codex reviews the PR description and full diff. Check that:
+
+- Changes use the repository’s Stow package paths. Handle generated files
+  according to the theme and generation rules above.
+- Scripts follow the fixture and `--dry-run` requirements. Changes to keybindings,
+  menus, Quickshell modules, themes, or packages include their required wiring and
+  documentation.
+- Relevant tests and parse checks pass. Report timing results for changes to hot
+  paths.
+- Changes don’t include unrelated work or unapproved live-system actions. GNU
+  Stow, theme application, and desktop reloads or restarts still require approval
+  under **Boundaries**.
+
+## Before opening or updating a PR
+
+Run these steps every time:
+
+1. `git fetch origin main`
+2. `git merge --no-edit origin/main`
+3. Resolve every conflict in the worktree, preserving both sides’ intent. Never
+   silently drop a change from `main`.
+4. `git push`
+
+## Before merging a PR
+
+Run `gh pr merge --auto --squash` only after checks pass, findings are resolved,
+and the latest commit has a Codex review comment.
+
 ## Before you finish
 
 1. Run the tests for what you touched: `bash tests/<name>.test.sh`, plus
