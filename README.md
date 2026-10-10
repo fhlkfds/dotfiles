@@ -355,6 +355,23 @@ System templates are opt-in and are never stowed. Stow conflicts stop the
 deployment without adopting or overwriting files. The successful commit is
 recorded in `~/.local/state/dots/last-deployed`.
 
+### Automated checks
+
+[Dotfiles CI](.github/workflows/ci.yml) runs on pull requests, pushes to `main`,
+and manual dispatch. The workflow contains the CI commands; no extra test
+helper scripts are needed. In an Arch Linux container it checks source syntax,
+whitespace, changed shell scripts with ShellCheck, and the existing fixture
+tests. Checks requiring a desktop backend or Wayland session are reported as
+skipped; missing required test tools fail CI.
+
+Deployment checks run `dots deploy --all --dry-run` and GNU Stow's simulation
+against an empty temporary target. They never apply dotfiles to a desktop.
+Separate jobs validate the workflow with actionlint, scan Git history for
+secrets with Gitleaks, and scan source with Semgrep's security rules. `arch-audit`
+checks the packages installed in the CI container for known vulnerabilities;
+it does not inventory your desktop. Findings fail CI and may include existing
+issues in the repository or its history.
+
 ---
 
 ## AI Agent Launcher

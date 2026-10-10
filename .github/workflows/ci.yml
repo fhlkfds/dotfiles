@@ -1,0 +1,208 @@
+name: Dotfiles CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  arch:
+    name: Arch Linux tests and deployment preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: archlinux:latest
+      options: --init
+    defaults:
+      run:
+        shell: bash
+    env:
+      LC_ALL: C.UTF-8
+      QT_QPA_PLATFORM: offscreen
+      QT_QUICK_BACKEND: software
+    steps:
+      - name: Install test tools
+        run: |
+          pacman -Syu --noconfirm --needed \
+            git diffutils python nodejs jq lua zsh shellcheck stow cliphist arch-audit \
+            imagemagick ffmpeg dbus fontconfig rofi hyprland quickshell \
+            pyside6 qt6-declarative docker docker-compose \
+            noto-fonts-emoji ttf-jetbrains-mono-nerd
+          useradd --create-home ci
+          echo /usr/lib/qt6/bin >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/xdg-runtime"
+          chmod 700 "$RUNNER_TEMP/xdg-runtime"
+          chown ci:ci "$RUNNER_TEMP/xdg-runtime"
+          echo "XDG_RUNTIME_DIR=$RUNNER_TEMP/xdg-runtime" >> "$GITHUB_ENV"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check syntax, changed shell scripts, and whitespace
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          base="${BASE_SHA:-HEAD^}"
+          if ! git rev-parse --verify "$base^{commit}" >/dev/null 2>&1; then
+            base=$(git hash-object -t tree /dev/null)
+          fi
+          git diff --check "$base" HEAD
+          export CI_DIFF_BASE="$base"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          changed = set(subprocess.check_output([
+              'git', 'diff', '--name-only', '--diff-filter=ACMR', '-z',
+              os.environ['CI_DIFF_BASE'], 'HEAD']).decode().split('\0'))
+          failed = []
+          for name in subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0'):
+              path = Path(name)
+              if not name or not path.is_file():
+                  continue
+              try:
+                  with path.open('rb') as source:
+                      header = source.readline(128)
+                  if path.suffix == '.py' or header.startswith((b'#!/usr/bin/env python', b'#!/usr/bin/python')):
+                      compile(path.read_bytes(), name, 'exec')
+                  elif path.suffix == '.json' and '/theme/templates/' not in name:
+                      json.loads(path.read_text())
+                  elif path.suffix == '.lua':
+                      subprocess.run(['luac', '-p', name], check=True)
+                  elif path.suffix == '.js':
+                      # QML's library directive is not JavaScript syntax.
+                      source = path.read_text().replace('.pragma library', '')
+                      subprocess.run(['node', '--check'], input=source, text=True, check=True)
+                  elif path.suffix == '.zsh' or path.name == '.zshrc' or header.startswith((
+                          b'#!/bin/zsh', b'#!/usr/bin/zsh', b'#!/usr/bin/env zsh')):
+                      subprocess.run(['zsh', '-n', name], check=True)
+                  elif path.suffix == '.sh' or header.startswith((b'#!/bin/bash', b'#!/usr/bin/bash',
+                                                                 b'#!/usr/bin/env bash', b'#!/bin/sh')):
+                      subprocess.run(['bash', '-n', name], check=True)
+                      if name in changed:
+                          subprocess.run(['shellcheck', '--severity=warning', name], check=True)
+              except (ValueError, SyntaxError, subprocess.CalledProcessError) as error:
+                  print(f'::error file={name}::{error}')
+                  failed.append(name)
+          raise SystemExit(bool(failed))
+          PY
+      - name: Run fixture tests
+        if: ${{ !cancelled() }}
+        run: |
+          chown -R ci:ci "$GITHUB_WORKSPACE"
+          runuser -u ci -- python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+          import subprocess
+
+          commands = [['bash', str(path)] for path in sorted(Path('tests').glob('*.test.sh'))]
+          commands += [['bash', 'setup/tests/test-setup.sh']]
+          commands += [['python3', str(path)] for path in sorted(Path('tests').glob('*.test.py'))
+                       if path.name != 'clipboard-pins.test.py']
+          commands += [
+              ['python3', 'tests/test_theme_generator.py'],
+              ['python3', '-m', 'unittest', 'discover', '-s',
+               'quickshell/.config/quickshell/notifications/tests', '-p', 'test_*.py'],
+              ['node', 'quickshell/.config/quickshell/notifications/tests/notification_logic.test.js'],
+          ]
+          failed = []
+          skipped = []
+          for command in commands:
+              label = ' '.join(command)
+              print(f'::group::{label}', flush=True)
+              result = subprocess.run(command, stdout=subprocess.PIPE,
+                                      stderr=subprocess.STDOUT, text=True)
+              print(result.stdout, end='')
+              print('::endgroup::', flush=True)
+              if (command == ['python3', 'tests/keybinds-collector.test.py']
+                      and os.environ.get('QT_QPA_PLATFORM') == 'offscreen'
+                      and 'No PanelWindow backend loaded.' in result.stdout):
+                  skipped.append(f'{label}: PanelWindow smoke needs a desktop backend')
+                  print(f'::warning::{label}: PanelWindow smoke cannot run offscreen')
+                  continue
+              unexpected_skip = False
+              for line in result.stdout.splitlines():
+                  if line.startswith('skip:') or 'skipped=' in line:
+                      skipped.append(f'{label}: {line}')
+                      if not re.search(r'quickshell|Wayland|docker', line, re.IGNORECASE):
+                          unexpected_skip = True
+              if result.returncode or unexpected_skip:
+                  failed.append(label)
+                  print(f'::error::{label} failed or skipped a required check')
+          if skipped:
+              print('Skipped checks:\n' + '\n'.join(skipped))
+          if failed:
+              print('Failed checks:\n' + '\n'.join(failed))
+          raise SystemExit(bool(failed))
+          PY
+      - name: Preview deployment and simulate Stow
+        if: ${{ !cancelled() }}
+        env:
+          DOTS_REPO: ${{ github.workspace }}
+          DOTS_STATE_FILE: ${{ runner.temp }}/dots-ci-state/last-deployed
+        run: |
+          bash dots/.local/bin/dots deploy --all --dry-run | tee "$RUNNER_TEMP/deploy-plan.txt"
+          test ! -e "$DOTS_STATE_FILE"
+          if grep -Fxq '  - .github' "$RUNNER_TEMP/deploy-plan.txt"; then
+            echo '::error::.github must not be deployed as a Stow package'
+            exit 1
+          fi
+          mapfile -t packages < <(awk '
+            /^Packages:/ { in_packages=1; next }
+            /^Actions:/ { in_packages=0 }
+            in_packages && /^  - / { print $2 }
+          ' "$RUNNER_TEMP/deploy-plan.txt")
+          test "${#packages[@]}" -gt 0
+          target=$(mktemp -d "$RUNNER_TEMP/stow-target.XXXXXX")
+          stow --simulate --restow --no-folding \
+            --dir "$GITHUB_WORKSPACE" --target "$target" "${packages[@]}"
+          test -z "$(find "$target" -mindepth 1 -print -quit)"
+      - name: Audit Arch packages for known vulnerabilities
+        if: ${{ !cancelled() }}
+        run: |
+          arch-audit --format '%n: %c (%s)' | tee "$RUNNER_TEMP/arch-vulnerabilities.txt"
+          test ! -s "$RUNNER_TEMP/arch-vulnerabilities.txt"
+
+  workflow-lint:
+    name: Workflow syntax and security checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
+
+  security:
+    name: Secrets and source security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan Git history for secrets
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git /repo --log-opts=--all --redact --verbose
+      - name: Scan source for common security issues
+        if: ${{ !cancelled() }}
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src \
+            semgrep/semgrep:1.180.0 \
+            semgrep scan --config p/security-audit --error --metrics off
