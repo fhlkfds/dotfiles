@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  printf 'Usage: %s --dry-run|--install\n' "$0" >&2
+  exit 2
+}
+
+[[ $# == 1 ]] || usage
+case $1 in --dry-run|--install) ;; *) usage ;; esac
+
+source_dir=${WHISPER_SOURCE:-$HOME/.local/src/whisper.cpp}
+prefix=${HYPRVOICE_GPU_PREFIX:-${XDG_DATA_HOME:-$HOME/.local/share}/hyprvoice-gpu}
+model=${HYPRVOICE_GPU_TEST_MODEL:-${XDG_DATA_HOME:-$HOME/.local/share}/hyprvoice/models/whisper/ggml-small.en.bin}
+sample=${HYPRVOICE_GPU_TEST_AUDIO:-$source_dir/samples/jfk.wav}
+icd=/usr/share/vulkan/icd.d/radeon_icd.json
+headers_rev=86f980c731e62ae4eaf383d320449d71687936bf
+
+printf 'Whisper source: %s\nInstall prefix: %s\nTest model: %s\nTest audio: %s\nGPU driver: %s\n' \
+  "$source_dir" "$prefix" "$model" "$sample" "$icd"
+[[ $1 == --install ]] || exit 0
+
+for required in git cmake c++ glslc; do
+  command -v "$required" >/dev/null || { printf 'Missing build tool: %s\n' "$required" >&2; exit 1; }
+done
+[[ -f $source_dir/CMakeLists.txt && -f $model && -f $sample && -f $icd ]] || {
+  printf 'Whisper source, test files, or RADV driver are missing\n' >&2
+  exit 1
+}
+
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
+
+# whisper.cpp writes package.json into its source tree while configuring, so
+# build from a temporary copy and leave the user-local upstream checkout alone.
+git clone -q https://github.com/KhronosGroup/SPIRV-Headers.git "$work/headers"
+git -C "$work/headers" checkout -q "$headers_rev"
+cmake -S "$work/headers" -B "$work/headers-build" -DCMAKE_INSTALL_PREFIX="$work/deps"
+cmake --install "$work/headers-build"
+cp -a -- "$source_dir" "$work/whisper"
+cmake -S "$work/whisper" -B "$work/build" \
+  -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON -DGGML_CCACHE=OFF \
+  -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF \
+  -DCMAKE_PREFIX_PATH="$work/deps" \
+  -DCMAKE_CXX_FLAGS="-I$work/deps/include"
+cmake --build "$work/build" --target whisper-cli --parallel 6
+
+install -d "$work/stage/bin" "$work/stage/lib"
+install -m 0755 "$work/build/bin/whisper-cli" "$work/stage/bin/whisper-cli"
+cp -a -- "$work/build/bin"/lib*.so* "$work/stage/lib/"
+
+if ! env VK_DRIVER_FILES="$icd" GGML_VK_VISIBLE_DEVICES=0 \
+  LD_LIBRARY_PATH="$work/stage/lib" "$work/stage/bin/whisper-cli" \
+  -m "$model" -f "$sample" -nt >"$work/transcript" 2>"$work/log"; then
+  cat "$work/log" >&2
+  exit 1
+fi
+if ! grep -Eq '^whisper_backend_init_gpu: using Vulkan[0-9]+ backend$' "$work/log" ||
+  [[ ! -s $work/transcript ]]; then
+  printf 'Vulkan transcription test did not use the GPU or produced no text\n' >&2
+  cat "$work/log" >&2
+  exit 1
+fi
+
+install -d "$prefix/bin" "$prefix/lib"
+install -m 0755 "$work/stage/bin/whisper-cli" "$prefix/bin/whisper-cli"
+cp -a -- "$work/stage/lib"/lib*.so* "$prefix/lib/"
+printf 'Installed and verified AMD Vulkan Whisper in %s\n' "$prefix"

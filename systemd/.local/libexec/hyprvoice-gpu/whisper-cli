@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+gpu_cli=${HYPRVOICE_GPU_WHISPER_CLI:-${XDG_DATA_HOME:-$HOME/.local/share}/hyprvoice-gpu/bin/whisper-cli}
+if [[ ! -x $gpu_cli ]]; then
+  printf 'Hyprvoice GPU transcription is unavailable: %s is missing\n' "$gpu_cli" >&2
+  exit 1
+fi
+
+gpu_lib=$(dirname -- "$gpu_cli")/../lib
+export LD_LIBRARY_PATH="$gpu_lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+transcript=$(mktemp)
+log=$(mktemp)
+trap 'rm -f -- "$transcript" "$log"' EXIT
+
+# Hyprvoice passes -np, which silences the backend log this wrapper needs to
+# verify GPU use. Capture that log privately; stdout stays transcript-only.
+args=()
+for arg in "$@"; do
+  case $arg in
+    -np|--no-prints) ;;
+    *) args+=("$arg") ;;
+  esac
+done
+
+if ! "$gpu_cli" "${args[@]}" >"$transcript" 2>"$log"; then
+  cat "$log" >&2
+  exit 1
+fi
+
+# whisper.cpp silently falls back to CPU when no GPU backend is available.
+# Keep that result out of Hyprvoice rather than reporting it as GPU work.
+if ! grep -Eq '^whisper_backend_init_gpu: using Vulkan[0-9]+ backend$' "$log"; then
+  printf 'Hyprvoice GPU transcription failed: Whisper did not use Vulkan\n' >&2
+  cat "$log" >&2
+  exit 1
+fi
+
+cat "$transcript"
