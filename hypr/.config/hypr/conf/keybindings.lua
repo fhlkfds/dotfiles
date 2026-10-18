@@ -45,7 +45,7 @@ end
 -- Core desktop and helper commands.
 app_exec(mod .. " + Return", "terminal", cfg.terminal)
 exec(mod .. " + SHIFT + Return", "drop-down terminal", cfg.scripts_dir .. "/Dropterminal.sh kitty")
-bind(mod .. " + Q", "close window", hl.dsp.window.close())
+shell(mod .. " + Q", "close window", "close-window")
 exec("CTRL + ALT + Delete", "close all windows", cfg.scripts_dir .. "/close-all-windows.sh")
 exec(mod .. " + L", "lock screen", [[if test -x "$HOME/.local/bin/screensaver-lock"; then "$HOME/.local/bin/screensaver-lock"; else pidof hyprlock || hyprlock --config "$HOME/.config/hypr/hyprlock.conf"; fi]])
 exec(mod .. " + P", "power menu", "bash " .. cfg.scripts_dir .. "/power-menu.sh")

@@ -205,6 +205,7 @@ Scope {
   }
 
   // Panel keys from keybindings.lua's shell() helper, for the same reason.
+  CloseWindowShortcut {}
   GlobalShortcut { name: "keybinds"; description: "keybindings palette"; onPressed: KeybindsState.togglePanel(bar.focusedScreen()) }
   GlobalShortcut { name: "neovim-keybinds"; description: "Neovim keybindings"; onPressed: AppKeybindsState.togglePanel(bar.focusedScreen(), "neovim") }
   GlobalShortcut { name: "herdr-keybinds"; description: "Herdr keybindings"; onPressed: AppKeybindsState.togglePanel(bar.focusedScreen(), "herdr") }
