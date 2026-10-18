@@ -55,6 +55,17 @@ case "$SUB" in
     check v4l2-ctl            "webcam detection"
     printf '\nscreenshots -> %s\nrecordings  -> %s\nOCR langs   -> %s\n' \
       "$SCREENSHOT_DIR" "$SCREENRECORD_DIR" "$OCR_LANGS"
+    # Hyprland 0.56 and older copy screenshots after the screen shader, so the
+    # night-light tint is baked in; upstream PR #15714 (in 0.57) copies first.
+    # There is no flicker-free workaround, so report it rather than patch it.
+    hypr_version=$(hyprctl version -j 2>/dev/null | jq -r '.version // empty' 2>/dev/null) || true
+    if [ -n "$hypr_version" ]; then
+      if printf '0.57\n%s\n' "$hypr_version" | sort -V -C; then
+        printf 'night light -> screenshots skip the tint (Hyprland %s)\n' "$hypr_version"
+      else
+        printf 'night light -> screenshots include the tint on Hyprland %s; fixed in 0.57\n' "$hypr_version"
+      fi
+    fi
     ;;
   *) printf 'capture.sh: unknown subcommand: %s\n' "$SUB" >&2; exit 2 ;;
 esac

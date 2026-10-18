@@ -2,6 +2,8 @@
 # Toggle a compositor screen shader. Hyprsunset's CTM is accepted but not
 # rendered on this system, while the legacy gamma protocol fails on both
 # outputs, so neither color-control backend can provide a working night light.
+# Hyprland 0.56 and older bake this shader into screenshots; 0.57 leaves it
+# out (`capture.sh doctor` reports which applies).
 set -euo pipefail
 
 state_home=${XDG_STATE_HOME:-$HOME/.local/state}
