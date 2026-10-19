@@ -522,6 +522,9 @@ def render(template: str, theme: Theme, origin: str = "<template>") -> str:
     def sub(match: re.Match[str]) -> str:
         expr = match.group(1).strip()
         try:
+            # Expressions are code from repository-owned theme templates. This
+            # renderer is not a sandbox for untrusted templates.
+            # nosemgrep: python.lang.security.audit.eval-detected.eval-detected
             value = eval(expr, {"__builtins__": {}}, ns)  # noqa: S307 - fixed namespace
         except Exception as exc:
             raise ThemeError(

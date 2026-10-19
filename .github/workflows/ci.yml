@@ -46,13 +46,15 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Trust the container checkout path
+        run: git config --global --add safe.directory "$(pwd -P)"
       - name: Check syntax, changed shell scripts, and whitespace
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           base="${BASE_SHA:-HEAD^}"
           if ! git rev-parse --verify "$base^{commit}" >/dev/null 2>&1; then
-            base=$(git hash-object -t tree /dev/null)
+            base=$(git hash-object -w -t tree /dev/null)
           fi
           git diff --check "$base" HEAD
           export CI_DIFF_BASE="$base"
@@ -172,7 +174,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           arch-audit --format '%n: %c (%s)' | tee "$RUNNER_TEMP/arch-vulnerabilities.txt"
-          test ! -s "$RUNNER_TEMP/arch-vulnerabilities.txt"
+          # Keep all advisories visible; block on fixes available in Arch.
+          # Unfixed container-package advisories cannot be repaired by dotfiles.
+          arch-audit --upgradable --format '%n: %c (%s)' | tee "$RUNNER_TEMP/arch-upgradable-vulnerabilities.txt"
+          test ! -s "$RUNNER_TEMP/arch-upgradable-vulnerabilities.txt"
 
   workflow-lint:
     name: Workflow and Docker Compose checks

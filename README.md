@@ -156,7 +156,8 @@ desktop-mode action screensaver
 desktop-mode doctor --json
 ```
 
-Open the Quickshell panel with `SUPER+ALT+M`. See the
+Open the Quickshell panel with `SUPER+ALT+M`. Close it with `SUPER+Q` or
+`Escape`; `SUPER+Q` closes the focused application when this panel is closed. See the
 [desktop modes guide](docs/desktop-modes.md) for boundaries, timers, recovery,
 and all commands.
 

@@ -413,6 +413,8 @@ def detect_location() -> dict[str, Any]:
             data = json.loads(Path(fixture).read_text())
         else:
             request = urllib.request.Request(LOCATION_URL, headers={"Accept": "application/json"})
+            # LOCATION_URL is a fixed HTTPS endpoint, never user-provided input.
+            # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             with urllib.request.urlopen(request, timeout=10) as response:
                 data = json.loads(response.read().decode())
         latitude, longitude = str(data["loc"]).split(",", 1)
