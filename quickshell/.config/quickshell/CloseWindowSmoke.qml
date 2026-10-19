@@ -13,7 +13,6 @@ Scope {
   }
   QtObject {
     id: compositor
-    property bool usingLua: true
     property var requests: []
     function dispatch(request) { requests = requests.concat([request]) }
   }
@@ -41,14 +40,10 @@ Scope {
     shortcut.closeWindow()
     check("Super+Q closes a window when menu is closed",
       compositor.requests.length === 1 && compositor.requests[0] === "hl.dsp.window.close()")
-    compositor.usingLua = false
-    shortcut.closeWindow()
-    check("legacy compositor keeps close-window behavior",
-      compositor.requests.length === 2 && compositor.requests[1] === "killactive")
     compositor.requests = []
     modes.panelVisible = true
     shortcut.closeWindow()
-    check("legacy compositor also protects the underlying window",
+    check("reopened menu still protects the underlying window",
       !modes.panelVisible && compositor.requests.length === 0)
     console.log(failures === 0 ? "ok: close window shortcut" : "FAIL: close window shortcut")
     Qt.quit()
