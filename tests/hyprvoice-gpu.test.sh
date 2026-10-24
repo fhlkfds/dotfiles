@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 wrapper=$repo_root/systemd/.local/libexec/hyprvoice-gpu/whisper-cli
+recorder=$repo_root/systemd/.local/libexec/hyprvoice-gpu/pw-record
 installer=$repo_root/systemd/.local/bin/hyprvoice-gpu-install
 dropin=$repo_root/systemd/.config/systemd/user/hyprvoice.service.d/10-amd-gpu.conf
 test_root=$(mktemp -d)
@@ -61,6 +62,22 @@ if HYPRVOICE_GPU_WHISPER_CLI="$test_root/missing" "$wrapper" -f sample.wav \
   >"$test_root/out" 2>"$test_root/err"; then
   fail 'Missing Vulkan build was accepted'
 fi
+
+cat >"$test_root/pw-record" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"$CLI_ARGS_LOG"
+SH
+chmod +x "$test_root/pw-record"
+
+CLI_ARGS_LOG="$test_root/args" HYPRVOICE_PW_RECORD="$test_root/pw-record" \
+  "$recorder" --format s16 --rate 16000 --channels 1 - --target 'mic with spaces'
+printf '%s\n' --raw --format s16 --rate 16000 --channels 1 - --target 'mic with spaces' >"$test_root/expected-args"
+cmp -s "$test_root/expected-args" "$test_root/args" || fail 'Stdout recording is not raw PCM'
+
+CLI_ARGS_LOG="$test_root/args" HYPRVOICE_PW_RECORD="$test_root/pw-record" \
+  "$recorder" --target mic out.wav
+printf '%s\n' --target mic out.wav >"$test_root/expected-args"
+cmp -s "$test_root/expected-args" "$test_root/args" || fail 'File recording arguments were changed'
 
 grep -Fq 'Environment=VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_icd.json' "$dropin" || fail 'AMD driver is not pinned'
 grep -Fq 'Environment=GGML_VK_VISIBLE_DEVICES=0' "$dropin" || fail 'AMD device is not selected'
