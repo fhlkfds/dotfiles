@@ -1,0 +1,16 @@
+# Exact historical false positives only. New findings still fail the scan.
+# Synthetic credential used to test that the clipboard redacts credentials.
+68d3c5cce20e3ef6380c9b6e5c0e741276dd8ce2:tests/credential-exposure.test.sh:generic-api-key:44
+# Chromium manifest keys are public extension signing keys, not credentials.
+56e5ac8df7e6cae61476c015446e5ed1eab23229:browser/.local/share/chromium-tools/extensions/yt-dlp/manifest.json:generic-api-key:6
+93e1de42bca6433bf14579d216685f52930f664e:browser/.local/share/chromium-tools/extensions/copy-url/manifest.json:generic-api-key:6
+93e1de42bca6433bf14579d216685f52930f664e:browser/.local/share/chromium-tools/extensions/download-video/manifest.json:generic-api-key:6
+# QML property references to key-label settings contain no credential value.
+0305bed1f590e95952326ecd57f4af5c74188f5d:noctalia/.config/noctalia/plugins/keybind-cheatsheet/Panel.qml:generic-api-key:169
+0305bed1f590e95952326ecd57f4af5c74188f5d:noctalia/.config/noctalia/plugins/keybind-cheatsheet/Panel.qml:generic-api-key:170
+0305bed1f590e95952326ecd57f4af5c74188f5d:noctalia/.config/noctalia/plugins/keybind-cheatsheet/Panel.qml:generic-api-key:171
+0305bed1f590e95952326ecd57f4af5c74188f5d:noctalia/.config/noctalia/plugins/keybind-cheatsheet/Settings.qml:generic-api-key:78
+0305bed1f590e95952326ecd57f4af5c74188f5d:noctalia/.config/noctalia/plugins/keybind-cheatsheet/Settings.qml:generic-api-key:79
+0305bed1f590e95952326ecd57f4af5c74188f5d:noctalia/.config/noctalia/plugins/keybind-cheatsheet/Settings.qml:generic-api-key:80
+# A QML assignment copies root.x02ApiKey; the source contains no key literal.
+c38d95fd086d0b6fcf12d0d12a71bc56da7db49a:noctalia/.config/noctalia/plugins/screen-toolkit/Settings.qml:generic-api-key:52

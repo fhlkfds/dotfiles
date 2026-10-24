@@ -108,12 +108,19 @@ local function expect_move(keys, description, workspace, follow)
 end
 
 -- Every panel key goes through a global shortcut, not an IPC client process.
+local close_window_found = false
 for _, capture in ipairs(captures) do
     local d = capture.dispatcher
+    if capture.keys == "SUPER + Q" then
+        assert(d.kind == "global" and d.name == "quickshell:close-window",
+            "Super+Q must let the shell dismiss desktop modes before closing a window")
+        close_window_found = true
+    end
     if type(d) == "table" and d.kind == "exec_cmd" and d.command:find("quickshell ipc", 1, true) then
         error("panel key still starts a quickshell ipc client: " .. capture.keys)
     end
 end
+assert(close_window_found, "missing Super+Q binding")
 
 local floating_toggle_found = false
 local fullscreen_found = false

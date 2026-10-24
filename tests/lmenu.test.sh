@@ -338,7 +338,12 @@ LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" rows trigger.
   >"$test_root/capture.out"
 grep -Fq 'trigger.capture.transcode' "$test_root/capture.out" &&
   fail 'Transcode is still duplicated inside Capture'
-[[ $(LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" \
+# The route is guarded by zbarimg. Supply the tool for this routing check so
+# an undeployed CI machine doesn't hide the row before it can be resolved.
+mkdir -p "$test_root/qr-bin"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$test_root/qr-bin/zbarimg"
+chmod +x "$test_root/qr-bin/zbarimg"
+[[ $(PATH="$test_root/qr-bin:$PATH" LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" \
   resolve trigger.capture trigger.capture.qr) == $'leaf\t~/.config/hypr/scripts/capture/capture.sh qr' ]] ||
   fail 'QR Code does not dispatch through the QR capture helper'
 

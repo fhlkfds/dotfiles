@@ -463,7 +463,8 @@ Singleton {
         arg: arg,
         mouse: isMouse,
         // Mouse binds cannot be re-dispatched, and the denylist is deliberate.
-        actionable: !isMouse && root.noExecute.indexOf(dispatcher) === -1,
+        actionable: !isMouse && root.noExecute.indexOf(dispatcher) === -1
+                    && !(dispatcher === "global" && arg === "quickshell:close-window"),
         rank: root.rankFor(description),
         searchText: ""
       }

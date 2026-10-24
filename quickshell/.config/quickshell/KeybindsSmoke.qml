@@ -67,6 +67,18 @@ Scope {
     KeybindsState.query = ""
     smoke.check("an empty query restores every row",
                 KeybindsState.filtered.length === KeybindsState.rows.length)
+    KeybindsState.build([
+      { modmask: 64, key: "Q", description: "close window",
+        dispatcher: "global", arg: "quickshell:close-window", mouse: false },
+      { modmask: 64, key: "K", description: "keybindings",
+        dispatcher: "global", arg: "quickshell:keybinds", mouse: false }
+    ])
+    smoke.check("close-window global shortcut stays denylisted",
+                KeybindsState.rows.some(row => row.arg === "quickshell:close-window"
+                                             && !row.actionable))
+    smoke.check("other global shortcuts remain actionable",
+                KeybindsState.rows.some(row => row.arg === "quickshell:keybinds"
+                                             && row.actionable))
     console.log(smoke.failures === 0
       ? "ok: KeybindsState fixture build and search"
       : "FAIL: " + smoke.failures + " assertion(s) failed")
