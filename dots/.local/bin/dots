@@ -98,12 +98,14 @@ if [[ $command_name == update ]]; then
   printf 'Pulling updates for %s...\n' "$repo"
   # A branch created locally and pushed without -u has no upstream, so a bare
   # `git pull` refuses to run. Fall back to the same-named branch on the remote,
-  # and deploy the checkout as-is when there is nothing to pull from.
-  if git -C "$repo" rev-parse --verify --quiet '@{upstream}' >/dev/null 2>&1; then
+  # and deploy the checkout as-is when there is nothing to pull from. Tracking
+  # config is read directly so an upstream pruned from the remote still fails
+  # the pull instead of passing for a local-only branch.
+  if ! branch=$(git -C "$repo" symbolic-ref --quiet --short HEAD); then
+    printf 'Notice: HEAD is detached; skipping pull and deploying the current checkout.\n'
+  elif git -C "$repo" config --get "branch.$branch.merge" >/dev/null; then
     git -C "$repo" pull --ff-only ||
       fail "git pull --ff-only failed; resolve local changes or upstream history, then retry"
-  elif ! branch=$(git -C "$repo" symbolic-ref --quiet --short HEAD); then
-    printf 'Notice: HEAD is detached; skipping pull and deploying the current checkout.\n'
   else
     remote=${DOTS_REMOTE:-origin}
     remote_status=0
