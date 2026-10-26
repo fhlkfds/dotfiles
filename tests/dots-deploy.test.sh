@@ -237,6 +237,50 @@ run_dots_update >/dev/null
 grep -F "arg=alpha" "$calls" >/dev/null || fail 'update did not deploy the changed package'
 [[ $(<"$fixture_state") == "$upstream_sha" ]] || fail 'update did not record the pulled commit'
 
+# A branch pushed without -u has no upstream; update pulls the same-named
+# remote branch instead of stopping at git's "no tracking information" error.
+git -C "$fixture_repo" switch -q -c feature-no-upstream
+git -C "$upstream_repo" fetch -q origin
+git -C "$upstream_repo" switch -q -c feature-no-upstream "origin/$branch"
+printf 'feature update\n' >> "$upstream_repo/alpha/.config/alpha/config"
+git -C "$upstream_repo" commit -qam feature-update
+feature_sha=$(git -C "$upstream_repo" rev-parse HEAD)
+git -C "$upstream_repo" push -q origin feature-no-upstream
+! git -C "$fixture_repo" rev-parse --verify --quiet '@{upstream}' >/dev/null 2>&1 ||
+  fail 'fixture feature branch unexpectedly has an upstream'
+: > "$calls"
+output=$(run_dots_update)
+[[ $output == *'feature-no-upstream has no upstream; pulling origin/feature-no-upstream.'* ]] ||
+  fail 'update did not explain the no-upstream fallback'
+[[ $(git -C "$fixture_repo" rev-parse HEAD) == "$feature_sha" ]] ||
+  fail 'update did not fast-forward a branch without an upstream'
+grep -F "arg=alpha" "$calls" >/dev/null || fail 'no-upstream update did not deploy'
+[[ $(<"$fixture_state") == "$feature_sha" ]] ||
+  fail 'no-upstream update did not record the pulled commit'
+
+# A branch that exists only locally skips the pull and still deploys.
+git -C "$fixture_repo" switch -q -c local-only
+printf 'local work\n' >> "$fixture_repo/alpha/.config/alpha/config"
+git -C "$fixture_repo" commit -qam local-work
+local_sha=$(git -C "$fixture_repo" rev-parse HEAD)
+: > "$calls"
+output=$(run_dots_update)
+[[ $output == *'local-only has no upstream and is not on origin; skipping pull'* ]] ||
+  fail 'update did not explain skipping the pull for a local-only branch'
+grep -F "arg=alpha" "$calls" >/dev/null || fail 'local-only update did not deploy'
+[[ $(<"$fixture_state") == "$local_sha" ]] ||
+  fail 'local-only update did not record the checkout'
+
+# An unreachable remote fails instead of being mistaken for a missing branch.
+git -C "$fixture_repo" remote set-url origin "$test_root/missing.git"
+if output=$(run_dots_update 2>&1); then
+  fail 'update with an unreachable remote unexpectedly succeeded'
+fi
+[[ $output == *"cannot reach remote 'origin'"* ]] ||
+  fail 'unreachable remote error was not clear'
+git -C "$fixture_repo" remote set-url origin "$remote_repo"
+git -C "$fixture_repo" switch -q "$branch"
+
 # --system backs up every existing target before installing mode 0644 files.
 mkdir -p "$fixture_system_root/etc/greetd" "$fixture_system_root/etc/pam.d"
 printf 'old greetd\n' > "$fixture_system_root/etc/greetd/config.toml"
