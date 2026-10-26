@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# PipeWire 1.6.10 made pw-record write a big-endian Sun AU stream to stdout.
+# Hyprvoice reads stdout as raw little-endian s16, so the byte-swapped audio
+# transcribes as noise such as "(buzzing)". Ask for raw samples instead.
+pw_record=${HYPRVOICE_PW_RECORD:-/usr/bin/pw-record}
+
+for arg in "$@"; do
+  [[ $arg == - ]] && exec "$pw_record" --raw "$@"
+done
+exec "$pw_record" "$@"
