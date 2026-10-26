@@ -352,6 +352,10 @@ dots deploy --system   # also install the greetd and PAM templates via sudo
 dots update            # fast-forward pull, then restow packages changed upstream
 ```
 
+`dots update` pulls the branch's upstream. A branch pushed without `-u` has
+none, so it pulls the same-named branch on `origin` instead; a branch that only
+exists locally skips the pull and deploys the checkout as it is.
+
 System templates are opt-in and are never stowed. Stow conflicts stop the
 deployment without adopting or overwriting files. The successful commit is
 recorded in `~/.local/state/dots/last-deployed`.

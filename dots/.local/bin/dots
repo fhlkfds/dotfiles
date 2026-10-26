@@ -25,8 +25,10 @@ Deploy changed GNU Stow packages from ~/dotfiles.
              Explicitly deploy neovim or obsidian safely
 
 update pulls the configured upstream with --ff-only, then deploys packages
-changed by the new commit. --dry-run reports the current deployment plan and
-does not contact the remote or modify files.
+changed by the new commit. A branch with no upstream pulls the same-named
+branch from \$DOTS_REMOTE (default origin), or skips the pull when the remote
+has no such branch. --dry-run reports the current deployment plan and does not
+contact the remote or modify files.
 EOF
 }
 
@@ -94,8 +96,32 @@ if [[ $command_name == update ]]; then
     exec "$0" deploy --dry-run
   fi
   printf 'Pulling updates for %s...\n' "$repo"
-  git -C "$repo" pull --ff-only ||
-    fail "git pull --ff-only failed; resolve local changes or upstream history, then retry"
+  # A branch created locally and pushed without -u has no upstream, so a bare
+  # `git pull` refuses to run. Fall back to the same-named branch on the remote,
+  # and deploy the checkout as-is when there is nothing to pull from.
+  if git -C "$repo" rev-parse --verify --quiet '@{upstream}' >/dev/null 2>&1; then
+    git -C "$repo" pull --ff-only ||
+      fail "git pull --ff-only failed; resolve local changes or upstream history, then retry"
+  elif ! branch=$(git -C "$repo" symbolic-ref --quiet --short HEAD); then
+    printf 'Notice: HEAD is detached; skipping pull and deploying the current checkout.\n'
+  else
+    remote=${DOTS_REMOTE:-origin}
+    remote_status=0
+    git -C "$repo" ls-remote --exit-code --heads "$remote" "refs/heads/$branch" \
+      >/dev/null || remote_status=$?
+    case $remote_status in
+      0)
+        printf 'Notice: %s has no upstream; pulling %s/%s.\n' "$branch" "$remote" "$branch"
+        git -C "$repo" pull --ff-only "$remote" "$branch" ||
+          fail "git pull --ff-only $remote $branch failed; resolve local changes or upstream history, then retry"
+        ;;
+      2)
+        printf 'Notice: %s has no upstream and is not on %s; skipping pull and deploying the current checkout.\n' \
+          "$branch" "$remote"
+        ;;
+      *) fail "cannot reach remote '$remote' to look for $branch" ;;
+    esac
+  fi
   exec "$repo/dots/.local/bin/dots" deploy
 fi
 
