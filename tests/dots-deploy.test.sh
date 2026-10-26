@@ -229,7 +229,7 @@ printf '%s\n' "$changed_sha" > "$fixture_state"
 run_dots_update() {
   HOME=$fixture_home DOTS_REPO=$fixture_repo DOTS_STATE_FILE=$fixture_state \
     DOTS_SYSTEM_ROOT=$fixture_system_root PATH="$stub_bin:/usr/bin:/bin" \
-    DOTS_TEST_CALLS=$calls "$dots" update "$@"
+    DOTS_TEST_CALLS=$calls "$dots" update
 }
 run_dots_update >/dev/null
 [[ $(git -C "$fixture_repo" rev-parse HEAD) == "$upstream_sha" ]] ||
@@ -278,7 +278,31 @@ if output=$(run_dots_update 2>&1); then
 fi
 [[ $output == *"cannot reach remote 'origin'"* ]] ||
   fail 'unreachable remote error was not clear'
+
+# A detached HEAD deploys the checkout without querying the remote, which is
+# still unreachable here.
+git -C "$fixture_repo" switch -q --detach "$feature_sha"
+: > "$calls"
+output=$(run_dots_update)
+[[ $output == *'HEAD is detached; skipping pull'* ]] ||
+  fail 'update did not explain skipping the pull for a detached HEAD'
+grep -F "arg=alpha" "$calls" >/dev/null || fail 'detached update did not deploy'
+[[ $(<"$fixture_state") == "$feature_sha" ]] ||
+  fail 'detached update did not record the checkout'
 git -C "$fixture_repo" remote set-url origin "$remote_repo"
+
+# An upstream that is configured but gone from the remote still fails the
+# pull rather than passing for a local-only branch.
+git -C "$fixture_repo" switch -q local-only
+git -C "$fixture_repo" config branch.local-only.remote origin
+git -C "$fixture_repo" config branch.local-only.merge refs/heads/local-only
+printf '%s\n' "$local_sha" > "$fixture_state"
+if output=$(run_dots_update 2>&1); then
+  fail 'update with a gone upstream unexpectedly succeeded'
+fi
+[[ $output == *'git pull --ff-only failed'* && $output != *'skipping pull'* ]] ||
+  fail 'gone upstream was mistaken for a local-only branch'
+[[ $(<"$fixture_state") == "$local_sha" ]] || fail 'gone-upstream update advanced state'
 git -C "$fixture_repo" switch -q "$branch"
 
 # --system backs up every existing target before installing mode 0644 files.
