@@ -907,6 +907,15 @@ stow --simulate browser quickshell
 The fixture suite uses mocked clipboard, downloader, notification, player, and
 OSD commands; it never downloads media or changes the live clipboard.
 
+### Bar workspace badges
+
+The left island shows a numbered badge for every workspace that has a window on
+it, plus the focused workspace, across every monitor. The focused badge sits on
+the accent pill; clicking a badge focuses that workspace. Empty unfocused
+workspaces and special (scratchpad) workspaces are hidden. Selection rules are
+in `workspaces/WorkspacesLogic.js`; validate with
+`bash tests/workspaces-module.test.sh`.
+
 ## What's Included
 
 | Package | Tool | Description |

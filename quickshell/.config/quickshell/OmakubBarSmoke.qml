@@ -17,7 +17,12 @@ FloatingWindow {
     anchors.leftMargin: Theme.barSideMargin
     anchors.verticalCenter: parent.verticalCenter
 
-    WorkspacesModule {}
+    // No Hyprland in the fixture, so stand in a few occupied workspaces for
+    // the badges the island is sized around.
+    WorkspacesModule {
+      workspaceList: [1, 2, 11].map(id => ({ id: id, toplevels: { values: [{}] } }))
+      focusedWorkspaceId: 1
+    }
   }
 
   Row {
