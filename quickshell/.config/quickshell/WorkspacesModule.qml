@@ -36,7 +36,7 @@ Row {
         anchors.centerIn: parent
         text: String(modelData)
         font.family: Theme.uiFamily
-        font.pixelSize: root.s(14)
+        font.pixelSize: root.s(12)
         font.bold: true
         color: cell.textColor
       }
