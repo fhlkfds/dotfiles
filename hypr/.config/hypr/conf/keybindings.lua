@@ -112,6 +112,9 @@ exec(mod .. " + CTRL + C", "capture menu", cfg.scripts_dir .. "/capture/capture.
 exec(mod .. " + ALT + C", "toggle webcam overlay", cfg.scripts_dir .. "/capture/capture.sh record webcam-toggle")
 exec(mod .. " + ALT + bracketleft", "webcam overlay smaller", cfg.scripts_dir .. "/capture/capture.sh record webcam-size smaller")
 exec(mod .. " + ALT + bracketright", "webcam overlay larger", cfg.scripts_dir .. "/capture/capture.sh record webcam-size larger")
+-- T3 Code registers this global shortcut and attaches the picked window to the
+-- active thread; without T3 Code running the key does nothing.
+bind("CTRL + SHIFT + 2", "screenshot window to T3 Code", hl.dsp.global("com.t3tools.T3Code:capture-window"))
 
 -- Use the physical number-row keycodes reported by the active keyboard. Hyprland 0.56.2's
 -- bound Lua window dispatcher does not act on the focused window reliably, so

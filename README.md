@@ -420,7 +420,9 @@ invokes `teamclaude run --` with those arguments. Install and configure
 TeamClaude before using `ai-claude`; the launcher does not install it.
 
 `SUPER + I` opens the configured default. T3 Code is assigned to workspace 4
-by its `t3code` window class. Change or remove that binding in
+by its `t3code` window class. `CTRL + SHIFT + 2` triggers T3 Code's
+`capture-window` global shortcut, which attaches a window screenshot to the
+active thread. Change or remove that binding in
 `hypr/.config/hypr/conf/keybindings.lua` to alter or disable it. It is not active
 until the relevant packages are stowed and Hyprland is reloaded by the user.
 
