@@ -47,11 +47,12 @@ hl.config({
     },
 })
 
--- Kitty needs compositor blur even when the theme disables it elsewhere.
+-- See-through windows (Kitty, Hermes) need compositor blur even when the theme
+-- disables it elsewhere; without it their text sits on a busy background.
 hl.window_rule({
-    name = "theme-no-blur-except-kitty",
+    name = "theme-no-blur-except-see-through",
     enabled = {{ on(not blur) }},
-    match = { class = "negative:^kitty$" },
+    match = { class = [[negative:^(kitty|com\.nousresearch\.hermes)$]] },
     no_blur = true,
 })
 

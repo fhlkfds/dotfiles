@@ -163,7 +163,7 @@ class ThemeGeneratorTest(unittest.TestCase):
         )
 
     @unittest.skipUnless(shutil.which("lua"), "skip: lua not installed")
-    def test_kitty_blur_preserves_other_apps_across_theme_switches(self) -> None:
+    def test_see_through_blur_preserves_other_apps_across_theme_switches(self) -> None:
         paths = []
         for slug, theme in self.themes.items():
             render_all(theme, self.root / slug)
@@ -186,8 +186,9 @@ hl = {
 for i = 1, #arg, 2 do
     dofile(arg[i])
     local disabled = arg[i + 1] == "true"
-    local window = assert(windows["theme-no-blur-except-kitty"])
-    assert(window.match.class == "negative:^kitty$", "only Kitty may bypass the theme")
+    local window = assert(windows["theme-no-blur-except-see-through"])
+    assert(window.match.class == [[negative:^(kitty|com\.nousresearch\.hermes)$]],
+        "only the see-through windows (Kitty, Hermes) may bypass the theme")
     assert(window.no_blur and window.enabled == disabled)
     local layer = assert(layers["theme-no-layer-blur"])
     assert(layer.match.namespace == ".*" and layer.blur == false)
@@ -302,6 +303,39 @@ end
                 self.assertIn(f"system appearance ({self.themes[slug].mode})", done)
                 self.assertIn("T3 Code", done)
                 self.assertNotIn("T3 Code", " ".join(deferred))
+
+    def test_reload_sets_running_kitty_to_kitty_opacity(self) -> None:
+        kitty_conf = self.root / "kitty.conf"
+        decorations = self.root / "decorations.lua"
+        kitty_conf.touch()
+        decorations.touch()
+        # Hackerman's surface_opacity is 1.0, so pushing that made every
+        # running terminal opaque after a theme switch.
+        theme = self.themes["hackerman"]
+        commands = []
+
+        def record(cmd: list[str], timeout: int = 5) -> bool:
+            commands.append(cmd)
+            return True
+
+        with (
+            unittest.mock.patch.object(
+                generate.shutil, "which",
+                side_effect=lambda name: "/usr/bin/kitty" if name == "kitty" else None,
+            ),
+            unittest.mock.patch.object(
+                generate, "_pids_of",
+                side_effect=lambda name: ["42"] if name == "kitty" else [],
+            ),
+            unittest.mock.patch.object(generate, "_run", side_effect=record),
+        ):
+            generate.reload_apps(theme, kitty_conf, decorations, True)
+
+        self.assertIn(
+            ["kitty", "@", "--to", "unix:@kitty-42", "set-background-opacity",
+             str(theme.style["kitty_opacity"])],
+            commands,
+        )
 
     def test_reload_degrades_cleanly_without_desktop_theme_tools(self) -> None:
         kitty_conf = self.root / "kitty.conf"

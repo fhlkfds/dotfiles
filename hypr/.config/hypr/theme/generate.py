@@ -349,7 +349,7 @@ def reload_apps(
                      "--configured", str(kitty_conf)]):
                 hits += 1
                 _run(["kitty", "@", "--to", to, "set-background-opacity",
-                      str(theme.style["surface_opacity"])])
+                      str(theme.style["kitty_opacity"])])
         if hits:
             done.append(f"kitty ({hits}/{len(kitty_pids)})")
 
