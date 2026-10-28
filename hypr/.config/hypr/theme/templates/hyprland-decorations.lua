@@ -49,8 +49,10 @@ hl.config({
 
 -- See-through windows (Kitty, Hermes) need compositor blur even when the theme
 -- disables it elsewhere; without it their text sits on a busy background.
+-- The name predates Hermes; keep it so `hyprctl eval` replaces the rule in a
+-- running session instead of adding a second one beside it.
 hl.window_rule({
-    name = "theme-no-blur-except-see-through",
+    name = "theme-no-blur-except-kitty",
     enabled = {{ on(not blur) }},
     match = { class = [[negative:^(kitty|com\.nousresearch\.hermes)$]] },
     no_blur = true,

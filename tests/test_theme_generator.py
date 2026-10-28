@@ -186,7 +186,7 @@ hl = {
 for i = 1, #arg, 2 do
     dofile(arg[i])
     local disabled = arg[i + 1] == "true"
-    local window = assert(windows["theme-no-blur-except-see-through"])
+    local window = assert(windows["theme-no-blur-except-kitty"])
     assert(window.match.class == [[negative:^(kitty|com\.nousresearch\.hermes)$]],
         "only the see-through windows (Kitty, Hermes) may bypass the theme")
     assert(window.no_blur and window.enabled == disabled)
@@ -329,13 +329,46 @@ end
             ),
             unittest.mock.patch.object(generate, "_run", side_effect=record),
         ):
-            generate.reload_apps(theme, kitty_conf, decorations, True)
+            done, deferred = generate.reload_apps(
+                theme, kitty_conf, decorations, True
+            )
 
         self.assertIn(
             ["kitty", "@", "--to", "unix:@kitty-42", "set-background-opacity",
-             str(theme.style["kitty_opacity"])],
+             "--all", str(theme.style["kitty_opacity"])],
             commands,
         )
+        self.assertIn("kitty (1/1)", done)
+        self.assertNotIn("kitty", " ".join(deferred))
+
+    def test_reload_reports_kitty_that_rejects_opacity(self) -> None:
+        kitty_conf = self.root / "kitty.conf"
+        decorations = self.root / "decorations.lua"
+        kitty_conf.touch()
+        decorations.touch()
+
+        # A kitty started before dynamic_background_opacity was enabled takes
+        # the colours but refuses the opacity until it restarts.
+        def record(cmd: list[str], timeout: int = 5) -> bool:
+            return "set-background-opacity" not in cmd
+
+        with (
+            unittest.mock.patch.object(
+                generate.shutil, "which",
+                side_effect=lambda name: "/usr/bin/kitty" if name == "kitty" else None,
+            ),
+            unittest.mock.patch.object(
+                generate, "_pids_of",
+                side_effect=lambda name: ["42"] if name == "kitty" else [],
+            ),
+            unittest.mock.patch.object(generate, "_run", side_effect=record),
+        ):
+            done, deferred = generate.reload_apps(
+                self.themes["hackerman"], kitty_conf, decorations, True
+            )
+
+        self.assertIn("kitty (1/1)", done)
+        self.assertIn("kitty opacity (restart 1 terminal)", deferred)
 
     def test_reload_degrades_cleanly_without_desktop_theme_tools(self) -> None:
         kitty_conf = self.root / "kitty.conf"
