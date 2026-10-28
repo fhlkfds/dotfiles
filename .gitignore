@@ -68,7 +68,7 @@ herdr/.config/herdr/session-snapshots/
 # The ChatGPT desktop app writes its browser extension host into every folded
 # NativeMessagingHosts directory, with an absolute path into this machine's
 # ~/.codex, so they are host state; the other hosts here stay tracked.
-browser/.config/*/NativeMessagingHosts/com.openai.codexextension.json
+browser/.config/**/NativeMessagingHosts/com.openai.codexextension.json
 
 # Agent tooling: Claude Code worktrees, and the backup T3 Code leaves beside
 # hyprland.lua when it adds its capture-window bind.
