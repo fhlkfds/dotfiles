@@ -24,7 +24,7 @@ Item {
         model: SysState.cpuModel
         value: SysState.cpuPercent / 100
         valueText: Math.round(SysState.cpuPercent) + "%"
-        tempF: SysState.cpuTempF
+        tempC: SysState.cpuTempC
         tempAvailable: SysState.cpuTempAvailable
       }
 
@@ -33,7 +33,7 @@ Item {
         model: SysState.gpuModel
         value: SysState.gpuPercent / 100
         valueText: Math.round(SysState.gpuPercent) + "%"
-        tempF: SysState.gpuTempF
+        tempC: SysState.gpuTempC
         tempAvailable: SysState.gpuTempPath !== ""
         unavailable: !SysState.gpuAvailable
         unavailableText: "GPU stats unavailable"

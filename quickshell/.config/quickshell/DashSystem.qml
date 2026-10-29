@@ -222,6 +222,12 @@ Item {
     Chip {
       anchors.verticalCenter: parent.verticalCenter
       implicitHeight: Theme.fs(28)
+      glyph: String.fromCodePoint(0xf00f0) // md-calendar_clock, time since install
+      label: SysState.installedEpoch > 0 ? "OS " + SysState.fmtAge(SysState.osAgeSeconds) : "OS --"
+    }
+    Chip {
+      anchors.verticalCenter: parent.verticalCenter
+      implicitHeight: Theme.fs(28)
       glyph: String.fromCodePoint(0xf03cc) // md-open_in_new
       label: "Mission Center"
       MouseArea {
@@ -280,7 +286,7 @@ Item {
       Chip {
         glyph: String.fromCodePoint(0xf050f) // md-thermometer
         glyphColor: Theme.green
-        label: SysState.cpuTempAvailable ? Math.round(SysState.cpuTempF) + "°F" : "n/a"
+        label: SysState.cpuTempAvailable ? Math.round(SysState.cpuTempC) + "°C" : "n/a"
       }
       Chip {
         glyph: String.fromCodePoint(0xf04c5) // md-speedometer
@@ -340,7 +346,7 @@ Item {
       Chip {
         glyph: String.fromCodePoint(0xf050f) // md-thermometer
         glyphColor: Theme.green
-        label: SysState.gpuTempAvailable ? Math.round(SysState.gpuTempF) + "°F" : "n/a"
+        label: SysState.gpuTempAvailable ? Math.round(SysState.gpuTempC) + "°C" : "n/a"
       }
       Chip {
         glyph: String.fromCodePoint(0xf035b) // md-memory
