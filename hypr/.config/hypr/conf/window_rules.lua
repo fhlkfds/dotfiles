@@ -43,6 +43,15 @@ hl.window_rule({
     border_color = "rgb(89B4FA) rgb(CBA6F7)",
 })
 
+-- The Hermes desktop app is see-through like the terminal. Kitty does this with
+-- its own background_opacity; Hermes has no such setting, so the compositor
+-- fades the whole window. The theme keeps blur behind it (decorations.lua).
+hl.window_rule({
+    name = "hermes-translucent",
+    match = { class = [[^com\.nousresearch\.hermes$]] },
+    opacity = "0.90 0.85",
+})
+
 hl.window_rule({ match = { class = "^(obsidian|Obsidian)$" }, workspace = "3 silent" })
 hl.window_rule({ match = { class = "^(virt-manager)$" }, workspace = "6 silent" })
 hl.window_rule({ match = { class = "^(org.kde.neochat)$" }, workspace = "7 silent" })

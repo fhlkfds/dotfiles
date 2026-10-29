@@ -341,17 +341,24 @@ def reload_apps(
     # bare, which only worked when the calling shell happened to export
     # KITTY_LISTEN_ON; addressing each pid works from anywhere.
     kitty_pids = _pids_of("kitty")
+    # A kitty started before kitty.conf enabled dynamic_background_opacity
+    # takes the colours but refuses the opacity until it restarts; say so
+    # instead of counting it as fully themed.
     if kitty_pids and shutil.which("kitty"):
-        hits = 0
+        hits = stale = 0
         for pid in kitty_pids:
             to = f"unix:@kitty-{pid}"
             if _run(["kitty", "@", "--to", to, "set-colors", "--all",
                      "--configured", str(kitty_conf)]):
                 hits += 1
-                _run(["kitty", "@", "--to", to, "set-background-opacity",
-                      str(theme.style["surface_opacity"])])
+                if not _run(["kitty", "@", "--to", to, "set-background-opacity",
+                             "--all", str(theme.style["kitty_opacity"])]):
+                    stale += 1
         if hits:
             done.append(f"kitty ({hits}/{len(kitty_pids)})")
+        if stale:
+            noun = "terminal" if stale == 1 else "terminals"
+            deferred.append(f"kitty opacity (restart {stale} {noun})")
 
     if _pids_of("swaync") and shutil.which("swaync-client"):
         if _run(["swaync-client", "--reload-config"]):
