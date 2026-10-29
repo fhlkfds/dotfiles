@@ -48,3 +48,9 @@ application/json=nvim-kitty.desktop
 text/x-python=nvim-kitty.desktop
 text/x-csrc=nvim-kitty.desktop
 x-scheme-handler/webcal=helium.desktop
+x-scheme-handler/codex=chatgpt.desktop
+# ChatGPT also claims text/csv; without a default here xdg-open picks it.
+text/csv=onlyoffice-desktopeditors.desktop
+
+[Added Associations]
+text/csv=onlyoffice-desktopeditors.desktop;
