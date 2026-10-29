@@ -727,6 +727,12 @@ notificationctl status
 notificationctl status --json
 ```
 
+Commands reach the shell over Quickshell IPC. When no shell runs from the
+default `~/.config/quickshell`, as with a preview started by
+`quickshell -p <worktree>/quickshell/.config/quickshell`, they fall back to the
+newest running full shell by pid; smoke-test instances are never picked.
+`NOTIFICATIONCTL_QUICKSHELL` overrides the `quickshell` binary for fixtures.
+
 Left click invokes the live default action, then falls back to matching
 `desktop-entry`, app name, and icon against Hyprland window classes. Right click
 or the hover close button dismisses. Hover pauses the deadline. Critical cards

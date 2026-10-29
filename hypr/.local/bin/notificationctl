@@ -202,17 +202,42 @@ def prune_history(limit: int) -> None:
         remove_images(key)
 
 
+def run_quickshell(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(argv, text=True, capture_output=True, timeout=5, check=False)
+
+
+def shell_pid(binary: str) -> int | None:
+    """Newest running full shell, whatever checkout it was started from.
+
+    Smoke tests run ``quickshell -p XSmoke.qml``; only a config that is the
+    package's own shell.qml counts, so a test instance is never picked.
+    """
+    result = run_quickshell([binary, "list", "--all", "--json"])
+    try:
+        instances = json.loads(result.stdout) if result.returncode == 0 else []
+    except json.JSONDecodeError:
+        return None
+    shells = [i for i in instances if isinstance(i, dict) and isinstance(i.get("pid"), int)
+              and str(i.get("config_path", "")).endswith("/.config/quickshell/shell.qml")]
+    if not shells:
+        return None
+    return max(shells, key=lambda i: str(i.get("launch_time", "")))["pid"]
+
+
 def ipc_call(method: str) -> subprocess.CompletedProcess[str]:
-    binary = shutil.which("quickshell") or shutil.which("qs")
+    binary = (os.environ.get("NOTIFICATIONCTL_QUICKSHELL")
+              or shutil.which("quickshell") or shutil.which("qs"))
     if not binary:
         return subprocess.CompletedProcess([], 127, "", "quickshell is not installed")
-    return subprocess.run(
-        [binary, "ipc", "call", "notifications", method],
-        text=True,
-        capture_output=True,
-        timeout=5,
-        check=False,
-    )
+    result = run_quickshell([binary, "ipc", "call", "notifications", method])
+    # IPC only looks for the default config (~/.config/quickshell). A shell
+    # started with -p from another checkout, such as a worktree preview, is
+    # still the notification server, so reach it by pid.
+    if result.returncode != 0 and "No running instances" in result.stdout + result.stderr:
+        pid = shell_pid(binary)
+        if pid is not None:
+            result = run_quickshell([binary, "ipc", "--pid", str(pid), "call", "notifications", method])
+    return result
 
 
 def persisted_status() -> dict[str, Any]:
