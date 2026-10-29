@@ -91,6 +91,29 @@ check('late async samples cannot reseed a closed dashboard', () => {
   assert.equal(state.lastStat.length, 0);
   assert.equal(state.lastNetRx, -1);
 });
+check('OS age uses the earliest install date and formats days then years', () => {
+  ctx.parseInstalled('1784504477\n1784504433\n');
+  assert.equal(state.installedEpoch, 1784504433);
+  assert.ok(Math.abs(state.osAgeSeconds - (Date.now() / 1000 - 1784504433)) < 5);
+  ctx.parseInstalled('0\n1784504477\n');
+  assert.equal(state.installedEpoch, 1784504477);
+  ctx.parseInstalled('?\n');
+  assert.equal(state.installedEpoch, 0);
+  assert.equal(state.osAgeSeconds, 0);
+  assert.equal(ctx.fmtAge(102 * 86400 + 3600), '102d');
+  assert.equal(ctx.fmtAge(377 * 86400), '1y 12d');
+  assert.equal(ctx.fmtAge(0), '0d');
+});
+check('system temperatures read in Celsius while weather stays Fahrenheit', () => {
+  for (const file of ['DashSystem.qml', 'DashOverview.qml', 'HeroGauge.qml']) {
+    const source = fs.readFileSync(path.join(qs, file), 'utf8');
+    assert.doesNotMatch(source, /TempF|tempF/, file);
+  }
+  const system = fs.readFileSync(path.join(qs, 'DashSystem.qml'), 'utf8');
+  assert.match(system, /SysState\.cpuTempC\) \+ "°C"/);
+  assert.match(system, /SysState\.gpuTempC\) \+ "°C"/);
+  assert.match(system, /SysState\.fmtAge\(SysState\.osAgeSeconds\)/);
+});
 check('weather hour follows response timezone independently of host TZ', () => {
   const weather = {utcOffsetSeconds: -18000};
   const w = context('WeatherState.qml', weather);

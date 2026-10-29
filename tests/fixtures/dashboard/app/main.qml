@@ -88,5 +88,6 @@ Window {
     SysState.rxHistory = Array.from({ length: 60 }, (_, i) => [5, 9, 14, 22].includes(i % 25) ? 400 + (i % 7) * 120 : 30)
     SysState.txHistory = Array.from({ length: 60 }, (_, i) => i % 11 === 4 ? 900 : 60)
     SysState.uptimeSeconds = 6540
+    SysState.installedEpoch = Date.parse("2026-07-19T23:40:33Z") / 1000; SysState.osAgeSeconds = 76 * 86400
   }
 }

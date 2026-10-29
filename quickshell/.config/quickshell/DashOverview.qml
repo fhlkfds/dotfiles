@@ -739,7 +739,7 @@ Item {
         label: "CPU"
         value: SysState.cpuPercent / 100
         ok: SysState.cpuSeeded
-        sub: SysState.cpuTempAvailable ? Math.round(SysState.cpuTempF) + "°F" : SysState.loadAvg.toFixed(2) + " load"
+        sub: SysState.cpuTempAvailable ? Math.round(SysState.cpuTempC) + "°C" : SysState.loadAvg.toFixed(2) + " load"
       }
       Ring {
         label: "Memory"
@@ -751,7 +751,7 @@ Item {
         label: "GPU"
         value: SysState.gpuPercent / 100
         ok: SysState.gpuAvailable && !SysState.gpuAsleep
-        sub: SysState.gpuAsleep ? "asleep" : SysState.gpuTempAvailable ? Math.round(SysState.gpuTempF) + "°F" : "n/a"
+        sub: SysState.gpuAsleep ? "asleep" : SysState.gpuTempAvailable ? Math.round(SysState.gpuTempC) + "°C" : "n/a"
       }
       Ring {
         label: "Disk"

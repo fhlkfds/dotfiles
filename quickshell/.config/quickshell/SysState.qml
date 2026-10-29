@@ -50,6 +50,7 @@ Singleton {
   Component.onCompleted: {
     discoverProc.running = true
     namesProc.running = true
+    installedProc.running = true
   }
 
   function gpuName(line) {
@@ -83,6 +84,39 @@ Singleton {
         root.pickGpuModel()
       }
     }
+    stderr: StdioCollector {}
+  }
+
+  // Install date, read once: the first pacman.log entry (pacstrap writes it)
+  // and the root filesystem's birth time. Each can drift later -- a rotated
+  // log, a restored snapshot -- so the earlier of the two wins.
+  property real installedEpoch: 0   // seconds; 0 until known
+  property real osAgeSeconds: 0
+
+  function parseInstalled(text) {
+    var best = 0
+    const lines = text.trim().split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      const v = parseInt(lines[i], 10)
+      if (isFinite(v) && v > 0 && (best === 0 || v < best))
+        best = v
+    }
+    root.installedEpoch = best
+    root.sampleOsAge()
+  }
+
+  function sampleOsAge() {
+    root.osAgeSeconds = root.installedEpoch > 0
+      ? Math.max(0, Date.now() / 1000 - root.installedEpoch) : 0
+  }
+
+  Process {
+    id: installedProc
+    command: ["sh", "-c",
+      'stat -c %W / 2>/dev/null; ' +
+      'd=$(head -n1 /var/log/pacman.log 2>/dev/null | sed -n "s/^\\[\\([^]]*\\)\\].*/\\1/p"); ' +
+      '[ -n "$d" ] && date -d "$d" +%s 2>/dev/null; true']
+    stdout: StdioCollector { onStreamFinished: root.parseInstalled(text) }
     stderr: StdioCollector {}
   }
 
@@ -210,11 +244,6 @@ Singleton {
 
   readonly property real memFraction: memTotalBytes > 0 ? memUsedBytes / memTotalBytes : 0
   readonly property real diskFraction: diskTotalBytes > 0 ? diskUsedBytes / diskTotalBytes : 0
-
-  // Hardware sensors report millidegrees Celsius; the UI wants Fahrenheit.
-  function toF(c) { return c * 9 / 5 + 32 }
-  readonly property real cpuTempF: toF(cpuTempC)
-  readonly property real gpuTempF: toF(gpuTempC)
 
   // --- files -----------------------------------------------------------------
 
@@ -472,6 +501,7 @@ Singleton {
       statFile.reload()
       memFile.reload()
       upFile.reload()
+      root.sampleOsAge()
       root.sampleTemps()
       loadFile.reload()
       cpuinfoFile.reload()
@@ -549,5 +579,12 @@ Singleton {
     if (d > 0) return d + "d " + h + "h"
     if (h > 0) return h + "h " + m + "m"
     return m + "m"
+  }
+
+  // OS age is days, then years once past one: "102d", "1y 12d".
+  function fmtAge(s) {
+    const d = Math.floor(s / 86400)
+    const y = Math.floor(d / 365)
+    return y > 0 ? y + "y " + (d % 365) + "d" : d + "d"
   }
 }

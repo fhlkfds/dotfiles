@@ -8,7 +8,7 @@ Card {
   property string model: ""
   property real value: 0            // 0..1
   property string valueText: ""
-  property real tempF: 0
+  property real tempC: 0
   property bool tempAvailable: false
 
   implicitWidth: Theme.heroCardW
@@ -53,7 +53,7 @@ Card {
     Text {
       anchors.bottom: parent.bottom
       anchors.right: parent.right
-      text: root.tempAvailable ? Math.round(root.tempF) + "°F" : "—"
+      text: root.tempAvailable ? Math.round(root.tempC) + "°C" : "—"
       color: root.tempAvailable ? Theme.text : Theme.textMuted
       font.pixelSize: Theme.fs(13)
     }
