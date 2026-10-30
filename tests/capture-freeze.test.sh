@@ -26,7 +26,8 @@ freezes() {
   local t json='['
   for t in "$@"; do json+="{\"name\":\"M$t\",\"transform\":$t},"; done
   printf '%s]\n' "${json%,}" >"$MONITORS_JSON"
-  export FREEZE_MARK="$test_root/froze.$RANDOM"
+  export FREEZE_MARK="$test_root/froze"
+  rm -f -- "$FREEZE_MARK"
   bash -c 'source "$1"; capture_freeze_start; capture_freeze_stop' _ "$select_sh"
   [[ -e $FREEZE_MARK ]]
 }
