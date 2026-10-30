@@ -81,6 +81,13 @@ capture_freeze_start() {
   has hyprpicker || return 0        # freeze is an enhancement, not a requirement
   [ -n "$CAPTURE_FREEZE_PID" ] && return 0
 
+  # hyprpicker paints its still frame unrotated on a transformed output
+  # (hyprwm/hyprpicker#35): a portrait monitor flips to landscape during the
+  # selection, and grim then captures that flipped frame. Unfrozen grim
+  # honours the transform, so give up the freeze rather than the orientation.
+  # ponytail: drops the freeze on every output; re-check once hyprpicker honours transforms.
+  hyprctl monitors -j 2>/dev/null | jq -e 'any(.[]; .transform != 0)' >/dev/null 2>&1 && return 0
+
   hyprpicker -r -z >/dev/null 2>&1 &
   CAPTURE_FREEZE_PID=$!
 
