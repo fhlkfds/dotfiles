@@ -176,7 +176,9 @@ exec(mod .. " + CTRL + ALT + W", "stop Windows VM", "$HOME/.local/bin/windows-vm
 exec(mod .. " + SHIFT + ALT + W", "default browser private window", cfg.scripts_dir .. "/default-browser-private")
 app_exec(mod .. " + S", "spotify", "spotify")
 app_exec(mod .. " + O", "obsidian", "obsidian")
-exec(mod .. " + R", "voice dictation", cfg.scripts_dir .. "/voice-dictation toggle", { release = true })
+-- A press bind, not release: Hyprland 0.57.0 passed a release bind's key press
+-- to the focused app, typing an "r" on every toggle.
+exec(mod .. " + R", "voice dictation", cfg.scripts_dir .. "/voice-dictation toggle")
 bind(mod .. " + F", "toggle window floating / tiling", hl.dsp.window.float({ action = "toggle" }))
 exec(mod .. " + SHIFT + L", "cycle window layout", window_layout .. " cycle")
 app_exec(mod .. " + SHIFT + H", "hermes", "hermes")

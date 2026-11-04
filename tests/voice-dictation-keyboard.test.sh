@@ -19,7 +19,7 @@ hl.device = function(config) devices[config.name] = config end
 hl.bind = function(keys, dispatcher, flags)
     binds[keys] = flags.description
     if flags.description == "voice dictation" then
-        assert(flags.release == true, "dictation fires before key release")
+        assert(not flags.release, "release binds leak the R press on Hyprland 0.57.0")
     end
 end
 package.path = root .. "/?.lua;" .. package.path
@@ -45,7 +45,7 @@ import re
 import sys
 
 text = Path(sys.argv[1]).read_text()
-assert 'bindrd = $mainMod, R, voice dictation, exec, $scriptsDir/voice-dictation toggle' in text
+assert 'bindd = $mainMod, R, voice dictation, exec, $scriptsDir/voice-dictation toggle' in text
 devices = {}
 for body in re.findall(r"(?m)^device\s*\{([^}]+)\}", text):
     name = re.search(r"(?m)^\s*name\s*=\s*(\S+)", body)
