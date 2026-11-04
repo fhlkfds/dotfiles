@@ -560,6 +560,9 @@ Scope {
           anchors.verticalCenter: parent.verticalCenter
           moduleSpacing: Theme.fs(2 * panel.barScale)
 
+          // Using SystemTray here is what makes the shell the desktop's tray
+          // host. Without it, apps find no tray and hide their icons.
+          SystemTrayWidget { parentWindow: panel; barScale: panel.barScale }
           AppLauncher { barScale: panel.barScale }
           WindowsVmIcon { barScale: panel.barScale }
           BluetoothIcon { screenName: panel.modelData.name; barScale: panel.barScale }

@@ -1,3 +1,6 @@
+//@ pragma UseQApplication
+// Tray menus (SystemTrayWidget) are platform menus, which Quickshell can only
+// open when it runs as a QApplication. Pragmas must come first in the file.
 import Quickshell
 import "notifications" as Notifications
 
