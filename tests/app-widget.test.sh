@@ -38,6 +38,14 @@ APP_WIDGET_CLIENTS='[{"address":"0xabc","class":"spotify"}]' \
 [[ ! -e $test_root/launches ]] || fail 'existing app was launched instead of focused'
 
 : >"$test_root/calls"
+# The config says "spotify"; Spotify's window class is "Spotify".
+APP_WIDGET_CLIENTS='[{"address":"0xdef","class":"Spotify"}]' \
+  "$launcher" spotify spotify
+[[ $(<"$test_root/calls") == 'dispatch hl.dsp.focus({ window = "address:0xdef" })' ]] ||
+  fail 'window class differing only in case was not focused'
+[[ ! -e $test_root/launches ]] || fail 'app with a differently cased class was relaunched'
+
+: >"$test_root/calls"
 APP_WIDGET_CLIENTS='[]' "$launcher" spotify spotify
 [[ $(<"$test_root/launches") == 'spotify' ]] || fail 'closed app was not launched'
 [[ ! -s $test_root/calls ]] || fail 'closed app attempted to focus a window'
@@ -56,6 +64,10 @@ if command -v quickshell >/dev/null 2>&1; then
   grep -Fq 'ok: App launcher configuration' "$smoke_log" || {
     sed -n '1,120p' "$smoke_log" >&2
     fail 'AppLauncherSmoke.qml did not load the configured app'
+  }
+  grep -Fq 'ok: App launcher clicks' "$smoke_log" || {
+    grep -E 'ok   |FAIL' "$smoke_log" >&2
+    fail 'AppLauncherSmoke.qml did not finish its click checks'
   }
   if grep -Fq 'FAIL:' "$smoke_log"; then
     grep -F 'FAIL:' "$smoke_log" >&2

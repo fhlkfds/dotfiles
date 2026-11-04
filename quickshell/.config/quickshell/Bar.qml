@@ -562,8 +562,9 @@ Scope {
 
           // Using SystemTray here is what makes the shell the desktop's tray
           // host. Without it, apps find no tray and hide their icons.
-          SystemTrayWidget { parentWindow: panel; barScale: panel.barScale }
-          AppLauncher { barScale: panel.barScale }
+          // Pinned apps draw in AppLauncher, so the tray skips their icons.
+          SystemTrayWidget { parentWindow: panel; barScale: panel.barScale; pinnedApps: appLauncher.apps }
+          AppLauncher { id: appLauncher; parentWindow: panel; barScale: panel.barScale }
           WindowsVmIcon { barScale: panel.barScale }
           BluetoothIcon { screenName: panel.modelData.name; barScale: panel.barScale }
           NetworkIcon { screenName: panel.modelData.name; barScale: panel.barScale }

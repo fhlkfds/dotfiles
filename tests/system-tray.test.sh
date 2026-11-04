@@ -9,6 +9,9 @@ bar="$shell_dir/Bar.qml"
 shell_qml="$shell_dir/shell.qml"
 module="$shell_dir/SystemTrayWidget.qml"
 smoke="$shell_dir/SystemTraySmoke.qml"
+launcher="$shell_dir/AppLauncher.qml"
+logic="$shell_dir/tray/TrayAppsLogic.js"
+logic_test="$repo_root/tests/system-tray.logic.test.js"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -31,8 +34,32 @@ if grep -nE 'iconPath\(' "$module"; then
   fail 'SystemTrayWidget wraps tray icon URLs with Quickshell.iconPath'
 fi
 
+# Pinned apps draw in the launcher, so the tray must be told which they are,
+# or Spotify shows twice.
+awk '/id: trayIsland/ { inside = 1 } inside && /^        }/ { exit } inside' "$bar" \
+  | grep -Eq 'SystemTrayWidget \{[^}]*pinnedApps: appLauncher\.apps' \
+  || fail 'SystemTrayWidget is not given the launcher'"'"'s pinned apps'
+awk '/id: trayIsland/ { inside = 1 } inside && /^        }/ { exit } inside' "$bar" \
+  | grep -Eq 'AppLauncher \{ id: appLauncher; parentWindow: panel;' \
+  || fail 'AppLauncher lacks its id or the bar window for tray menus'
+
+# A click on an app icon is the hot path: focusing is an in-process dispatch,
+# never a spawned process. Only a launch may spawn.
+if grep -nE '\bProcess \{|SplitParser|Timer \{' "$module" "$launcher"; then
+  fail 'tray or launcher spawns a process object or polls on the click path'
+fi
+[[ $(grep -c 'execDetached' "$launcher") == 1 ]] ||
+  fail 'AppLauncher should spawn only in its launch fallback'
+
+if command -v node >/dev/null 2>&1; then
+  node "$logic_test" "$logic" >/dev/null || { node "$logic_test" "$logic" >&2 || true; fail 'tray app logic test failed'; }
+  printf 'ok: tray app logic\n'
+else
+  printf 'skip: node is not installed, tray app logic not run\n'
+fi
+
 # Colours must come from Theme so a palette switch repaints the module.
-if grep -nE '"#[0-9a-fA-F]{3,8}"' "$module" "$smoke"; then
+if grep -nE '"#[0-9a-fA-F]{3,8}"' "$module" "$smoke" "$launcher"; then
   fail 'system tray QML contains a hardcoded color'
 fi
 

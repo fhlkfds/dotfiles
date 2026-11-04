@@ -27,8 +27,10 @@ command -v jq >/dev/null 2>&1 || {
 }
 
 clients=$(hyprctl -j clients 2>/dev/null || printf '[]')
+# Compare without case: the launcher config says "spotify", the window "Spotify".
 address=$(jq -r --arg class "$wm_class" \
-  '.[] | select(.class == $class) | .address' <<<"$clients" | head -n1)
+  '.[] | select((.class | ascii_downcase) == ($class | ascii_downcase)) | .address' \
+  <<<"$clients" | head -n1)
 
 if [[ $address =~ ^0x[[:xdigit:]]+$ ]]; then
   if $dry_run; then

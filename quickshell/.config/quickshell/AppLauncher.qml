@@ -1,16 +1,53 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
+import Quickshell.Services.SystemTray
+import "tray/TrayAppsLogic.js" as TrayApps
 
-// Pinned applications are configured in app-launcher.json. A click focuses an
-// existing Hyprland window by its configured class, or launches the desktop
-// entry if it is not running. Hovering reveals the app name below the bar.
+// Pinned applications are configured in app-launcher.json. A left click
+// focuses the app's Hyprland window (switching workspace) by its configured
+// class, compared without case, or launches the desktop entry when it has no
+// window. A pinned app's tray icon is hidden from SystemTrayWidget, so a right
+// click opens that tray item's menu here. Hovering reveals the app name.
 Row {
   id: root
 
   property real barScale: 1.0
   property var apps: []
+  // Tray menus open against the bar window. The smoke swaps in fakes for the
+  // window, tray, compositor and launch.
+  property var parentWindow: null
+  property var trayItems: SystemTray.items
+  property var hyprland: Hyprland
+  // Focusing is an in-process dispatch; only a launch spawns a process.
+  property var launch: function(app) {
+    Quickshell.execDetached([Quickshell.env("HOME") + "/.config/hypr/scripts/app-widget",
+                             app.desktopId, app.wmClass])
+  }
   function s(n) { return Theme.fs(n * root.barScale) }
+
+  // One place for click routing, so the smoke can test it without a pointer.
+  function click(app, button, anchor) {
+    if (button === Qt.RightButton) {
+      const items = Array.isArray(root.trayItems) ? root.trayItems
+        : (root.trayItems ? root.trayItems.values : [])
+      const item = TrayApps.trayItemForApp(app, items)
+      if (!item || !item.hasMenu || !root.parentWindow) return "none"
+      const p = anchor.mapToItem(null, 0, anchor.height)
+      item.display(root.parentWindow, Math.round(p.x), Math.round(p.y))
+      return "menu"
+    }
+    if (button !== Qt.LeftButton) return "none"
+    const target = TrayApps.windowForApp(app, TrayApps.windowsFrom(root.hyprland.toplevels))
+    const request = target ? TrayApps.focusRequest(target.address) : ""
+    if (request !== "") {
+      root.hyprland.dispatch(request)
+      return "focus"
+    }
+    root.launch(app)
+    return "launch"
+  }
 
   function validApp(value) {
     if (!value || typeof value !== "object") return null
@@ -79,14 +116,9 @@ Row {
 
       MouseArea {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton
-        onClicked: appLauncher.running = true
-      }
-
-      Process {
-        id: appLauncher
-        command: [Quickshell.env("HOME") + "/.config/hypr/scripts/app-widget",
-                  appItem.app.desktopId, appItem.app.wmClass]
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        cursorShape: Qt.PointingHandCursor
+        onClicked: mouse => root.click(appItem.app, mouse.button, appItem)
       }
 
       PopupWindow {
