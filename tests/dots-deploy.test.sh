@@ -325,6 +325,40 @@ grep -F 'sudo arg=mkdir arg=-p arg=--' "$calls" >/dev/null ||
 find "$fixture_system_root/etc" -type f -name '*.pre-dots.*' | grep -q . ||
   fail '--system did not retain fixture backups'
 
+# An autostash that pops back with conflicts leaves markers in the work tree.
+# Deploying that would hand Quickshell a Bar.qml it cannot parse, so deploy
+# (and its dry run) refuses before stowing anything.
+printf '%s\n' "$initial_sha" > "$fixture_state"
+conflict_file=quickshell/.config/quickshell/shell.qml
+printf 'local edit\n' > "$fixture_repo/$conflict_file"
+git -C "$fixture_repo" stash push -q -m dots-test-conflict
+printf 'upstream edit\n' > "$fixture_repo/$conflict_file"
+git -C "$fixture_repo" commit -qam upstream-edit
+conflict_head=$(git -C "$fixture_repo" rev-parse HEAD)
+git -C "$fixture_repo" stash pop -q >/dev/null 2>&1 || true
+grep -q '^<<<<<<<' "$fixture_repo/$conflict_file" || fail 'fixture conflict was not created'
+: > "$calls"
+for mode in --dry-run ''; do
+  if output=$(run_dots $mode 2>&1); then
+    fail "deploy ${mode:-(live)} succeeded with an unmerged file"
+  fi
+  [[ $output == *'unresolved merge conflicts'* && $output == *"$conflict_file"* ]] ||
+    fail "deploy ${mode:-(live)} did not name the conflicted file: $output"
+done
+[[ ! -s $calls ]] || fail 'deploy stowed or reloaded despite a conflict'
+[[ $(<"$fixture_state") == "$initial_sha" ]] || fail 'conflicted deploy advanced state'
+
+# Staging the file clears git's unmerged flag but not the markers.
+git -C "$fixture_repo" add "$conflict_file"
+if output=$(run_dots 2>&1); then
+  fail 'deploy succeeded with staged conflict markers'
+fi
+[[ $output == *'unresolved merge conflicts'* && $output == *"$conflict_file"* ]] ||
+  fail "staged conflict markers were not reported: $output"
+[[ ! -s $calls ]] || fail 'deploy stowed despite staged conflict markers'
+git -C "$fixture_repo" reset -q --hard "$conflict_head"
+git -C "$fixture_repo" stash drop -q 2>/dev/null || true
+
 # A stow conflict fails, explains recovery, and leaves the state SHA untouched.
 cat > "$stub_bin/stow" <<'STUB'
 #!/usr/bin/env bash

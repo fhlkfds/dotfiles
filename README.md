@@ -357,7 +357,10 @@ none, so it pulls the same-named branch on `origin` instead; a branch that only
 exists locally skips the pull and deploys the checkout as it is.
 
 System templates are opt-in and are never stowed. Stow conflicts stop the
-deployment without adopting or overwriting files. The successful commit is
+deployment without adopting or overwriting files. Unresolved merge conflicts
+in the checkout (for example, from an autostash that popped back with
+conflicts) also stop it, including `--dry-run`, and the conflicted files are
+listed. The successful commit is
 recorded in `~/.local/state/dots/last-deployed`.
 
 ### Automated checks

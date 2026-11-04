@@ -130,6 +130,27 @@ fi
 head_sha=$(git -C "$repo" rev-parse --verify 'HEAD^{commit}') ||
   fail "cannot resolve HEAD in $repo"
 
+# Stow links the work tree, not HEAD, so local edits deploy too. When a pull's
+# autostash pops back with conflicts, git exits 0 and leaves <<<<<<< markers
+# behind; deploying them breaks whatever parses the file (a Bar.qml with
+# markers takes the whole bar down). Refuse until the conflict is resolved.
+# Unmerged index entries catch the usual case; `diff --check` also catches
+# markers that were staged with `git add` before being fixed.
+conflicted=$(
+  {
+    git -C "$repo" diff --name-only --diff-filter=U
+    # --check exits non-zero when it finds anything; only its output matters.
+    { git -C "$repo" diff --check HEAD 2>/dev/null || true; } |
+      sed -n 's/^\(.*\):[0-9][0-9]*: leftover conflict marker$/\1/p'
+  } | sort -u
+)
+if [[ -n $conflicted ]]; then
+  printf '%s: error: %s has unresolved merge conflicts; resolve them, then retry:\n' \
+    "$program" "$repo" >&2
+  printf '%s\n' "$conflicted" | sed 's/^/  /' >&2
+  exit 1
+fi
+
 # wallpaper: ~/Pictures/Wallpapers is owned by wallpaper-sync, which links it to
 # its own worktree at origin/main rather than to this checkout's branch.
 is_excluded() {
