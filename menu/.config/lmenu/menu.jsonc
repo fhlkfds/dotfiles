@@ -218,6 +218,15 @@
     "action": "~/.config/hypr/scripts/capture/capture.sh screenshot monitor"
   },
   {
+    "id": "trigger.capture.frame",
+    "icon": "󰋩",
+    "label": "Screenshot region (framed)",
+    "description": "Theme gradient, rounded corners and shadow, copied",
+    "aliases": ["frame", "pretty screenshot"],
+    "when": "command -v magick >/dev/null",
+    "action": "~/.config/hypr/scripts/capture/capture.sh screenshot region --frame"
+  },
+  {
     "id": "trigger.capture.record",
     "icon": "󰑊",
     "label": "Start screen recording",
