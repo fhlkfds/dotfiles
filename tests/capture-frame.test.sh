@@ -115,6 +115,42 @@ framed=$("$capture_dir/capture.sh" screenshot region --frame)
 [[ $(<"$COPY_DATA") == framed ]] || fail 'capture --frame did not copy the framed image'
 grep -Fxq 'Screenshot framed' "$NOTIFY_ARGS" || fail 'no framed notification'
 
+# FRAME_JQ replaces jq when reading the theme.
+cat >"$test_root/jq-stand-in" <<'SH'
+#!/usr/bin/env bash
+touch "$JQ_RAN"
+exec jq "$@"
+SH
+chmod +x "$test_root/jq-stand-in"
+JQ_RAN="$test_root/jq.ran" FRAME_JQ="$test_root/jq-stand-in" "$frame" "$test_root/shots/shot.png" >/dev/null
+[[ -e $test_root/jq.ran ]] || fail 'FRAME_JQ was not used to read the theme'
+
+# The clipboard checks honour FRAME_WL_COPY, and a dry run needs neither grim
+# nor wl-copy. The system PATH here has both removed.
+mkdir -p "$test_root/sysbin" "$test_root/stubs"
+for tool in /usr/bin/* /bin/*; do
+  case ${tool##*/} in grim|wl-copy) ;; *) ln -sf "$tool" "$test_root/sysbin/" ;; esac
+done
+for tool in slurp hyprpicker hyprctl notify-send magick; do ln -s "$test_root/bin/$tool" "$test_root/stubs/"; done
+bare_path="$test_root/stubs:$test_root/sysbin"
+PATH=$bare_path "$capture_dir/capture.sh" screenshot region --frame --dry-run >/dev/null ||
+  fail 'frame dry-run needed grim or wl-copy'
+ln -s "$test_root/bin/grim" "$test_root/stubs/"
+framed=$(PATH=$bare_path FRAME_WL_COPY="$test_root/bin/wl-copy" "$capture_dir/capture.sh" screenshot region --frame) ||
+  fail 'capture --frame ignored FRAME_WL_COPY in its preflight'
+[[ -f $framed ]] || fail "no framed copy with FRAME_WL_COPY: $framed"
+
+# A clipboard failure after framing names the saved framed copy.
+printf '%s\n' '#!/usr/bin/env bash' 'exit 1' >"$test_root/broken-copy"
+chmod +x "$test_root/broken-copy"
+: >"$NOTIFY_ARGS"
+if FRAME_WL_COPY="$test_root/broken-copy" "$capture_dir/capture.sh" screenshot region --frame >/dev/null 2>&1; then
+  fail 'a clipboard failure did not fail the capture'
+fi
+saved=$(sed -n 's/^Could not copy framed screenshot; saved at //p' "$NOTIFY_ARGS")
+[[ $saved == "$SCREENSHOT_DIR/screenshot-"*"-framed.png" && -f $saved ]] ||
+  fail "clipboard failure did not report the framed copy: $(<"$NOTIFY_ARGS")"
+
 # Real ImageMagick on a tiny image, when it is installed (CI installs it).
 real_magick=$(PATH=${PATH#"$test_root/bin:"} command -v magick || true)
 if [[ -z $real_magick ]]; then

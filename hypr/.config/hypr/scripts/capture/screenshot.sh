@@ -40,10 +40,15 @@ for arg in "$@"; do
   esac
 done
 
-require_cmd grim || exit 1
-has wl-copy || [ "$PROCESSING" = "save" ] || { notify_error "wl-clipboard is not installed"; exit 1; }
-# Check before selecting, so a missing ImageMagick is reported up front.
-[ "$PROCESSING" != "frame" ] || [ "$DRY_RUN" = 1 ] || require_cmd "${FRAME_MAGICK:-magick}" imagemagick || exit 1
+# A dry run executes none of these, so it needs none of them.
+if [ "$DRY_RUN" = 0 ]; then
+  require_cmd grim || exit 1
+  clipboard=wl-copy
+  [ "$PROCESSING" != "frame" ] || clipboard=${FRAME_WL_COPY:-wl-copy}
+  has "$clipboard" || [ "$PROCESSING" = "save" ] || { notify_error "wl-clipboard is not installed"; exit 1; }
+  # Check before selecting, so a missing ImageMagick is reported up front.
+  [ "$PROCESSING" != "frame" ] || require_cmd "${FRAME_MAGICK:-magick}" imagemagick || exit 1
+fi
 
 # --- delay -------------------------------------------------------------------
 if [ "$DELAY" -gt 0 ] 2>/dev/null; then
@@ -111,8 +116,15 @@ fi
 capture_freeze_stop
 
 if [ "$PROCESSING" = "frame" ]; then
+  # frame.sh prints the framed path before copying it, so a clipboard failure
+  # still names the saved framed file.
+  FRAMED=""
   if ! FRAMED=$("$_dir/frame.sh" "$FILE"); then
-    notify_error "Could not frame screenshot; original kept at $FILE"
+    if [ -n "$FRAMED" ]; then
+      notify_error "Could not copy framed screenshot; saved at $FRAMED"
+    else
+      notify_error "Could not frame screenshot; original kept at $FILE"
+    fi
     exit 1
   fi
   notify "Screenshot framed" "$(basename "$FRAMED") — copied to clipboard" -i "$FRAMED"

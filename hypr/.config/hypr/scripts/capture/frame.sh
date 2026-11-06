@@ -9,6 +9,7 @@ set -euo pipefail
 theme_file=${FRAME_THEME_FILE:-$HOME/.config/hypr/themes/.active/theme.json}
 magick_command=${FRAME_MAGICK:-magick}
 wl_copy_command=${FRAME_WL_COPY:-wl-copy}
+jq_command=${FRAME_JQ:-jq}
 padding=64
 dry_run=0
 input=
@@ -33,7 +34,7 @@ done
 [[ -n "$input" ]] || { usage >&2; exit 2; }
 
 [[ -f "$theme_file" ]] || fail "theme file not found: $theme_file (apply a theme with: theme set <slug>)"
-theme=$(jq -r '.colors.accent // "", .colors.accentAlt // .colors.background // "", .style.rounding // 10' \
+theme=$("$jq_command" -r '.colors.accent // "", .colors.accentAlt // .colors.background // "", .style.rounding // 10' \
   "$theme_file" 2>/dev/null) || fail "could not read theme file: $theme_file"
 { read -r start_colour; read -r end_colour; read -r rounding; } <<<"$theme"
 for colour in "$start_colour" "$end_colour"; do
@@ -76,5 +77,5 @@ fi
 command -v "$magick_command" >/dev/null 2>&1 ||
   fail "$magick_command is not installed (run: sudo pacman -S imagemagick)"
 "$magick_command" "${magick_args[@]}" || fail "ImageMagick could not frame $input"
-"$wl_copy_command" -t image/png <"$output" || fail "could not copy $output to the clipboard"
 printf '%s\n' "$output"
+"$wl_copy_command" -t image/png <"$output" || fail "could not copy $output to the clipboard"
