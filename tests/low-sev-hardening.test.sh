@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 location_script="$repo_root/hyprlock/.config/hyprlock/scripts/location.sh"
 weather_script="$repo_root/hyprlock/.config/hyprlock/scripts/weather.sh"
-wallpaper_script="$repo_root/hypr/.config/hypr/scripts/WallpaperSwitch.sh"
+picker="$repo_root/hypr/.local/bin/hypr-wallpaper-picker"
 test_root="$(mktemp -d -t low-sev-hardening-test.XXXXXX)"
 trap 'rm -rf -- "$test_root"' EXIT
 
@@ -22,8 +22,8 @@ if grep -Fq -- 'http://' "$location_script" "$weather_script"; then
   fail "plaintext HTTP URL remains in a Hyprlock helper"
 fi
 # Kept: security guard. eval would let a crafted wallpaper path run as code.
-if grep -Eq '(^|[[:space:]|;])eval([[:space:]]|$)' "$wallpaper_script"; then
-  fail "WallpaperSwitch.sh still invokes eval"
+if grep -Eq '(^|[[:space:]|;])eval([[:space:]]|$)' "$picker"; then
+  fail "hypr-wallpaper-picker invokes eval"
 fi
 
 stub_bin="$test_root/bin"
@@ -84,29 +84,32 @@ output=$(HOME="$invalid_home" PATH="$stub_bin:$PATH" \
 [[ "$output" == "Weather unavailable" ]] || fail "oversized weather output was accepted"
 [[ ! -e "$invalid_home/.cache/wttr_cache.txt" ]] || fail "invalid weather response was cached"
 
-wallpaper_bin="$test_root/wallpaper-bin"
-wallpaper_home="$test_root/home with spaces"
-rofi_log="$test_root/rofi.log"
-mkdir -p "$wallpaper_bin" "$wallpaper_home/Pictures/wallpapers"
-printf fixture >"$wallpaper_home/Pictures/wallpapers/fixture.png"
-printf '%s\n' \
-  '#!/usr/bin/env bash' \
-  'printf "<%s>\n" "$@" >"${ROFI_LOG:?}"' \
-  'while IFS= read -r _; do :; done' >"$wallpaper_bin/rofi"
-printf '%s\n' \
-  '#!/usr/bin/env bash' \
-  'if [[ $* == "monitors -j" ]]; then' \
-  '  printf '\''[%s]\n'\'' '\''{"name":"HDMI-A-1","width":1920,"height":1080,"scale":1,"focused":true}'\''' \
-  'else' \
-  '  printf "%s\n" "Monitor HDMI-A-1" "height: 1080" "scale: 1" "focused: yes"' \
-  'fi' \
-  >"$wallpaper_bin/hyprctl"
-printf '%s\n' '#!/usr/bin/env bash' 'printf "20\n"' >"$wallpaper_bin/bc"
-chmod +x "$wallpaper_bin/rofi" "$wallpaper_bin/hyprctl" "$wallpaper_bin/bc"
+if ! command -v jq >/dev/null 2>&1; then
+  printf 'skip: jq not installed (wallpaper picker path quoting)\n'
+else
+  wallpaper_bin="$test_root/wallpaper-bin"
+  wallpaper_home="$test_root/home with spaces"
+  wallpaper="$wallpaper_home/Pictures/Wallpapers/my wallpaper.png"
+  hyprctl_log="$test_root/hyprctl.log"
+  mkdir -p "$wallpaper_bin" "${wallpaper%/*}"
+  printf fixture >"$wallpaper"
+  printf '%s\n' '#!/usr/bin/env bash' 'printf "<%s>\n" "$@" >>"${HYPRCTL_LOG:?}"' \
+    >"$wallpaper_bin/hyprctl"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$wallpaper_bin/pgrep"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$wallpaper_bin/notify-send"
+  chmod +x "$wallpaper_bin/hyprctl" "$wallpaper_bin/pgrep" "$wallpaper_bin/notify-send"
 
-HOME="$wallpaper_home" PATH="$wallpaper_bin:$PATH" ROFI_LOG="$rofi_log" \
-  "$wallpaper_script"
-assert_contains "$rofi_log" "<$wallpaper_home/.config/rofi/config-wallpaper.rasi>"
-assert_contains "$rofi_log" '<element-icon{size:20%;}>'
+  env -u HYPR_WALLPAPER_DIR -u HYPR_WALLPAPER_STATE_FILE -u XDG_STATE_HOME \
+    HOME="$wallpaper_home" PATH="$wallpaper_bin:$PATH" "$picker" index |
+    jq -e --arg path "$wallpaper" '.items[] | select(.path == $path)' >/dev/null ||
+    fail "picker index split a path containing spaces"
+
+  env -u HYPR_WALLPAPER_STATE_FILE -u XDG_STATE_HOME HOME="$wallpaper_home" \
+    PATH="$wallpaper_bin:$PATH" HYPRCTL_LOG="$hyprctl_log" "$picker" apply "$wallpaper"
+  assert_contains "$hyprctl_log" "<,$wallpaper,cover>"
+  state="$wallpaper_home/.local/state/hyprland-desktop/wallpaper/current"
+  [[ "$(jq -r .path "$state")" == "$wallpaper" ]] ||
+    fail "picker did not persist a path containing spaces"
+fi
 
 printf 'ok: low-severity script hardening\n'
