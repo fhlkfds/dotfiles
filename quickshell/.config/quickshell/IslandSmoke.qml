@@ -126,6 +126,12 @@ FloatingWindow {
               && IslandState.queue.pending[0].body === "From Ada")
         check("a plain notification is listed for the expanded island",
               IslandState.recent.length === 1 && IslandState.recent[0].title === "New mail")
+        const clickable = fakeNotification(43, "Message from Ada", "", 1)
+        clickable.actions = [{ identifier: "default", text: "Open" }]
+        service.receive(clickable)
+        check("a notification with a click action keeps its card",
+              service.popupModel.count === window.cardsBefore + 1 && IslandState.queue.pending.length === 1)
+        window.cardsBefore = service.popupModel.count
         service.receive(fakeNotification(42, "Battery critical", "", 2))
         check("a critical notification keeps its card", service.popupModel.count === window.cardsBefore + 1)
         check("a critical notification is not a glance", IslandState.queue.pending.length === 1)

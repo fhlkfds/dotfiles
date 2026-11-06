@@ -143,12 +143,13 @@ function persistableEntry(value) {
   return out
 }
 
-// Critical notifications and ones with buttons need a card that stays until
-// acted on. Everything else is a glance in the bar's centre island.
-function routesToIsland(entry) {
-  var actions = []
-  try { actions = JSON.parse(entry.actionsJson || "[]") } catch (e) {}
-  return Number(entry.urgency) !== 2 && !(Array.isArray(actions) && actions.length)
+// Reads the live notification, not its snapshot: the snapshot drops the
+// hidden "default" action, which a click on a card invokes. Critical
+// notifications and ones with any action need a card; everything else is a
+// glance in the bar's centre island.
+function routesToIsland(notification) {
+  var n = notification || {}
+  return finiteNumber(n.urgency, 1) !== 2 && !(n.actions && n.actions.length > 0)
 }
 
 function validEntry(value) {

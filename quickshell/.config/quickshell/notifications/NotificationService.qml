@@ -161,7 +161,7 @@ Singleton {
       root.debug("stored under DND", entry.app, entry.summary)
       return
     }
-    if (root.islandShown && Logic.routesToIsland(entry)) {
+    if (root.islandShown && Logic.routesToIsland(notification)) {
       root.storeInHistory(entry, notification)
       root.glanced(entry)
       return
