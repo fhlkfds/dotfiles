@@ -7,6 +7,8 @@
 #   --save          file only, do not touch the clipboard
 #   --delay=N       notify, wait N seconds, then select
 #   --editor=CMD    override SCREENSHOT_EDITOR for this run
+#   --frame         save, then copy a framed copy made by frame.sh
+#   --dry-run       select, then print the grim (and frame) commands; capture nothing
 #
 # Default behaviour copies image/png and offers Edit/Save notification actions.
 #
@@ -22,6 +24,7 @@ source "$_dir/select.sh"
 MODE="smart"
 PROCESSING="default"
 DELAY=0
+DRY_RUN=0
 EDITOR_CMD="$SCREENSHOT_EDITOR"
 
 for arg in "$@"; do
@@ -29,6 +32,8 @@ for arg in "$@"; do
     smart|region|window|monitor) MODE="$arg" ;;
     --copy)      PROCESSING="copy" ;;
     --save)      PROCESSING="save" ;;
+    --frame)     PROCESSING="frame" ;;
+    --dry-run)   DRY_RUN=1 ;;
     --delay=*)   DELAY="${arg#--delay=}" ;;
     --editor=*)  EDITOR_CMD="${arg#--editor=}" ;;
     *) printf 'screenshot.sh: unknown argument: %s\n' "$arg" >&2; exit 2 ;;
@@ -37,6 +42,8 @@ done
 
 require_cmd grim || exit 1
 has wl-copy || [ "$PROCESSING" = "save" ] || { notify_error "wl-clipboard is not installed"; exit 1; }
+# Check before selecting, so a missing ImageMagick is reported up front.
+[ "$PROCESSING" != "frame" ] || [ "$DRY_RUN" = 1 ] || require_cmd "${FRAME_MAGICK:-magick}" imagemagick || exit 1
 
 # --- delay -------------------------------------------------------------------
 if [ "$DELAY" -gt 0 ] 2>/dev/null; then
@@ -65,6 +72,17 @@ case "$TARGET" in
 esac
 
 # --- capture -----------------------------------------------------------------
+if [ "$DRY_RUN" = 1 ]; then
+  case "$PROCESSING" in
+    copy)    FILE=- ;;
+    default) FILE="$CAPTURE_RUNTIME/screenshot-XXXXXX.png" ;;
+    *)       FILE="$SCREENSHOT_DIR/screenshot-$(date +'%Y-%m-%d_%H-%M-%S')-XXXXXX.png" ;;
+  esac
+  printf '+'; printf ' %q' grim "${grim_args[@]}" "$FILE"; printf '\n'
+  [ "$PROCESSING" != "frame" ] || "$_dir/frame.sh" --dry-run "$FILE"
+  exit 0
+fi
+
 if [ "$PROCESSING" = "copy" ]; then
   # Straight to the clipboard, no file at all.
   if ! grim "${grim_args[@]}" - | wl-copy -t image/png; then
@@ -76,7 +94,7 @@ if [ "$PROCESSING" = "copy" ]; then
   exit 0
 fi
 
-if [ "$PROCESSING" = "save" ]; then
+if [ "$PROCESSING" = "save" ] || [ "$PROCESSING" = "frame" ]; then
   capture_require_writable "$SCREENSHOT_DIR" || exit 1
   FILE=$(capture_outfile "$SCREENSHOT_DIR" screenshot png)
 else
@@ -91,6 +109,16 @@ fi
 
 # Pixels are captured; the frozen frame has done its job.
 capture_freeze_stop
+
+if [ "$PROCESSING" = "frame" ]; then
+  if ! FRAMED=$("$_dir/frame.sh" "$FILE"); then
+    notify_error "Could not frame screenshot; original kept at $FILE"
+    exit 1
+  fi
+  notify "Screenshot framed" "$(basename "$FRAMED") — copied to clipboard" -i "$FRAMED"
+  printf '%s\n' "$FRAMED"
+  exit 0
+fi
 
 BODY="$(basename "$FILE")"
 KEEP_CAPTURE=0
