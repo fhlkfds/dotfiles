@@ -177,6 +177,17 @@ installed LibrePods version; a future change to it may need a parser update.
 Validate with `bash tests/librepods-battery.test.sh` and
 `bash tests/bluetooth-control.test.sh`.
 
+## Volume and brightness OSD
+
+The volume, mute, and brightness keys still call `wpctl` and `brightnessctl`
+directly. The resident shell notices the change on its own (PipeWire for the
+sink, a file watch on `/sys/class/backlight/<device>/actual_brightness`) and
+shows a pill at the bottom of the focused screen. It fades after about 1.2 s,
+and further presses update the same pill instead of stacking. Machines with no
+backlight device only get the volume pill.
+
+Validate with `bash tests/osd.test.sh`.
+
 ## Network speed test
 
 `network-speedtest` resolves the active interface through `ip route`, runs eight
@@ -693,12 +704,16 @@ theme validate <slug>     # just one
 Notifications are served and rendered natively by the persistent Quickshell
 process. Applications talk to `org.freedesktop.Notifications`; one service then
 normalises the event, persists it, applies DND, and either places it in the
-focused monitor's top-right stack or writes it silently to history.
+focused monitor's top-right stack or writes it silently to history. While the
+bar is shown, a non-critical notification with no actions (no buttons and no
+click action) goes to history and shows as a glance in the bar's centre island
+instead of a card.
 
 ```text
 application -> Quickshell NotificationServer -> NotificationService
                                                 |-> active/history state
-                                                |-> per-output card stack
+                                                |-> per-output card stack (critical, or with any action)
+                                                |-> centre island glance (everything else)
                                                 `-> notifications IPC
 ```
 
@@ -932,6 +947,20 @@ the accent pill; clicking a badge focuses that workspace. Empty unfocused
 workspaces and special (scratchpad) workspaces are hidden. Selection rules are
 in `workspaces/WorkspacesLogic.js`; validate with
 `bash tests/workspaces-module.test.sh`.
+
+### Bar centre island glances
+
+A track change or a non-critical notification with no actions briefly widens
+the centre island around the clock to show a glance, then it folds back. A
+notification glances on the focused monitor's bar; a track change on every bar. The
+clock stays pinned; the capsule stops short of the neighbouring islands.
+Hovering a glance pauses it and opens the expanded island underneath: now
+playing with the current lyric line, then the latest notification glances.
+Clicking now playing opens the media panel. Critical notifications, ones with
+buttons or a click action, and all notifications while the bar is hidden keep
+their card in the top-right stack. Hold times, priorities and
+the glance width live in `~/.config/quickshell/island/config.json`; the queue
+rules are in `island/IslandLogic.js`. Validate with `bash tests/island.test.sh`.
 
 ## What's Included
 

@@ -143,6 +143,15 @@ function persistableEntry(value) {
   return out
 }
 
+// Reads the live notification, not its snapshot: the snapshot drops the
+// hidden "default" action, which a click on a card invokes. Critical
+// notifications and ones with any action need a card; everything else is a
+// glance in the bar's centre island.
+function routesToIsland(notification) {
+  var n = notification || {}
+  return finiteNumber(n.urgency, 1) !== 2 && !(n.actions && n.actions.length > 0)
+}
+
 function validEntry(value) {
   return value && typeof value === "object" &&
     /^[0-9]{1,20}-[0-9]{1,10}$/.test(String(value.key || "")) &&
@@ -162,6 +171,7 @@ if (typeof module !== "undefined") {
     ageLabel: ageLabel,
     isMediaNotification: isMediaNotification,
     persistableEntry: persistableEntry,
+    routesToIsland: routesToIsland,
     validEntry: validEntry
   }
 }

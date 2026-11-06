@@ -346,6 +346,11 @@ chmod +x "$test_root/qr-bin/zbarimg"
 [[ $(PATH="$test_root/qr-bin:$PATH" LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" \
   resolve trigger.capture trigger.capture.qr) == $'leaf\t~/.config/hypr/scripts/capture/capture.sh qr' ]] ||
   fail 'QR Code does not dispatch through the QR capture helper'
+printf '#!/usr/bin/env bash\nexit 0\n' >"$test_root/qr-bin/magick"
+chmod +x "$test_root/qr-bin/magick"
+[[ $(PATH="$test_root/qr-bin:$PATH" LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" \
+  resolve trigger.capture trigger.capture.frame) == $'leaf\t~/.config/hypr/scripts/capture/capture.sh screenshot region --frame' ]] ||
+  fail 'Framed screenshot does not dispatch through capture.sh --frame'
 
 # The list theme exists; the rofi checks below make sure it parses.
 lmenu_theme="$repo_root/rofi/.config/rofi/lmenu.rasi"

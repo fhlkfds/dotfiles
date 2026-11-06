@@ -11,6 +11,9 @@ Scope {
   readonly property var batteryState: BatteryState
   // Likewise for Bluetooth device low-battery alerts.
   readonly property var bluetoothState: BluetoothState
+  readonly property var osdState: OsdState
+  // Centre-island glances listen for track changes and notifications.
+  readonly property var islandState: IslandState
 
   Bar {}
   // Desktop widgets hide under a visible scratchpad (DesktopCover.js), which
@@ -44,6 +47,15 @@ Scope {
     model: DesktopLyricsState.enabled ? Quickshell.screens : []
 
     DesktopLyrics {
+      required property var modelData
+      output: modelData
+    }
+  }
+  // Volume and brightness pill. OsdState only shows it on the focused screen.
+  Variants {
+    model: Quickshell.screens
+
+    OsdPopup {
       required property var modelData
       output: modelData
     }
