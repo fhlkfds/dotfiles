@@ -55,4 +55,11 @@ assert.equal(logic.isMediaNotification("spotify", "file:///tmp/art.jpg"), true);
 assert.equal(logic.isMediaNotification("Spotify", ""), false);
 assert.equal(logic.isMediaNotification("Slack", "/tmp/art.jpg"), false);
 
+assert.equal(logic.routesToIsland(snapshot), true, "a normal notification without buttons is a glance");
+assert.equal(logic.routesToIsland(logic.snapshotOf({urgency: 0}, 1, "")), true, "a low notification is a glance");
+assert.equal(logic.routesToIsland(logic.snapshotOf({urgency: 2}, 1, "")), false, "a critical notification keeps its card");
+assert.equal(logic.routesToIsland(screenshot), false, "a notification with buttons keeps its card");
+assert.equal(logic.routesToIsland(logic.snapshotOf({actions: [{identifier: "default", text: "Open"}]}, 1, "")), true,
+  "a default-only action has no button, so it is a glance");
+
 console.log("notification logic tests: ok");

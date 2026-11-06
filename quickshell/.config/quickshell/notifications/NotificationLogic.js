@@ -143,6 +143,14 @@ function persistableEntry(value) {
   return out
 }
 
+// Critical notifications and ones with buttons need a card that stays until
+// acted on. Everything else is a glance in the bar's centre island.
+function routesToIsland(entry) {
+  var actions = []
+  try { actions = JSON.parse(entry.actionsJson || "[]") } catch (e) {}
+  return Number(entry.urgency) !== 2 && !(Array.isArray(actions) && actions.length)
+}
+
 function validEntry(value) {
   return value && typeof value === "object" &&
     /^[0-9]{1,20}-[0-9]{1,10}$/.test(String(value.key || "")) &&
@@ -162,6 +170,7 @@ if (typeof module !== "undefined") {
     ageLabel: ageLabel,
     isMediaNotification: isMediaNotification,
     persistableEntry: persistableEntry,
+    routesToIsland: routesToIsland,
     validEntry: validEntry
   }
 }

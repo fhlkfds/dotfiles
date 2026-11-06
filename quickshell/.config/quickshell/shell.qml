@@ -9,6 +9,8 @@ Scope {
   readonly property var batteryState: BatteryState
   // Likewise for Bluetooth device low-battery alerts.
   readonly property var bluetoothState: BluetoothState
+  // Centre-island glances listen for track changes and notifications.
+  readonly property var islandState: IslandState
 
   Bar {}
   Variants {

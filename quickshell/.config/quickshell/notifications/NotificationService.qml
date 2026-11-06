@@ -25,6 +25,8 @@ Singleton {
 
   signal stateChanged()
   signal artworkRefreshRequested(string key)
+  // A non-critical notification without buttons, for the bar's centre island.
+  signal glanced(var entry)
 
   ListModel {
     id: popupModel
@@ -152,19 +154,28 @@ Singleton {
     }
 
     if (root.dnd && !Logic.shouldBypassDnd(notification, NotificationConfig.dndBypassApps)) {
-      persistence.writeHistory(entry)
-      root.historyCount = Math.min(NotificationConfig.historyLimit, root.historyCount + 1)
+      root.storeInHistory(entry, notification)
       root.debug("stored under DND", entry.app, entry.summary)
-      delete root.liveRefs[entry.key]
-      delete root.liveKeysById[String(entry.originalId)]
-      notification.tracked = false
-      root.stateChanged()
+      return
+    }
+    if (Logic.routesToIsland(entry)) {
+      root.storeInHistory(entry, notification)
+      root.glanced(entry)
       return
     }
 
     persistence.writeActive(entry)
     root.insertEntry(entry, true)
     root.debug("received", entry.originalId, entry.app, entry.summary)
+  }
+
+  function storeInHistory(entry, notification) {
+    persistence.writeHistory(entry)
+    root.historyCount = Math.min(NotificationConfig.historyLimit, root.historyCount + 1)
+    delete root.liveRefs[entry.key]
+    delete root.liveKeysById[String(entry.originalId)]
+    notification.tracked = false
+    root.stateChanged()
   }
 
   function refreshNative(key, notification) {
