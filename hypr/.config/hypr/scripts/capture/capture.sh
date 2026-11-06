@@ -2,7 +2,8 @@
 # =============================================================================
 # capture/capture.sh — single entry point for the capture system
 #
-#   capture.sh screenshot [smart|region|window|monitor] [--copy|--save|--delay=N]
+#   capture.sh screenshot [smart|region|window|monitor] [--copy|--save|--frame|--delay=N|--dry-run]
+#                         --frame runs frame.sh: themed gradient, rounding, shadow
 #   capture.sh record     [toggle|start|stop|status|menu] [...]
 #   capture.sh ocr        [region|smart|window|monitor] [--lang=…] [--psm=…]
 #   capture.sh qr         select and decode a QR code to the sensitive clipboard
@@ -48,7 +49,7 @@ case "$SUB" in
     check ffmpeg              "recording post-process + thumbnails"
     check tesseract           "OCR"
     check zbarimg             "QR code decoding"
-    check magick              "OCR preprocessing, colour fallback"
+    check magick              "OCR preprocessing, colour fallback, screenshot frame"
     check mpv                 "webcam overlay, video playback"
     check rofi                "capture menu"
     check notify-send         "notifications"

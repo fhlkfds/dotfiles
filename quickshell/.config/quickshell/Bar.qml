@@ -2,10 +2,17 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 import QtQuick
+import "notifications" as Notifications
 
 Scope {
   id: bar
   property bool barVisible: true
+
+  Binding {
+    target: Notifications.NotificationService
+    property: "islandShown"
+    value: bar.barVisible
+  }
 
   // Panels opened from a keybind rather than a click target the focused
   // monitor, so they land where the user is looking.
@@ -408,144 +415,38 @@ Scope {
         WorkspacesModule { id: workspaces; barScale: panel.barScale }
       }
 
-      // The clock is the center anchor. Indicators grow left without nudging it.
-      Item {
+      // The clock is the center anchor. Indicators grow left without nudging
+      // it, and a glance widens the capsule around it. See BarCenter.qml.
+      BarCenter {
         id: centerGroup
         anchors.fill: parent
+        barScale: panel.barScale
+        screenName: panel.modelData.name
+        leftEdge: leftIsland.x + leftIsland.width
+        rightEdge: rightGroup.x
+        // The time and the weather beside it open the dashboard.
+        onClockClicked: DashboardState.togglePanel(panel.modelData.name)
 
-        // Distance from the clock to each side row.
-        readonly property int rowMargin: Theme.fs(8 * panel.barScale)
+        RecordIcon { barScale: panel.barScale }
+        UpdatesIcon { barScale: panel.barScale }
+        ModeIndicators { screenName: panel.modelData.name; barScale: panel.barScale }
+      }
 
-        // Scaling the content down keeps the islands apart on narrow bars;
-        // this shift is the backstop when scaling is not enough.
-        //
-        // Every term is a width or the x of something the offset does not
-        // move. Deriving any of it from leadingRow.x or clockLabel.x would
-        // feed the offset back into itself and cycle the binding.
-        readonly property real clockBase: (width - clockLabel.width) / 2
-        readonly property real leadingNeed:
-          rowMargin + leadingRow.width + Theme.barIslandPadding
-        readonly property real trailingNeed:
-          rowMargin + Theme.barIslandPadding
-        readonly property real minShift:
-          leftIsland.x + leftIsland.width + Theme.barIslandGap
-          - clockBase + leadingNeed
-        readonly property real maxShift:
-          rightGroup.x - Theme.barIslandGap
-          - clockBase - clockLabel.width - trailingNeed
-        // When even the clamp cannot satisfy both sides there is genuinely no
-        // room, so split the shortfall rather than dumping all of it on one
-        // neighbour.
-        readonly property real collisionShift:
-          minShift > maxShift ? (minShift + maxShift) / 2
-                              : Math.min(Math.max(0, minShift), maxShift)
+      DashboardPanel {
+        anchorItem: centerGroup.clock
+        ownerScreen: panel.modelData.name
+      }
 
-        // Drawn from the indicator row and clock rather than wrapping them in a
-        // BarIsland, because the clock has to stay pinned to the screen centre.
-        // A content-sized capsule would centre itself instead, and the time
-        // would drift sideways every time a mode pill appeared.
-        Rectangle {
-          id: centerIsland
-          anchors.verticalCenter: parent.verticalCenter
-          x: leadingRow.x - Theme.barIslandPadding
-          width: clockLabel.x + clockLabel.width + centerGroup.rowMargin
-                 + Theme.barIslandPadding - x
-          height: Theme.barIslandHeight
-          radius: height / 2
-          color: Theme.bgDeep
-        }
+      // The media panel anchors to the centered clock and opens through the
+      // `media` IPC target or the expanded island's now-playing row.
+      MediaPanel {
+        anchorItem: centerGroup.clock
+        ownerScreen: panel.modelData.name
+      }
 
-        // Time over date, then the current conditions. One item, so the
-        // centring and collision maths above treat the whole block as the clock.
-        Row {
-          id: clockLabel
-          anchors.centerIn: parent
-          // Zero whenever the bar is wide enough, which is every landscape
-          // monitor. The clock only leaves true centre to avoid a collision.
-          anchors.horizontalCenterOffset: centerGroup.collisionShift
-          spacing: Theme.fs(14 * panel.barScale)
-
-          Column {
-            anchors.verticalCenter: parent.verticalCenter
-
-            Text {
-              text: Qt.formatDateTime(ClockState.zonedDate(), "hh:mm:ss AP")
-              color: Theme.green
-              font.family: Theme.glyphFamily
-              font.bold: true
-              font.pixelSize: Theme.fs(12 * panel.barScale)
-            }
-
-            Text {
-              text: Qt.formatDateTime(ClockState.zonedDate(), "dddd, MMMM d")
-              color: Theme.textDim
-              font.family: Theme.glyphFamily
-              font.pixelSize: Theme.fs(8 * panel.barScale)
-            }
-          }
-
-          // Hidden until the first fetch lands, so the clock never shows a
-          // placeholder temperature.
-          Row {
-            anchors.verticalCenter: parent.verticalCenter
-            visible: WeatherState.hasData
-            spacing: Theme.fs(6 * panel.barScale)
-
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: WeatherState.hasData
-                    ? WeatherState.codeGlyph(WeatherState.current.code,
-                                             WeatherState.current.isDay) : ""
-              color: Theme.text
-              font.family: Theme.glyphFamily
-              font.pixelSize: Theme.fs(16 * panel.barScale)
-            }
-
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: WeatherState.hasData
-                    ? WeatherState.current.temp.toFixed(1) + "°F" : ""
-              color: Theme.text
-              font.family: Theme.glyphFamily
-              font.bold: true
-              font.pixelSize: Theme.fs(13 * panel.barScale)
-            }
-          }
-        }
-
-        // The time and the weather beside it are one target: either opens
-        // the dashboard (overview, media, system, weather).
-        MouseArea {
-          id: clockClickGuard
-          anchors.fill: clockLabel
-          acceptedButtons: Qt.LeftButton
-          cursorShape: Qt.PointingHandCursor
-          onClicked: DashboardState.togglePanel(panel.modelData.name)
-        }
-
-        DashboardPanel {
-          anchorItem: clockLabel
-          ownerScreen: panel.modelData.name
-        }
-
-        Row {
-          id: leadingRow
-          anchors.right: clockLabel.left
-          anchors.rightMargin: centerGroup.rowMargin
-          anchors.verticalCenter: parent.verticalCenter
-          spacing: Theme.fs(3 * panel.barScale)
-
-          RecordIcon { barScale: panel.barScale }
-          UpdatesIcon { barScale: panel.barScale }
-          ModeIndicators { screenName: panel.modelData.name; barScale: panel.barScale }
-        }
-
-        // The media panel anchors to the centered clock and opens through the
-        // `media` IPC target. Left-clicking the clock opens the dashboard.
-        MediaPanel {
-          anchorItem: clockLabel
-          ownerScreen: panel.modelData.name
-        }
+      IslandPanel {
+        anchorItem: centerGroup.capsule
+        ownerScreen: panel.modelData.name
       }
 
       Row {
