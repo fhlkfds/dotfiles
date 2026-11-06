@@ -5,9 +5,12 @@ import "DesktopCover.js" as DesktopCover
 // Headless harness for the desktop lyrics. A stand-in LyricsState and a fake
 // Hyprland monitor replace the real ones, so nothing reaches lrclib or a live
 // session. Toggles the saved switch once; the .sh test reads the file after.
+// With DESKTOP_LYRICS_SMOKE_SAVED_OFF=1 it instead checks that a saved "off"
+// is already read when the first binding asks for it.
 Scope {
   id: smoke
   property int failures: 0
+  readonly property bool savedOff: Quickshell.env("DESKTOP_LYRICS_SMOKE_SAVED_OFF") === "1"
 
   QtObject {
     id: fakeLyrics
@@ -52,6 +55,7 @@ Scope {
     check("shows the active line", view.activeText === "Second line")
     check("shows the next line", view.nextText === "Third line")
     check("visible on an empty desktop while playing", view.shown)
+    check("a shown view keeps the position timer running", MediaState.timelineShown)
 
     fakeLyrics.activeIndex = -1
     check("before the first line only the next line shows",
@@ -60,13 +64,14 @@ Scope {
     check("the last line has no next line", view.activeText === "Third line" && view.nextText === "")
 
     view.playing = false
-    check("hidden while paused", !view.shown)
+    check("hidden while paused", !view.shown && !MediaState.timelineShown)
     view.playing = true
 
     fakeToplevels.values = [{}]
     check("hidden when a window covers the desktop", view.covered && !view.shown)
+    check("a covered view lets the position timer stop", !MediaState.timelineShown)
     fakeToplevels.values = []
-    check("back when the window goes", !view.covered && view.shown)
+    check("back when the window goes", !view.covered && view.shown && MediaState.timelineShown)
 
     fakeLyrics.status = "notfound"
     fakeLyrics.lines = []
@@ -83,7 +88,10 @@ Scope {
       mask !== null && mask.item === null && mask.width === 0 && mask.height === 0
         && mask.regions.length === 0)
 
-    check("desktop lyrics are on by default", DesktopLyricsState.enabled)
+    if (smoke.savedOff)
+      check("a saved off is read before the shell builds", !DesktopLyricsState.enabled)
+    else
+      check("desktop lyrics are on by default", DesktopLyricsState.enabled)
   }
 
   // Let the state file's first load settle before flipping it, then give the
@@ -92,8 +100,10 @@ Scope {
     interval: 300
     running: true
     onTriggered: {
-      DesktopLyricsState.toggle()
-      smoke.check("toggle turns desktop lyrics off", !DesktopLyricsState.enabled)
+      if (!smoke.savedOff) {
+        DesktopLyricsState.toggle()
+        smoke.check("toggle turns desktop lyrics off", !DesktopLyricsState.enabled)
+      }
       quitTimer.start()
     }
   }

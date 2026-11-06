@@ -22,6 +22,10 @@ Singleton {
   FileView {
     id: stateFile
     path: root.stateFilePath
+    // With blockLoading, the text() read below waits for this small file, so
+    // a saved "off" is known before shell.qml builds the Variants and never
+    // creates the widget or loads LyricsState (and its lookups).
+    blockLoading: true
     atomicWrites: true
     watchChanges: true
     printErrors: false
@@ -37,6 +41,8 @@ Singleton {
       property bool enabled: true
     }
   }
+
+  Component.onCompleted: stateFile.text()
 
   IpcHandler {
     target: "lyrics"

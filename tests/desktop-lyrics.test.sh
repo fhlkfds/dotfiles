@@ -47,19 +47,28 @@ menu_ticked() {
 
 menu_ticked || fail 'lmenu does not tick Desktop lyrics before any state is saved'
 
-if command -v quickshell >/dev/null 2>&1; then
-  smoke_log="$test_root/smoke.log"
-  DBUS_SESSION_BUS_ADDRESS="unix:path=$test_root/no-bus" \
-  HOME="$test_root" XDG_STATE_HOME="$test_root/state" QT_QPA_PLATFORM=offscreen \
+# run_smoke <label> [VAR=value...]: run the smoke with extra environment.
+run_smoke() {
+  local label=$1 smoke_log="$test_root/smoke-$1.log"
+  shift
+  env "$@" DBUS_SESSION_BUS_ADDRESS="unix:path=$test_root/no-bus" \
+    HOME="$test_root" XDG_STATE_HOME="$test_root/state" QT_QPA_PLATFORM=offscreen \
     timeout 30 quickshell -p "$smoke" >"$smoke_log" 2>&1 || true
   grep -Fq 'ok: Desktop lyrics' "$smoke_log" \
-    || { sed -n '1,120p' "$smoke_log" >&2; fail 'DesktopLyricsSmoke.qml did not report success'; }
+    || { sed -n '1,120p' "$smoke_log" >&2; fail "DesktopLyricsSmoke.qml ($label) did not report success"; }
   if grep -Fq 'FAIL' "$smoke_log"; then
     grep -F 'FAIL' "$smoke_log" >&2
-    fail 'DesktopLyricsSmoke.qml reported a failing assertion'
+    fail "DesktopLyricsSmoke.qml ($label) reported a failing assertion"
   fi
-  printf 'ok: DesktopLyricsSmoke.qml (%s assertions)\n' "$(grep -c 'ok   ' "$smoke_log" || true)"
+  printf 'ok: DesktopLyricsSmoke.qml %s (%s assertions)\n' "$label" "$(grep -c 'ok   ' "$smoke_log" || true)"
+}
+
+if command -v quickshell >/dev/null 2>&1; then
+  run_smoke fresh
   test -f "$state_file" || fail 'the smoke toggle did not save the state file'
+  # A restart with the saved "off" must see it before the shell builds the
+  # widget, or LyricsState loads and starts lyric lookups.
+  run_smoke saved-off DESKTOP_LYRICS_SMOKE_SAVED_OFF=1
 else
   printf 'skip: quickshell is not installed, DesktopLyricsSmoke.qml not run\n'
   mkdir -p "${state_file%/*}"

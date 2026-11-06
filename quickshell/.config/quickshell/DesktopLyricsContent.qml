@@ -23,6 +23,22 @@ Item {
   // Empty input region: every click falls through to the desktop.
   readonly property Region clickMask: Region {}
 
+  // The line only advances while MediaState's position timer runs, and that
+  // timer runs only while something shows the timeline. Count in while shown.
+  property bool countedAsViewer: false
+  function syncViewer() {
+    if (countedAsViewer === shown)
+      return
+    countedAsViewer = shown
+    MediaState.lyricsViewers += shown ? 1 : -1
+  }
+  onShownChanged: syncViewer()
+  Component.onCompleted: syncViewer()
+  Component.onDestruction: {
+    if (countedAsViewer)
+      MediaState.lyricsViewers--
+  }
+
   implicitWidth: column.implicitWidth + Theme.fs(64)
   implicitHeight: column.implicitHeight + Theme.fs(40)
 

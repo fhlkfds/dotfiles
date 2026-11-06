@@ -282,16 +282,17 @@ check('city search handles failed, malformed, empty and invalid-coordinate respo
   assert.equal(cities.length, 8);
   assert.equal(cities[0].name, 'Test 11');
 });
-check('media position ticks only when a timeline is visible', () => {
+check('media position ticks only when a timeline or desktop lyrics are visible', () => {
   const source = fs.readFileSync(path.join(qs, 'MediaState.qml'), 'utf8');
   const expression = source.match(/readonly property bool timelineShown:([\s\S]*?)\n\n/)[1];
   for (const activeTab of ['overview', 'media', 'system', 'weather']) {
     const dashboard = {panelVisible: true, activeTab};
-    assert.equal(vm.runInNewContext(expression, {root: {panelVisible: false}, DashboardState: dashboard}),
+    assert.equal(vm.runInNewContext(expression, {root: {panelVisible: false, lyricsViewers: 0}, DashboardState: dashboard}),
       activeTab === 'overview' || activeTab === 'media');
     dashboard.panelVisible = false;
-    assert.equal(vm.runInNewContext(expression, {root: {panelVisible: false}, DashboardState: dashboard}), false);
-    assert.equal(vm.runInNewContext(expression, {root: {panelVisible: true}, DashboardState: dashboard}), true);
+    assert.equal(vm.runInNewContext(expression, {root: {panelVisible: false, lyricsViewers: 0}, DashboardState: dashboard}), false);
+    assert.equal(vm.runInNewContext(expression, {root: {panelVisible: true, lyricsViewers: 0}, DashboardState: dashboard}), true);
+    assert.equal(vm.runInNewContext(expression, {root: {panelVisible: false, lyricsViewers: 1}, DashboardState: dashboard}), true);
   }
 });
 check('dashboard toggles per screen and resets to Overview', () => {
