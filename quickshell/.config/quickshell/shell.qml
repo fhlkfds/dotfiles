@@ -2,6 +2,8 @@
 // Tray menus (SystemTrayWidget) are platform menus, which Quickshell can only
 // open when it runs as a QApplication. Pragmas must come first in the file.
 import Quickshell
+import Quickshell.Hyprland
+import QtQuick
 import "notifications" as Notifications
 
 Scope {
@@ -11,6 +13,14 @@ Scope {
   readonly property var bluetoothState: BluetoothState
 
   Bar {}
+  // Desktop widgets hide under a visible scratchpad (DesktopCover.js), which
+  // Hyprland reports only in the monitor IPC object. Refresh it on the event.
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event.name === "activespecial") Hyprland.refreshMonitors()
+    }
+  }
   Variants {
     model: Quickshell.screens
 

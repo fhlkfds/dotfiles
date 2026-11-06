@@ -17,7 +17,7 @@ PanelWindow {
 
   // Stop the record spinning while windows hide the card, so it does not keep
   // the output redrawing.
-  readonly property bool covered: DesktopCover.covered(Hyprland.monitorFor(output))
+  readonly property bool covered: DesktopCover.covered(Hyprland.monitorFor(output), Hyprland.workspaces.values)
 
   visible: SpotifyState.hasTrack
   anchors { bottom: true; left: true }

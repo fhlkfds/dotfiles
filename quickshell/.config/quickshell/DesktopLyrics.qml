@@ -26,6 +26,6 @@ PanelWindow {
     id: view
     anchors.centerIn: parent
     maxTextWidth: panel.width * 0.6
-    covered: DesktopCover.covered(Hyprland.monitorFor(panel.output))
+    covered: DesktopCover.covered(Hyprland.monitorFor(panel.output), Hyprland.workspaces.values)
   }
 }

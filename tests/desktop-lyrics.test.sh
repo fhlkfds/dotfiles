@@ -26,6 +26,8 @@ grep -Fq 'WlrLayershell.layer: WlrLayer.Background' "$window" \
 grep -Fq 'mask: view.clickMask' "$window" || fail 'desktop lyrics window does not use the empty click mask'
 grep -Fq 'visible: view.shown' "$window" || fail 'desktop lyrics window ignores the shown rule'
 grep -Fq 'DesktopLyrics {' "$shell_dir/shell.qml" || fail 'shell.qml does not create DesktopLyrics'
+grep -Fq 'event.name === "activespecial") Hyprland.refreshMonitors()' "$shell_dir/shell.qml" \
+  || fail 'shell.qml does not refresh monitors when a scratchpad opens or closes'
 
 # LyricsState already tracks the line; the widget must not add a process or a poll.
 if grep -nE '\b(Process|Timer)\b' "$window" "$content" "$state"; then

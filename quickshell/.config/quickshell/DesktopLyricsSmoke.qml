@@ -32,8 +32,18 @@ Scope {
     property var toplevels: fakeToplevels
   }
   QtObject {
+    id: fakeScratchToplevels
+    property var values: [{}]
+  }
+  QtObject {
+    id: fakeScratch
+    property string name: "special:scratch"
+    property var toplevels: fakeScratchToplevels
+  }
+  QtObject {
     id: fakeMonitor
     property var activeWorkspace: fakeWorkspace
+    property var lastIpcObject: ({ specialWorkspace: { id: 0, name: "" } })
   }
 
   Item {
@@ -42,7 +52,7 @@ Scope {
       id: view
       lyrics: fakeLyrics
       playing: true
-      covered: DesktopCover.covered(fakeMonitor)
+      covered: DesktopCover.covered(fakeMonitor, [fakeWorkspace, fakeScratch])
     }
   }
 
@@ -72,6 +82,14 @@ Scope {
     check("a covered view lets the position timer stop", !MediaState.timelineShown)
     fakeToplevels.values = []
     check("back when the window goes", !view.covered && view.shown && MediaState.timelineShown)
+
+    fakeMonitor.lastIpcObject = { specialWorkspace: { id: -98, name: "special:scratch" } }
+    check("hidden under a visible scratchpad with a window", view.covered && !view.shown)
+    fakeScratchToplevels.values = []
+    check("an empty scratchpad does not cover", !view.covered)
+    fakeScratchToplevels.values = [{}]
+    fakeMonitor.lastIpcObject = { specialWorkspace: { id: 0, name: "" } }
+    check("back when the scratchpad closes", !view.covered && view.shown)
 
     fakeLyrics.status = "notfound"
     fakeLyrics.lines = []
