@@ -38,6 +38,12 @@ def main() -> int:
     menu = (ROOT / "menu/.config/lmenu/menu.jsonc").read_text()
     offered = set(re.findall(r"screensaver-lock layout set ([a-z0-9]+)", menu))
     wrapper = (ROOT / "hypr/.config/hypr/hyprlock.conf").read_text()
+    shipped = {p.stem for p in LAYOUT.parent.glob("*.conf")} - {"colors"}
+    selectable = {"hyprlock" if name == "default" else name for name in offered}
+    assert shipped == selectable, (
+        f"layouts not in the menu: {sorted(shipped - selectable)}; "
+        f"menu layouts with no file: {sorted(selectable - shipped)}"
+    )
     builtins = {"$USER", "$HOME", "$TIME", "$FAIL", "$ATTEMPTS"}
     for name in offered:
         path = LAYOUT.with_name("hyprlock.conf" if name == "default" else f"{name}.conf")
