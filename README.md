@@ -177,6 +177,17 @@ installed LibrePods version; a future change to it may need a parser update.
 Validate with `bash tests/librepods-battery.test.sh` and
 `bash tests/bluetooth-control.test.sh`.
 
+## Volume and brightness OSD
+
+The volume, mute, and brightness keys still call `wpctl` and `brightnessctl`
+directly. The resident shell notices the change on its own (PipeWire for the
+sink, a file watch on `/sys/class/backlight/<device>/actual_brightness`) and
+shows a pill at the bottom of the focused screen. It fades after about 1.2 s,
+and further presses update the same pill instead of stacking. Machines with no
+backlight device only get the volume pill.
+
+Validate with `bash tests/osd.test.sh`.
+
 ## Network speed test
 
 `network-speedtest` resolves the active interface through `ip route`, runs eight
