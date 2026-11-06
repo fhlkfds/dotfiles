@@ -29,6 +29,15 @@ Scope {
       output: modelData
     }
   }
+  // Synced lyrics on every monitor's empty desktop; toggled from lmenu.
+  Variants {
+    model: DesktopLyricsState.enabled ? Quickshell.screens : []
+
+    DesktopLyrics {
+      required property var modelData
+      output: modelData
+    }
+  }
   Notifications.NotificationRoot {}
   VideoDownloadRoot {}
   // Screen-centred Wi-Fi QR share window: one instance per monitor, only the

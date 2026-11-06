@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Wayland
 import QtQuick
+import "DesktopCover.js" as DesktopCover
 
 // Spotify now-playing card above the wallpaper and below application windows,
 // one per output, in the bottom-left corner opposite the desktop clock.
@@ -14,13 +15,9 @@ PanelWindow {
   required property var output
   screen: output
 
-  readonly property var monitor: Hyprland.monitorFor(output)
-  // Background-layer surfaces are hidden by any window on the workspace; stop
-  // the record spinning there so it does not keep the output redrawing.
-  readonly property bool covered: monitor !== null
-    && monitor.activeWorkspace !== null
-    && monitor.activeWorkspace.toplevels !== null
-    && monitor.activeWorkspace.toplevels.values.length > 0
+  // Stop the record spinning while windows hide the card, so it does not keep
+  // the output redrawing.
+  readonly property bool covered: DesktopCover.covered(Hyprland.monitorFor(output))
 
   visible: SpotifyState.hasTrack
   anchors { bottom: true; left: true }
