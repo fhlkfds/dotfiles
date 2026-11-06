@@ -196,10 +196,15 @@ Singleton {
 
   onActiveChanged: root.resyncPosition()
 
+  // Desktop lyrics views on screen right now. Each one counts itself in while
+  // shown, because its line follows the extrapolated position.
+  property int lyricsViewers: 0
+
   // Something on screen is showing the timeline: this panel, the clock
-  // dashboard, or the expanded island's lyric line. Nothing else reads the
-  // extrapolated position.
-  readonly property bool timelineShown: root.panelVisible || IslandState.expandedScreen !== ""
+  // dashboard, the expanded island's lyric line, or a desktop lyrics view.
+  // Nothing else reads the extrapolated position.
+  readonly property bool timelineShown: root.panelVisible || root.lyricsViewers > 0
+    || IslandState.expandedScreen !== ""
     || (DashboardState.panelVisible
         && (DashboardState.activeTab === "overview" || DashboardState.activeTab === "media"))
 

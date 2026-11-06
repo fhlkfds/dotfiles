@@ -2,6 +2,8 @@
 // Tray menus (SystemTrayWidget) are platform menus, which Quickshell can only
 // open when it runs as a QApplication. Pragmas must come first in the file.
 import Quickshell
+import Quickshell.Hyprland
+import QtQuick
 import "notifications" as Notifications
 
 Scope {
@@ -14,6 +16,14 @@ Scope {
   readonly property var islandState: IslandState
 
   Bar {}
+  // Desktop widgets hide under a visible scratchpad (DesktopCover.js), which
+  // Hyprland reports only in the monitor IPC object. Refresh it on the event.
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event.name === "activespecial") Hyprland.refreshMonitors()
+    }
+  }
   Variants {
     model: Quickshell.screens
 
@@ -28,6 +38,15 @@ Scope {
     model: Quickshell.screens
 
     DesktopNowPlaying {
+      required property var modelData
+      output: modelData
+    }
+  }
+  // Synced lyrics on every monitor's empty desktop; toggled from lmenu.
+  Variants {
+    model: DesktopLyricsState.enabled ? Quickshell.screens : []
+
+    DesktopLyrics {
       required property var modelData
       output: modelData
     }

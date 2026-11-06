@@ -552,6 +552,15 @@
     "label": "Toggle window gaps",
     "action": "~/.config/hypr/scripts/toggle-gaps.sh"
   },
+  {
+    "id": "style.lyrics",
+    "icon": "󰝚",
+    "label": "Desktop lyrics",
+    "description": "Synced lyrics on the empty desktop while music plays",
+    "aliases": ["lyrics"],
+    "checked": "! grep -qs '\"enabled\": *false' \"${XDG_STATE_HOME:-$HOME/.local/state}/hyprland-desktop/desktop-lyrics.json\"",
+    "action": "quickshell ipc call lyrics toggle"
+  },
 
   // --------------------------------------------------------------- Setup ---
   {
