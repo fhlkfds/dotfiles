@@ -1,9 +1,7 @@
 {
   "kinds": {
-    "notification": { "holdMs": 5000, "priority": 2 },
     "media": { "holdMs": 3500, "priority": 1 }
   },
   "animationMs": 220,
-  "glanceMaxWidth": 420,
-  "recentLimit": 3
+  "glanceMaxWidth": 420
 }

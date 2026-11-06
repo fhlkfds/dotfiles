@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Centre island: glance queue rules under node, then IslandSmoke.qml, which
 # measures the real BarCenter clock and capsule before, during and after a
-# glance, and routes fake notifications through the real NotificationService.
+# track glance, and checks notifications stay cards.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)

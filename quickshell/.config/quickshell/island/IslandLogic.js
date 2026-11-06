@@ -6,7 +6,6 @@
 // one glance on screen and at most one waiting per kind.
 
 var defaultKinds = {
-  notification: { holdMs: 5000, priority: 2 },
   media: { holdMs: 3500, priority: 1 }
 }
 
@@ -54,10 +53,6 @@ function holdFor(queue, kinds) {
   return queue.current ? kinds[queue.current.kind].holdMs : 0
 }
 
-function remember(list, glance, limit) {
-  return [glance].concat(list).slice(0, Math.max(0, limit))
-}
-
 // The capsule while a glance shows: the resting capsule widened symmetrically
 // about the clock's centre, never past minX or maxX (the neighbouring islands).
 function capsuleSpan(rest, centre, wanted, minX, maxX) {
@@ -74,7 +69,6 @@ if (typeof module !== "undefined" && module) {
     enqueue: enqueue,
     advance: advance,
     holdFor: holdFor,
-    remember: remember,
     capsuleSpan: capsuleSpan
   }
 }

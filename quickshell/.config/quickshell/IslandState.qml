@@ -3,13 +3,11 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "island/IslandLogic.js" as Logic
-import "notifications/NotificationLogic.js" as NotificationLogic
-import "notifications" as Notifications
 
-// The centre island's glances: a track change or a non-critical notification
-// briefly widens the capsule around the clock, then it folds back. Critical
-// and actionable notifications stay in NotificationStack. The queue rules live
-// in island/IslandLogic.js; this file feeds them events and runs the clock.
+// The centre island's glances: a track change briefly widens the capsule
+// around the clock, then it folds back. Notifications stay in the card stack.
+// The queue rules live in island/IslandLogic.js; this file feeds them events
+// and runs the clock.
 Singleton {
   id: root
 
@@ -17,12 +15,9 @@ Singleton {
   readonly property var kinds: Logic.kindTable(config.kinds)
   readonly property int animationMs: Number.isInteger(config.animationMs) ? config.animationMs : 220
   readonly property int glanceMaxWidth: Number.isInteger(config.glanceMaxWidth) ? config.glanceMaxWidth : 420
-  readonly property int recentLimit: Number.isInteger(config.recentLimit) ? config.recentLimit : 3
 
   property var queue: Logic.emptyQueue()
   readonly property var current: queue.current
-  // Newest first, notifications only: the expanded surface lists them.
-  property var recent: []
   // Hovering a glance expands it on that screen's bar and pauses its hold.
   property string expandedScreen: ""
   // What is left of the current glance's hold, kept across a hover pause.
@@ -33,25 +28,9 @@ Singleton {
   property var media: MediaState
 
   readonly property string glyphMusic: String.fromCodePoint(0xf075a) // md-music
-  readonly property string glyphBell: String.fromCodePoint(0xf009a)  // md-bell
 
   function show(glance) { root.queue = Logic.enqueue(root.queue, glance, root.kinds) }
   function advance() { root.queue = Logic.advance(root.queue) }
-
-  function showNotification(entry) {
-    const isMedia = NotificationLogic.isMediaNotification(entry.app, entry.image)
-    const glance = {
-      kind: isMedia ? "media" : "notification",
-      glyph: entry.glyph || (isMedia ? root.glyphMusic : root.glyphBell),
-      title: entry.summary || entry.app,
-      body: String(entry.body || "").split("\n")[0] || entry.app,
-      // Like its card would, a notification shows on the focused screen.
-      // Media glances have no screen and show on every bar.
-      screen: isMedia ? "" : String(entry.screenName || "")
-    }
-    root.show(glance)
-    if (!isMedia) root.recent = Logic.remember(root.recent, glance, root.recentLimit)
-  }
 
   function hover(screenName, hovered) {
     if (hovered && root.current) {
@@ -97,13 +76,9 @@ Singleton {
     function onTrackKeyChanged() {
       if (root.media.hasTrack)
         root.show({ kind: "media", glyph: root.glyphMusic,
-                    title: root.media.trackTitle, body: root.media.trackArtist })
+                    title: root.media.trackTitle, body: root.media.trackArtist,
+                    screen: "" })
     }
-  }
-
-  Connections {
-    target: Notifications.NotificationService
-    function onGlanced(entry) { root.showNotification(entry) }
   }
 
   FileView {

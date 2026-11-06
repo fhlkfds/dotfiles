@@ -3,9 +3,9 @@ import Quickshell
 import "notifications" as Notifications
 
 // Headless check of the centre island. Mounts the real BarCenter between two
-// stand-in neighbours, feeds IslandState a fake player and fake notifications
-// through the real NotificationService, and measures the clock and capsule
-// before, during and after a glance. Run under a private D-Bus session.
+// stand-in neighbours, feeds IslandState a fake player, and sends fake
+// notifications through the real NotificationService. A track change glances;
+// every notification stays a card. Run under a private D-Bus session.
 FloatingWindow {
   id: window
   implicitWidth: 1600
@@ -47,7 +47,6 @@ FloatingWindow {
     width: 300
     media: QtObject { property bool hasTrack: true; property string trackTitle: "Song"; property string trackArtist: "Band" }
     lyricLine: "a sung line"
-    recent: [{ glyph: "n", title: "One", body: "" }, { glyph: "n", title: "Two", body: "detail" }]
   }
 
   function check(name, ok) {
@@ -62,18 +61,12 @@ FloatingWindow {
     }
     return null
   }
-  function count(item, name) {
-    let n = item.objectName === name && item.visible ? 1 : 0
-    for (let i = 0; i < item.children.length; i++) n += count(item.children[i], name)
-    return n
-  }
   function clockCentre() { return center.clock.x + center.clock.width / 2 }
   function capsule() { return center.capsule }
   function settle() { return IslandState.animationMs + 250 }
 
   Component.onCompleted: {
     IslandState.media = fakeMedia
-    service.islandShown = true
   }
 
   Timer {
@@ -112,29 +105,14 @@ FloatingWindow {
         check("glance replaces the clock", find(center, "islandGlance").visible && !center.clock.visible)
 
         window.cardsBefore = service.popupModel.count
-        service.islandShown = false
-        service.receive(fakeNotification(40, "Bar hidden", "", 1))
-        check("with the bar hidden a plain notification keeps its card",
-              service.popupModel.count === window.cardsBefore + 1 && IslandState.queue.pending.length === 0)
-        service.islandShown = true
-        window.cardsBefore = service.popupModel.count
         service.receive(fakeNotification(41, "New mail", "From Ada\nsecond line", 1))
-        check("a plain notification does not open a card", service.popupModel.count === window.cardsBefore)
-        check("a plain notification queues behind the track glance",
-              IslandState.current.kind === "media" && IslandState.queue.pending.length === 1
-              && IslandState.queue.pending[0].title === "New mail"
-              && IslandState.queue.pending[0].body === "From Ada")
-        check("a plain notification is listed for the expanded island",
-              IslandState.recent.length === 1 && IslandState.recent[0].title === "New mail")
         const clickable = fakeNotification(43, "Message from Ada", "", 1)
         clickable.actions = [{ identifier: "default", text: "Open" }]
         service.receive(clickable)
-        check("a notification with a click action keeps its card",
-              service.popupModel.count === window.cardsBefore + 1 && IslandState.queue.pending.length === 1)
-        window.cardsBefore = service.popupModel.count
         service.receive(fakeNotification(42, "Battery critical", "", 2))
-        check("a critical notification keeps its card", service.popupModel.count === window.cardsBefore + 1)
-        check("a critical notification is not a glance", IslandState.queue.pending.length === 1)
+        check("a plain notification opens a card", service.popupModel.count === window.cardsBefore + 3)
+        check("notifications stay out of the island",
+              IslandState.current.kind === "media" && IslandState.queue.pending.length === 0)
 
         IslandState.hover("fixture", true)
         check("hovering a glance expands it on that screen", IslandState.expandedScreen === "fixture")
@@ -147,17 +125,6 @@ FloatingWindow {
         check("leaving resumes the hold instead of restarting it",
               IslandState.holdRemaining === paused)
 
-        IslandState.advance()
-        check("the queued notification shows next", IslandState.current.title === "New mail")
-        check("a notification glance carries the screen it arrived on",
-              IslandState.current.screen === service.focusedScreenName())
-        IslandState.showNotification({ app: "Mail", summary: "Elsewhere", body: "", image: "",
-                                       screenName: "other-monitor" })
-        check("a notification glance for another screen leaves this clock alone",
-              IslandState.current.title === "Elsewhere" && !center.glancing)
-        IslandState.showNotification({ app: "Mail", summary: "Here", body: "", image: "",
-                                       screenName: "fixture" })
-        check("a notification glance for this screen shows here", center.glancing)
         IslandState.advance()
         check("an empty queue folds back to the clock", IslandState.current === null)
         driver.interval = window.settle()
@@ -172,7 +139,6 @@ FloatingWindow {
         check("expanded surface lists now playing with the lyric line",
               find(panelContent, "islandNowPlaying").visible
               && find(panelContent, "islandLyric").text === "a sung line")
-        check("expanded surface lists recent notifications", count(panelContent, "islandRecent") === 2)
         console.log(window.failures === 0 ? "island smoke: ok" : "island smoke: " + window.failures + " failed")
         Qt.quit()
       }

@@ -38,7 +38,6 @@ PopupWindow {
       media: IslandState.media
       lyricLine: LyricsState.activeIndex >= 0
                  ? LyricsState.lines[LyricsState.activeIndex].text : ""
-      recent: IslandState.recent
       onMediaClicked: {
         IslandState.collapse()
         MediaState.togglePanel(panel.ownerScreen)

@@ -42,15 +42,6 @@ Scope {
       output: modelData
     }
   }
-  // Synced lyrics on every monitor's empty desktop; toggled from lmenu.
-  Variants {
-    model: DesktopLyricsState.enabled ? Quickshell.screens : []
-
-    DesktopLyrics {
-      required property var modelData
-      output: modelData
-    }
-  }
   // Volume and brightness pill. OsdState only shows it on the focused screen.
   Variants {
     model: Quickshell.screens

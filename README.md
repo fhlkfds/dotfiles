@@ -704,16 +704,12 @@ theme validate <slug>     # just one
 Notifications are served and rendered natively by the persistent Quickshell
 process. Applications talk to `org.freedesktop.Notifications`; one service then
 normalises the event, persists it, applies DND, and either places it in the
-focused monitor's top-right stack or writes it silently to history. While the
-bar is shown, a non-critical notification with no actions (no buttons and no
-click action) goes to history and shows as a glance in the bar's centre island
-instead of a card.
+focused monitor's top-right stack or writes it silently to history.
 
 ```text
 application -> Quickshell NotificationServer -> NotificationService
                                                 |-> active/history state
-                                                |-> per-output card stack (critical, or with any action)
-                                                |-> centre island glance (everything else)
+                                                |-> per-output card stack
                                                 `-> notifications IPC
 ```
 
@@ -950,17 +946,14 @@ in `workspaces/WorkspacesLogic.js`; validate with
 
 ### Bar centre island glances
 
-A track change or a non-critical notification with no actions briefly widens
-the centre island around the clock to show a glance, then it folds back. A
-notification glances on the focused monitor's bar; a track change on every bar. The
-clock stays pinned; the capsule stops short of the neighbouring islands.
-Hovering a glance pauses it and opens the expanded island underneath: now
-playing with the current lyric line, then the latest notification glances.
-Clicking now playing opens the media panel. Critical notifications, ones with
-buttons or a click action, and all notifications while the bar is hidden keep
-their card in the top-right stack. Hold times, priorities and
-the glance width live in `~/.config/quickshell/island/config.json`; the queue
-rules are in `island/IslandLogic.js`. Validate with `bash tests/island.test.sh`.
+A track change briefly widens the centre island around the clock to show a
+glance, then it folds back. The glance shows on every bar. The clock stays
+pinned; the capsule stops short of the neighbouring islands. Hovering a glance
+pauses it and opens the expanded island underneath, with now playing and the
+current lyric line. Clicking now playing opens the media panel. Notifications
+keep their card in the top-right stack. The hold time and the glance width
+live in `~/.config/quickshell/island/config.json`; the queue rules are in
+`island/IslandLogic.js`. Validate with `bash tests/island.test.sh`.
 
 ## What's Included
 
