@@ -939,7 +939,8 @@ in `workspaces/WorkspacesLogic.js`; validate with
 ### Bar centre island glances
 
 A track change or a non-critical notification without buttons briefly widens
-the centre island around the clock to show a glance, then it folds back. The
+the centre island around the clock to show a glance, then it folds back. A
+notification glances on the focused monitor's bar; a track change on every bar. The
 clock stays pinned; the capsule stops short of the neighbouring islands.
 Hovering a glance pauses it and opens the expanded island underneath: now
 playing with the current lyric line, then the latest notification glances.

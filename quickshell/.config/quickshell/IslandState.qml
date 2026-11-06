@@ -25,6 +25,9 @@ Singleton {
   property var recent: []
   // Hovering a glance expands it on that screen's bar and pauses its hold.
   property string expandedScreen: ""
+  // What is left of the current glance's hold, kept across a hover pause.
+  property int holdRemaining: 0
+  property real holdStartedMs: 0
 
   // IslandSmoke swaps in a fake with the same properties.
   property var media: MediaState
@@ -41,7 +44,10 @@ Singleton {
       kind: isMedia ? "media" : "notification",
       glyph: entry.glyph || (isMedia ? root.glyphMusic : root.glyphBell),
       title: entry.summary || entry.app,
-      body: String(entry.body || "").split("\n")[0] || entry.app
+      body: String(entry.body || "").split("\n")[0] || entry.app,
+      // Like its card would, a notification shows on the focused screen.
+      // Media glances have no screen and show on every bar.
+      screen: isMedia ? "" : String(entry.screenName || "")
     }
     root.show(glance)
     if (!isMedia) root.recent = Logic.remember(root.recent, glance, root.recentLimit)
@@ -61,12 +67,21 @@ Singleton {
     root.expandedScreen = ""
   }
 
-  onCurrentChanged: if (holdTimer.running) holdTimer.restart()
+  onCurrentChanged: {
+    root.holdRemaining = Logic.holdFor(root.queue, root.kinds)
+    root.holdStartedMs = Date.now()
+    if (holdTimer.running) holdTimer.restart()
+  }
 
   Timer {
     id: holdTimer
-    interval: Logic.holdFor(root.queue, root.kinds)
+    interval: Math.max(1, root.holdRemaining)
     running: root.current !== null && root.expandedScreen === ""
+    onRunningChanged: {
+      if (running) root.holdStartedMs = Date.now()
+      else if (root.current)
+        root.holdRemaining = Math.max(0, root.holdRemaining - (Date.now() - root.holdStartedMs))
+    }
     onTriggered: root.advance()
   }
 

@@ -1,7 +1,8 @@
 // Rules for the centre island's glances. Pure, so they run under node and in
 // IslandSmoke.qml. IslandState.qml owns the timer and the event sources.
 //
-// A glance is {kind, glyph, title, body}. A queue is {current, pending}:
+// A glance is {kind, glyph, title, body, screen}, where an empty screen means
+// every bar. A queue is {current, pending}:
 // one glance on screen and at most one waiting per kind.
 
 var defaultKinds = {

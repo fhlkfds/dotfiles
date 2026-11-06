@@ -45,7 +45,10 @@ Item {
     minShift > maxShift ? (minShift + maxShift) / 2
                         : Math.min(Math.max(0, minShift), maxShift)
 
-  readonly property bool glancing: IslandState.current !== null
+  function showsHere(glance) {
+    return glance !== null && (!glance.screen || glance.screen === centerGroup.screenName)
+  }
+  readonly property bool glancing: showsHere(IslandState.current)
   // Kept after the glance ends so its text stays put while the capsule folds.
   property var shownGlance: null
   readonly property real clockCentre: clockLabel.x + clockLabel.width / 2
@@ -62,7 +65,7 @@ Item {
   Connections {
     target: IslandState
     function onCurrentChanged() {
-      if (IslandState.current) centerGroup.shownGlance = IslandState.current
+      if (centerGroup.showsHere(IslandState.current)) centerGroup.shownGlance = IslandState.current
     }
   }
 

@@ -123,11 +123,26 @@ FloatingWindow {
 
         IslandState.hover("fixture", true)
         check("hovering a glance expands it on that screen", IslandState.expandedScreen === "fixture")
+        const paused = IslandState.holdRemaining
+        check("hovering pauses the hold with the elapsed time taken off",
+              paused > 0 && paused < IslandState.kinds.media.holdMs)
+        check("the expanded island keeps the lyric clock running", MediaState.timelineShown)
         IslandState.collapse()
         check("collapse folds the expansion", IslandState.expandedScreen === "")
+        check("leaving resumes the hold instead of restarting it",
+              IslandState.holdRemaining === paused)
 
         IslandState.advance()
         check("the queued notification shows next", IslandState.current.title === "New mail")
+        check("a notification glance carries the screen it arrived on",
+              IslandState.current.screen === service.focusedScreenName())
+        IslandState.showNotification({ app: "Mail", summary: "Elsewhere", body: "", image: "",
+                                       screenName: "other-monitor" })
+        check("a notification glance for another screen leaves this clock alone",
+              IslandState.current.title === "Elsewhere" && !center.glancing)
+        IslandState.showNotification({ app: "Mail", summary: "Here", body: "", image: "",
+                                       screenName: "fixture" })
+        check("a notification glance for this screen shows here", center.glancing)
         IslandState.advance()
         check("an empty queue folds back to the clock", IslandState.current === null)
         driver.interval = window.settle()
