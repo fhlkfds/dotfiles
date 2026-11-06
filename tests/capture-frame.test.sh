@@ -53,6 +53,17 @@ jq 'del(.colors.accentAlt)' "$test_root/theme.json" >"$test_root/no-alt.json"
 FRAME_THEME_FILE="$test_root/no-alt.json" "$frame" "$test_root/shots/shot.png" >/dev/null
 grep -Fxq '0,0 #112233 %[fx:w-1],%[fx:h-1] #778899' "$MAGICK_ARGS" || fail 'no background fallback for accentAlt'
 
+# Rounding 0 draws square corners with a plain rectangle.
+jq '.style.rounding = 0' "$test_root/theme.json" >"$test_root/square.json"
+FRAME_THEME_FILE="$test_root/square.json" "$frame" "$test_root/shots/shot.png" >/dev/null
+grep -Fxq 'rectangle 0,0 %[fx:w-1],%[fx:h-1]' "$MAGICK_ARGS" || fail 'rounding 0 does not draw a plain rectangle'
+
+# An input without an extension frames beside itself, even in a dotted directory.
+mkdir -p "$test_root/b.dir"
+printf png >"$test_root/b.dir/shot"
+output=$("$frame" "$test_root/b.dir/shot")
+[[ $output == "$test_root/b.dir/shot-framed.png" ]] || fail "extensionless input framed to $output"
+
 # --dry-run prints the plan and runs nothing.
 rm -f "$MAGICK_ARGS" "$COPY_ARGS"
 plan=$("$frame" --dry-run "$test_root/shots/shot.png")
@@ -115,6 +126,11 @@ else
   ((w > 40 && h > 30)) || fail "framed image ${w}x${h} is not larger than 40x30"
   corner=$("$real_magick" "$real" -format '%[hex:p{0,0}]' info:)
   [[ ${corner:0:6} == 112233 ]] || fail "backdrop corner is #$corner, not the accent"
+  # Rounding 0 keeps every capture pixel visible, square corners included.
+  square=$(FRAME_THEME_FILE="$test_root/square.json" FRAME_MAGICK="$real_magick" "$frame" "$test_root/tiny.png")
+  shown=$("$real_magick" "$square" -alpha off -fill black +opaque '#202020' -fill white -opaque '#202020' \
+    -format '%[fx:round(mean*w*h)]' info:)
+  [[ $shown == 1200 ]] || fail "rounding 0 shows $shown of 1200 capture pixels"
 fi
 
 printf 'ok: frame.sh themed backdrop, clipboard copy, dry-run, missing theme, capture --frame\n'

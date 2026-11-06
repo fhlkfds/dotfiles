@@ -42,14 +42,20 @@ for colour in "$start_colour" "$end_colour"; do
 done
 [[ "$rounding" =~ ^[0-9]+$ ]] || fail "theme rounding is not a whole number ($rounding): $theme_file"
 
-output="${input%.*}-framed.png"
+# Strip an extension from the file name only, so a dotted directory survives.
+name=${input##*/}
+output="${input%"$name"}${name%.*}-framed.png"
+# ImageMagick draws a near-empty roundrectangle at radius 0, which would hide
+# the whole capture, so square corners use a plain rectangle.
+corner_shape="roundrectangle 0,0 %[fx:w-1],%[fx:h-1] $rounding,$rounding"
+((rounding > 0)) || corner_shape="rectangle 0,0 %[fx:w-1],%[fx:h-1]"
 
 # One ImageMagick pass. Percent escapes size the corner mask and the gradient
 # from the image itself, so no separate identify call is needed.
 magick_args=(
   "$input"
   '(' +clone -alpha extract -fill black -colorize 100 -fill white
-      -draw "roundrectangle 0,0 %[fx:w-1],%[fx:h-1] $rounding,$rounding" ')'
+      -draw "$corner_shape" ')'
   -alpha off -compose CopyOpacity -composite
   '(' +clone -background '#000000' -shadow 50x16+0+12 ')'
   +swap -background none -compose Over -layers merge +repage
