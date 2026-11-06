@@ -71,7 +71,10 @@ FloatingWindow {
   function capsule() { return center.capsule }
   function settle() { return IslandState.animationMs + 250 }
 
-  Component.onCompleted: IslandState.media = fakeMedia
+  Component.onCompleted: {
+    IslandState.media = fakeMedia
+    service.islandShown = true
+  }
 
   Timer {
     id: driver
@@ -108,6 +111,12 @@ FloatingWindow {
         check("capsule swells in height", window.capsule().height > Theme.barIslandHeight)
         check("glance replaces the clock", find(center, "islandGlance").visible && !center.clock.visible)
 
+        window.cardsBefore = service.popupModel.count
+        service.islandShown = false
+        service.receive(fakeNotification(40, "Bar hidden", "", 1))
+        check("with the bar hidden a plain notification keeps its card",
+              service.popupModel.count === window.cardsBefore + 1 && IslandState.queue.pending.length === 0)
+        service.islandShown = true
         window.cardsBefore = service.popupModel.count
         service.receive(fakeNotification(41, "New mail", "From Ada\nsecond line", 1))
         check("a plain notification does not open a card", service.popupModel.count === window.cardsBefore)

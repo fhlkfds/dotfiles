@@ -2,10 +2,17 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 import QtQuick
+import "notifications" as Notifications
 
 Scope {
   id: bar
   property bool barVisible: true
+
+  Binding {
+    target: Notifications.NotificationService
+    property: "islandShown"
+    value: bar.barVisible
+  }
 
   // Panels opened from a keybind rather than a click target the focused
   // monitor, so they land where the user is looking.

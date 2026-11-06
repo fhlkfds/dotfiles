@@ -16,6 +16,9 @@ Singleton {
 
   property alias popupModel: popupModel
   property bool dnd: NotificationConfig.defaultDnd
+  // Bar.qml sets this while its centre island is on screen. Without it a
+  // notification that would glance gets a card instead of only history.
+  property bool islandShown: false
   property bool stateLoaded: false
   property int historyCount: 0
   property var liveRefs: ({})
@@ -158,7 +161,7 @@ Singleton {
       root.debug("stored under DND", entry.app, entry.summary)
       return
     }
-    if (Logic.routesToIsland(entry)) {
+    if (root.islandShown && Logic.routesToIsland(entry)) {
       root.storeInHistory(entry, notification)
       root.glanced(entry)
       return
