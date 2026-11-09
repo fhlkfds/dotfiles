@@ -148,9 +148,18 @@ The independent `modes` package unifies night light, Quickshell DND,
 stay-awake, and automatic-screensaver state without owning lock, suspend, DPMS,
 or authentication policy.
 
+Night light, DND and stay-awake can run for a set time: the panel offers 30m,
+1h, 3h and 8h (`duration_presets` in `~/.config/desktop-mode/config.toml`)
+plus a Custom box that takes `45m`, `2h` or `1h30m`. While stay-awake is on,
+the daemon holds a `systemd-inhibit --what=idle` block, so Hypridle skips the
+screensaver, screen off, lock and suspend. Each Hypridle listener also runs
+`desktop-mode condition`, so this holds even when the daemon is down. A manual
+suspend or a closed lid still sleeps.
+
 ```bash
 desktop-mode status
-desktop-mode enable stay-awake --for 30m
+desktop-mode enable stay-awake --for 3h
+desktop-mode enable night-light --for 1h30m
 desktop-mode toggle do-not-disturb
 desktop-mode action screensaver
 desktop-mode doctor --json

@@ -16,14 +16,15 @@ Singleton {
   property bool daemonRunning: false
   property int warmTemperature: 1000
   property int normalTemperature: 6500
-  property var durationPresets: ["15m", "30m", "1h"]
+  readonly property var defaultPresets: ["30m", "1h", "3h", "8h"]
+  property var durationPresets: defaultPresets
 
   readonly property var metadata: ({
     "night-light": { label: "Night light", glyph: String.fromCodePoint(0xf0594), detail: root.warmTemperature + "K warm display" },
     // badge is optional short text drawn beside the glyph in the bar pill.
     // DND carries one because the bell glyph alone is easy to miss.
     "do-not-disturb": { label: "Do not disturb", glyph: String.fromCodePoint(0xf0a91), badge: "DND", detail: "Hide toasts, preserve history" },
-    "stay-awake": { label: "Stay awake", glyph: String.fromCodePoint(0xf0f2e), detail: "Skip idle screensaver and lock" },
+    "stay-awake": { label: "Stay awake", glyph: String.fromCodePoint(0xf0f2e), detail: "No screensaver, screen off, lock or sleep" },
     "screensaver-auto": { label: "Automatic screensaver", glyph: String.fromCodePoint(0xf06a9), detail: "Run after configured inactivity" }
   })
 
@@ -58,6 +59,13 @@ Singleton {
   function timed(name, duration) { invoke(["enable", name, "--for", duration]) }
   function screensaver() { invoke(["action", "screensaver"]) }
 
+  // "18:30" for an expires_at in epoch seconds; adds the weekday past today.
+  function clockTime(epochSeconds) {
+    const end = new Date(epochSeconds * 1000)
+    const sameDay = end.toDateString() === new Date().toDateString()
+    return Qt.formatDateTime(end, sameDay ? "HH:mm" : "ddd HH:mm")
+  }
+
   function applyStatus(text) {
     if (text.trim() === "") return
     try {
@@ -67,7 +75,7 @@ Singleton {
       const settings = value.settings || ({})
       root.warmTemperature = settings.warm_temperature || 1000
       root.normalTemperature = settings.normal_temperature || 6500
-      root.durationPresets = settings.duration_presets || ["15m", "30m", "1h"]
+      root.durationPresets = settings.duration_presets || root.defaultPresets
       root.lastError = ""
     } catch (error) {
       root.lastError = "Invalid desktop-mode status: " + error
