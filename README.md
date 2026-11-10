@@ -955,17 +955,6 @@ workspaces and special (scratchpad) workspaces are hidden. Selection rules are
 in `workspaces/WorkspacesLogic.js`; validate with
 `bash tests/workspaces-module.test.sh`.
 
-### Bar centre island glances
-
-A track change briefly widens the centre island around the clock to show a
-glance, then it folds back. The glance shows on every bar. The clock stays
-pinned; the capsule stops short of the neighbouring islands. Hovering a glance
-pauses it and opens the expanded island underneath, with now playing and the
-current lyric line. Clicking now playing opens the media panel. Notifications
-keep their card in the top-right stack. The hold time and the glance width
-live in `~/.config/quickshell/island/config.json`; the queue rules are in
-`island/IslandLogic.js`. Validate with `bash tests/island.test.sh`.
-
 ## What's Included
 
 | Package | Tool | Description |

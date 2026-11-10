@@ -196,11 +196,9 @@ Singleton {
 
   onActiveChanged: root.resyncPosition()
 
-  // Something on screen is showing the timeline: this panel, the clock
-  // dashboard, or the expanded island's lyric line. Nothing else reads
-  // the extrapolated position.
+  // Something on screen is showing the timeline: this panel or the clock
+  // dashboard. Nothing else reads the extrapolated position.
   readonly property bool timelineShown: root.panelVisible
-    || IslandState.expandedScreen !== ""
     || (DashboardState.panelVisible
         && (DashboardState.activeTab === "overview" || DashboardState.activeTab === "media"))
 

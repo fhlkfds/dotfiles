@@ -409,12 +409,11 @@ Scope {
       }
 
       // The clock is the center anchor. Indicators grow left without nudging
-      // it, and a glance widens the capsule around it. See BarCenter.qml.
+      // it. See BarCenter.qml.
       BarCenter {
         id: centerGroup
         anchors.fill: parent
         barScale: panel.barScale
-        screenName: panel.modelData.name
         leftEdge: leftIsland.x + leftIsland.width
         rightEdge: rightGroup.x
         // The time and the weather beside it open the dashboard.
@@ -431,14 +430,9 @@ Scope {
       }
 
       // The media panel anchors to the centered clock and opens through the
-      // `media` IPC target or the expanded island's now-playing row.
+      // `media` IPC target.
       MediaPanel {
         anchorItem: centerGroup.clock
-        ownerScreen: panel.modelData.name
-      }
-
-      IslandPanel {
-        anchorItem: centerGroup.capsule
         ownerScreen: panel.modelData.name
       }
 
