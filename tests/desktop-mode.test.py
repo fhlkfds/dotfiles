@@ -105,6 +105,33 @@ class DesktopModeTests(unittest.TestCase):
         controller.expire()
         self.assertFalse(controller.status_one("stay-awake")["observed"])
 
+    def test_expiry_never_overwrites_a_renewal_made_meanwhile(self) -> None:
+        # The user renews while expire() waits on a slow backend call.
+        def runner(argv, **_kwargs):
+            if argv[-1] == "dnd-off":
+                for name in ("do-not-disturb", "stay-awake"):
+                    self.store.update(lambda value, n=name: value["modes"][n].update(
+                        desired=True, expires_at=time.time() + 3600))
+            if argv[-2:] == ["status", "--json"]:
+                return subprocess.CompletedProcess(argv, 0, json.dumps({"available": True, "dnd": True}), "")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        controller = Controller(self.config, self.store, runner)
+        for name in ("do-not-disturb", "stay-awake"):
+            self.store.update(lambda value, n=name: value["modes"][n].update(
+                desired=True, expires_at=time.time() - 1))
+        controller.expire()
+        for name in ("do-not-disturb", "stay-awake"):
+            item = self.store.read()["modes"][name]
+            self.assertTrue(item["desired"], name)
+            self.assertGreater(item["expires_at"], time.time(), name)
+
+    def test_expired_stay_awake_reads_off_without_a_daemon(self) -> None:
+        controller = Controller(self.config, self.store)
+        self.store.update(lambda value: value["modes"]["stay-awake"].update(
+            desired=True, expires_at=time.time() - 1))
+        self.assertFalse(controller.status_one("stay-awake")["observed"])
+        self.assertTrue(controller.toggle("stay-awake")["observed"], "toggle of an expired timer turns it on")
+
     def test_backend_commands_are_argv_and_observed(self) -> None:
         calls = []
         def runner(argv, **_kwargs):
@@ -282,6 +309,20 @@ class DesktopModeTests(unittest.TestCase):
         self.assertIsNot(controller.inhibitor, first, "dead inhibitor was not replaced")
         self.assertIn("exited with status 0", controller.status_one("stay-awake")["error"])
         controller.release_awake()
+
+    def test_inhibitor_error_clears_once_stay_awake_is_off(self) -> None:
+        dying = Config(**{**self.config.__dict__, "inhibit_command": ("true",)})
+        controller = Controller(dying, self.store)
+        controller.set("stay-awake", True)
+        controller.hold_awake()
+        self.assertTrue(self._wait_for(lambda: controller.inhibitor.poll() is not None))
+        controller.hold_awake()
+        self.assertIsNotNone(controller.status_one("stay-awake")["error"])
+        # Turning stay-awake off clears a recorded inhibitor failure.
+        self.store.update(lambda value: value["modes"]["stay-awake"].update(desired=False))
+        controller.hold_awake()
+        self.assertIsNone(controller.status_one("stay-awake")["error"])
+        self.assertIsNone(controller.inhibitor)
 
     def test_daemon_inhibitor_follows_cli_and_dies_with_daemon(self) -> None:
         _fixture, log = self._inhibit_fixture()

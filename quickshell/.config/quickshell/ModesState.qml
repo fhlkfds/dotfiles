@@ -49,14 +49,19 @@ Singleton {
   function close() { panelVisible = false }
   function refresh() { if (!statusProc.running) statusProc.running = true }
 
+  // Emitted when an invoke()d command exits; ok is exit status 0.
+  signal actionFinished(bool ok)
+
+  // False when another action is still running and this one did not start.
   function invoke(args) {
-    if (actionProc.running) return
+    if (actionProc.running) return false
     actionProc.command = [root.executable].concat(args)
     actionProc.running = true
+    return true
   }
 
-  function toggle(name) { invoke(["toggle", name]) }
-  function timed(name, duration) { invoke(["enable", name, "--for", duration]) }
+  function toggle(name) { return invoke(["toggle", name]) }
+  function timed(name, duration) { return invoke(["enable", name, "--for", duration]) }
   function screensaver() { invoke(["action", "screensaver"]) }
 
   // "18:30" for an expires_at in epoch seconds; adds the weekday past today.
@@ -103,6 +108,7 @@ Singleton {
     onExited: (code, status) => {
       if (code === 0) root.lastError = ""
       refreshDelay.restart()
+      root.actionFinished(code === 0)
     }
   }
 

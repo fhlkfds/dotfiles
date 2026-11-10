@@ -153,7 +153,9 @@ Night light, DND and stay-awake can run for a set time: the panel offers 30m,
 plus a Custom box that takes `45m`, `2h` or `1h30m`. While stay-awake is on,
 the daemon holds a `systemd-inhibit --what=idle` block, so Hypridle skips the
 screensaver, screen off, lock and suspend. Each Hypridle listener also runs
-`desktop-mode condition`, so this holds even when the daemon is down. A manual
+`desktop-mode condition`, so this holds even when the daemon is down. Idle
+time does not count while stay-awake is on: when it ends, those timers start
+over (20 minutes to lock, 30 to suspend) rather than firing at once. A manual
 suspend or a closed lid still sleeps.
 
 ```bash

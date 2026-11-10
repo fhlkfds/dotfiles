@@ -317,8 +317,9 @@ class Controller:
         elif name == "screensaver-auto":
             available, observed, error = self._screen_status()
         else:
-            item = state["modes"][name]
-            available, observed, error = True, bool(item["desired"]), item["error"]
+            # Same predicate as `condition`: an expired timer is off even when
+            # no daemon is running to clear it.
+            available, observed, error = True, self.stay_awake_active(state), state["modes"][name]["error"]
         item = state["modes"].get(name, {})
         desired = observed if name in ("screensaver-auto", "night-light") else bool(item.get("desired", observed))
         return {"name": name, "desired": desired, "observed": observed, "available": available,
@@ -345,7 +346,10 @@ class Controller:
         if result.returncode:
             raise ModeError(result.stderr.strip() or result.stdout.strip() or f"{name} backend failed")
 
-    def set(self, name: str, enabled: bool, duration: str | None = None) -> dict[str, Any]:
+    def set(self, name: str, enabled: bool, duration: str | None = None,
+            if_expires_at: float | None = None) -> dict[str, Any]:
+        """if_expires_at: leave the stored mode alone unless its timer still
+        ends at this time, so an expiry never overwrites a renewal."""
         if name not in MODES:
             raise ModeError(f"unknown mode: {name}")
         if duration and (not enabled or name not in TRANSIENT):
@@ -358,6 +362,8 @@ class Controller:
             error = str(caught)
         if name in TRANSIENT:
             def mutate(state: dict[str, Any]) -> None:
+                if if_expires_at is not None and state["modes"][name]["expires_at"] != if_expires_at:
+                    return
                 state["modes"][name] = {"desired": enabled, "expires_at": expiry, "error": error}
                 if name == "night-light" and enabled and not error:
                     state["modes"][name]["shader_revision"] = self._shader_revision()
@@ -372,9 +378,9 @@ class Controller:
 
     def expire(self) -> None:
         now = time.time()
-        state = self.store.read()
         for name in TRANSIENT:
-            item = state["modes"][name]
+            # Fresh per mode: an earlier backend call can block for seconds.
+            item = self.store.read()["modes"][name]
             if name == "night-light" and item["expires_at"] is not None:
                 revision = item.get("shader_revision")
                 if revision is None or revision != self._shader_revision():
@@ -382,7 +388,7 @@ class Controller:
                     continue
             if item["desired"] and item["expires_at"] is not None and item["expires_at"] <= now:
                 try:
-                    self.set(name, False)
+                    self.set(name, False, if_expires_at=item["expires_at"])
                 except ModeError:
                     pass
 
@@ -393,28 +399,36 @@ class Controller:
     def hold_awake(self) -> None:
         """Hold the idle inhibitor exactly while stay-awake is active.
 
+        While it is held Hypridle counts no idle time, so when stay-awake ends
+        the screensaver, lock, screen-off and suspend timers start over from
+        zero instead of all firing at once.
+
         Called by the daemon on every pass, so a dead inhibitor (logind
         restart, OOM) is replaced within one pass. A failure is recorded on the
         mode until a replacement survives a pass; the hypridle condition_cmd
         gates keep the session awake meanwhile.
         """
         state = self.store.read()
-        if not self.stay_awake_active(state):
-            self.release_awake()
-            return
+        active = self.stay_awake_active(state)
         error = None
-        if self.inhibitor is not None and self.inhibitor.poll() is not None:
+        if not active:
+            self.release_awake()
+        elif self.inhibitor is not None and self.inhibitor.poll() is not None:
             error = f"idle inhibitor exited with status {self.inhibitor.returncode}"
             self.release_awake()
-        if self.inhibitor is None:
+        if active and self.inhibitor is None:
             try:
                 self.inhibitor = subprocess.Popen(
                     list(self.config.inhibit_command), stdin=subprocess.PIPE,
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except OSError as caught:
                 error = f"idle inhibitor unavailable: {caught}"
+        def record(value: dict[str, Any]) -> None:
+            # An off or expiry that landed since the read wins over a late failure.
+            if error is None or self.stay_awake_active(value):
+                value["modes"]["stay-awake"]["error"] = error
         if state["modes"]["stay-awake"]["error"] != error:
-            self.store.update(lambda value: value["modes"]["stay-awake"].update(error=error))
+            self.store.update(record)
 
     def release_awake(self) -> None:
         if self.inhibitor is None:

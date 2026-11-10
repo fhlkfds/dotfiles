@@ -7,8 +7,23 @@ PanelWindow {
   required property string ownerScreen
   // Mode whose row shows the custom-duration box instead of the presets.
   property string customMode: ""
+  // A custom duration was sent; the box closes only if it succeeds, so a
+  // rejected entry stays editable beside the error banner.
+  property bool customPending: false
 
-  onVisibleChanged: if (!visible) customMode = ""
+  onVisibleChanged: if (!visible) { customMode = ""; customPending = false }
+
+  Connections {
+    target: ModesState
+    function onActionFinished(ok) {
+      if (!panel.customPending) return
+      panel.customPending = false
+      if (ok) {
+        panel.customMode = ""
+        card.forceActiveFocus()
+      }
+    }
+  }
 
   visible: ModesState.panelVisible && ModesState.panelScreen === ownerScreen
   anchors { top: true; bottom: true; left: true; right: true }
@@ -177,12 +192,12 @@ PanelWindow {
                     if (visible) forceActiveFocus()
                   }
                   onAccepted: {
-                    if (text.trim() === "") return
-                    ModesState.timed(modeRow.modelData, text.trim())
-                    panel.customMode = ""
-                    card.forceActiveFocus()
+                    if (text.trim() === "" || panel.customPending) return
+                    // Busy with another action: keep the text, Enter again.
+                    panel.customPending = ModesState.timed(modeRow.modelData, text.trim())
                   }
                   Keys.onEscapePressed: event => {
+                    panel.customPending = false
                     panel.customMode = ""
                     card.forceActiveFocus()
                     event.accepted = true

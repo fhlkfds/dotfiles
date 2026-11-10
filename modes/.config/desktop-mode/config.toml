@@ -12,3 +12,9 @@ reconcile_seconds = 2.0
 #
 #   notification_command = ["/opt/hypr/bin/notificationctl"]
 #   screensaver_command = ["/opt/hypr/bin/ascii-screensaver"]
+#
+# While stay-awake is on, the daemon runs inhibit_command with a pipe on its
+# stdin and closes the pipe to release it. The default:
+#
+#   inhibit_command = ["systemd-inhibit", "--what=idle", "--who=desktop-mode",
+#                      "--why=Stay awake is on", "--mode=block", "cat"]
