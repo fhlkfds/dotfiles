@@ -48,7 +48,6 @@ Item {
   // would drift sideways every time a mode pill appeared.
   Rectangle {
     id: centerIsland
-    objectName: "centerCapsule"
     anchors.verticalCenter: parent.verticalCenter
     x: leadingRow.x - Theme.barIslandPadding
     width: clockLabel.x + clockLabel.width + centerGroup.rowMargin
@@ -62,7 +61,6 @@ Item {
   // centring and collision maths above treat the whole block as the clock.
   Row {
     id: clockLabel
-    objectName: "centerClock"
     anchors.centerIn: parent
     // Zero whenever the bar is wide enough, which is every landscape
     // monitor. The clock only leaves true centre to avoid a collision.

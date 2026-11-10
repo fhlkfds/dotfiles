@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Bar centre: the clock capsule is static. Nothing pops out of it for track
-# changes or notifications. Static checks first, then BarCenterSmoke.qml, which
-# measures the real BarCenter before and after notifications arrive.
+# changes or notifications. Static checks first: no theme-bypassing colours,
+# nothing that spawns or polls, no leftover island references. Then
+# BarCenterSmoke.qml measures the real BarCenter on a roomy bar and a crowded
+# one, and before and after notifications arrive.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -19,9 +21,9 @@ if grep -nE '"#[0-9a-fA-F]{3,8}"' "${center_qml[@]}"; then
   fail 'bar centre QML contains a hardcoded colour'
 fi
 
-# The bar is the hot path: no process spawns, no polling.
-if grep -nE 'Process|execDetached|repeat: *true' "${center_qml[@]}"; then
-  fail 'bar centre QML spawns processes or polls'
+# The centre is on the bar's hot path: no process spawns, no polling.
+if grep -nE 'Process|execDetached|repeat: *true' "$shell_dir/BarCenter.qml"; then
+  fail 'BarCenter.qml spawns processes or polls'
 fi
 
 # The pop-out island is gone. A leftover reference would stop the whole shell
