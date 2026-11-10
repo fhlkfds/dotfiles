@@ -232,6 +232,39 @@ class DesktopModeTests(unittest.TestCase):
         item = self.store.read()["modes"]["night-light"]
         self.assertGreater(item["expires_at"] or 0, time.time(), "renewed timer was dropped")
 
+    def test_off_queued_behind_a_reapply_wins(self) -> None:
+        # Expiry loses to a renewal; the user's off then completes just before
+        # the re-apply's queued "on" runs. The light must end off.
+        shader = self.temp / "shader"
+        # Steps: the expiry "off" triggers a renewal (its own "on"), then the
+        # re-apply's "on" triggers the user's off.
+        script = ["renew", "renewal-on", "user-off"]
+        def runner(argv, **_kwargs):
+            if argv[-1] == "off" and script and script[0] == "renew":
+                script.pop(0)
+                Controller(self.config, self.store, runner).set("night-light", True, "1h")
+            elif argv[-1] == "on" and script and script[0] == "renewal-on":
+                script.pop(0)
+            elif argv[-1] == "on" and script == ["user-off"]:
+                # The user's off was queued first, so it completes before
+                # this "on" executes.
+                script.pop(0)
+                Controller(self.config, self.store, runner).set("night-light", False)
+            if argv[-1] == "on":
+                shader.write_text("enabled\n")
+            elif argv[-1] == "off":
+                shader.unlink(missing_ok=True)
+            status = "on" if shader.exists() else "off"
+            return subprocess.CompletedProcess(argv, 0, f"night-light: {status}\n", "")
+        controller = Controller(self.config, self.store, runner)
+        controller.set("night-light", True, "1h")
+        self.store.update(lambda value: value["modes"]["night-light"].update(
+            expires_at=time.time() - 1))
+        controller.expire()
+        self.assertEqual(script, [])
+        self.assertFalse(self.store.read()["modes"]["night-light"]["desired"])
+        self.assertFalse(shader.exists(), "night light left on after the user turned it off")
+
     def test_probed_mode_error_clears_when_backend_recovers(self) -> None:
         def runner(argv, **_kwargs):
             if argv[-2:] == ["status", "--json"]:

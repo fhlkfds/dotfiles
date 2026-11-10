@@ -382,11 +382,20 @@ class Controller:
         return self.status_one(name)
 
     def _reapply(self, name: str) -> None:
-        item = self.store.read()["modes"][name]
-        try:
-            self._set_backend(name, item["desired"])
-        except ModeError:
-            return
+        # Backend calls queue behind each other (night-light.sh holds a lock),
+        # so a later off may land while ours runs. Re-read after each call and
+        # follow the store until it stops moving; bounded so it cannot spin.
+        applied = None
+        for _ in range(3):
+            item = self.store.read()["modes"][name]
+            if item["desired"] == applied:
+                break
+            try:
+                self._set_backend(name, item["desired"])
+            except ModeError as caught:
+                self.store.update(lambda value, e=str(caught): value["modes"][name].update(error=e))
+                return
+            applied = item["desired"]
         if name == "night-light" and item["desired"]:
             revision = self._shader_revision()
             def own(state: dict[str, Any]) -> None:
