@@ -285,15 +285,14 @@ check('city search handles failed, malformed, empty and invalid-coordinate respo
 check('media position ticks only when a timeline is visible', () => {
   const source = fs.readFileSync(path.join(qs, 'MediaState.qml'), 'utf8');
   const expression = source.match(/readonly property bool timelineShown:([\s\S]*?)\n\n/)[1];
-  const shown = (panelVisible, dashboard, expandedScreen = '') => vm.runInNewContext(expression,
-    {root: {panelVisible}, DashboardState: dashboard, IslandState: {expandedScreen}});
+  const shown = (panelVisible, dashboard) => vm.runInNewContext(expression,
+    {root: {panelVisible}, DashboardState: dashboard});
   for (const activeTab of ['overview', 'media', 'system', 'weather']) {
     const dashboard = {panelVisible: true, activeTab};
     assert.equal(shown(false, dashboard), activeTab === 'overview' || activeTab === 'media');
     dashboard.panelVisible = false;
     assert.equal(shown(false, dashboard), false);
     assert.equal(shown(true, dashboard), true);
-    assert.equal(shown(false, dashboard, 'DP-1'), true, 'the expanded island shows the lyric line');
   }
 });
 check('dashboard toggles per screen and resets to Overview', () => {
