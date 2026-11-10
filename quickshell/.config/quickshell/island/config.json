@@ -1,7 +1,0 @@
-{
-  "kinds": {
-    "media": { "holdMs": 3500, "priority": 1 }
-  },
-  "animationMs": 220,
-  "glanceMaxWidth": 420
-}
