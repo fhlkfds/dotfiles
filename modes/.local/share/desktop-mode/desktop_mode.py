@@ -22,7 +22,8 @@ from typing import Any, Callable
 VERSION = "1.0.0"
 MODES = ("night-light", "do-not-disturb", "stay-awake", "screensaver-auto")
 TRANSIENT = frozenset(MODES[:3])
-DURATION_RE = re.compile(r"^([1-9][0-9]*)([smh])$")
+DURATION_RE = re.compile(r"^(?:([0-9]+)h)?(?:([0-9]+)m)?(?:([0-9]+)s)?$")
+DEFAULT_PRESETS = ("30m", "1h", "3h", "8h")
 LISTENER_RE = re.compile(r"listener\s*\{(.*?)\}", re.DOTALL)
 
 
@@ -48,7 +49,7 @@ class Config:
     warm_temperature: int = 1000
     normal_temperature: int = 6500
     maximum_duration_seconds: int = 86400
-    duration_presets: tuple[str, ...] = ("15m", "30m", "1h")
+    duration_presets: tuple[str, ...] = DEFAULT_PRESETS
     reconcile_seconds: float = 2.0
     notification_command: tuple[str, ...] = field(
         default_factory=lambda: (_local_bin("notificationctl"),))
@@ -57,6 +58,13 @@ class Config:
     night_light_command: tuple[str, ...] = field(default_factory=lambda: (
         str(Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
             / "hypr/scripts/night-light.sh"),))
+    # Held by the daemon while stay-awake is on. Hypridle pauses every idle
+    # listener (screensaver, lock, screen off, suspend) while a systemd "idle"
+    # block exists. The command must run until its stdin closes: the daemon
+    # owns the pipe, so even a SIGKILLed daemon releases the block.
+    inhibit_command: tuple[str, ...] = (
+        "systemd-inhibit", "--what=idle", "--who=desktop-mode",
+        "--why=Stay awake is on", "--mode=block", "cat")
 
 
 def config_path() -> Path:
@@ -89,11 +97,17 @@ def _argv(value: Any, label: str) -> tuple[str, ...]:
 
 
 def parse_duration(value: str, maximum: int = 86400) -> int:
+    """Seconds in "90", "45m", "3h", "1h30m" or "90s". A bare number is minutes."""
+    value = value.strip().lower().replace(" ", "")
+    if value.isdigit():
+        value += "m"
     match = DURATION_RE.fullmatch(value)
-    if not match:
-        raise ModeError("duration must be an integer followed by s, m, or h")
-    scale = {"s": 1, "m": 60, "h": 3600}[match.group(2)]
-    seconds = int(match.group(1)) * scale
+    if not value or not match:
+        raise ModeError("duration must look like 45m, 3h or 1h30m")
+    hours, minutes, secs = (int(part or 0) for part in match.groups())
+    seconds = hours * 3600 + minutes * 60 + secs
+    if seconds <= 0:
+        raise ModeError("duration must be longer than zero")
     if seconds > maximum:
         raise ModeError(f"duration exceeds configured maximum of {maximum} seconds")
     return seconds
@@ -124,7 +138,7 @@ def load_config(path: Path | None = None) -> Config:
         raise ModeError("maximum_duration_seconds must be 1..604800")
     if isinstance(interval, bool) or not isinstance(interval, (int, float)) or not 0.2 <= interval <= 60:
         raise ModeError("reconcile_seconds must be 0.2..60")
-    presets = raw.get("duration_presets", ["15m", "30m", "1h"])
+    presets = raw.get("duration_presets", list(DEFAULT_PRESETS))
     if not isinstance(presets, list) or not presets or not all(isinstance(item, str) for item in presets):
         raise ModeError("duration_presets must be a non-empty array of strings")
     for item in presets:
@@ -138,6 +152,7 @@ def load_config(path: Path | None = None) -> Config:
         notification_command=_argv(raw.get("notification_command", [_local_bin("notificationctl")]), "notification_command"),
         screensaver_command=_argv(raw.get("screensaver_command", [_local_bin("ascii-screensaver")]), "screensaver_command"),
         night_light_command=_argv(raw.get("night_light_command", list(Config().night_light_command)), "night_light_command"),
+        inhibit_command=_argv(raw.get("inhibit_command", list(Config.inhibit_command)), "inhibit_command"),
     )
 
 
@@ -251,6 +266,7 @@ class Controller:
         self.config = config
         self.store = store or StateStore()
         self.run = runner
+        self.inhibitor: subprocess.Popen[bytes] | None = None
 
     def _command(self, argv: list[str], timeout: float = 5) -> subprocess.CompletedProcess[str]:
         try:
@@ -301,8 +317,9 @@ class Controller:
         elif name == "screensaver-auto":
             available, observed, error = self._screen_status()
         else:
-            item = state["modes"][name]
-            available, observed, error = True, bool(item["desired"]), item["error"]
+            # Same predicate as `condition`: an expired timer is off even when
+            # no daemon is running to clear it.
+            available, observed, error = True, self.stay_awake_active(state), state["modes"][name]["error"]
         item = state["modes"].get(name, {})
         desired = observed if name in ("screensaver-auto", "night-light") else bool(item.get("desired", observed))
         return {"name": name, "desired": desired, "observed": observed, "available": available,
@@ -329,7 +346,10 @@ class Controller:
         if result.returncode:
             raise ModeError(result.stderr.strip() or result.stdout.strip() or f"{name} backend failed")
 
-    def set(self, name: str, enabled: bool, duration: str | None = None) -> dict[str, Any]:
+    def set(self, name: str, enabled: bool, duration: str | None = None,
+            if_expires_at: float | None = None) -> dict[str, Any]:
+        """if_expires_at: leave the stored mode alone unless its timer still
+        ends at this time, so an expiry never overwrites a renewal."""
         if name not in MODES:
             raise ModeError(f"unknown mode: {name}")
         if duration and (not enabled or name not in TRANSIENT):
@@ -340,35 +360,123 @@ class Controller:
             self._set_backend(name, enabled)
         except ModeError as caught:
             error = str(caught)
+        superseded = False
         if name in TRANSIENT:
             def mutate(state: dict[str, Any]) -> None:
+                nonlocal superseded
+                if if_expires_at is not None and state["modes"][name]["expires_at"] != if_expires_at:
+                    superseded = True
+                    return
                 state["modes"][name] = {"desired": enabled, "expires_at": expiry, "error": error}
                 if name == "night-light" and enabled and not error:
                     state["modes"][name]["shader_revision"] = self._shader_revision()
             self.store.update(mutate)
+        if superseded:
+            # A renewal landed during our backend call, and its own backend
+            # call may have run first. Put the backend back to what it asked for.
+            self._reapply(name)
+            return self.status_one(name)
         signal_daemon(self.store.root)
         if error:
             raise ModeError(error)
         return self.status_one(name)
+
+    def _reapply(self, name: str) -> None:
+        # Backend calls queue behind each other (night-light.sh holds a lock),
+        # so a later off may land while ours runs. Re-read after each call and
+        # follow the store until it stops moving; bounded so it cannot spin.
+        applied = None
+        for _ in range(3):
+            item = self.store.read()["modes"][name]
+            if item["desired"] == applied:
+                break
+            try:
+                self._set_backend(name, item["desired"])
+            except ModeError as caught:
+                self.store.update(lambda value, e=str(caught): value["modes"][name].update(error=e))
+                return
+            applied = item["desired"]
+        if name == "night-light" and item["desired"]:
+            revision = self._shader_revision()
+            def own(state: dict[str, Any]) -> None:
+                current = state["modes"][name]
+                if current["desired"] and current["expires_at"] == item["expires_at"]:
+                    current["shader_revision"] = revision
+            self.store.update(own)
 
     def toggle(self, name: str, duration: str | None = None) -> dict[str, Any]:
         return self.set(name, not self.status_one(name)["observed"], duration)
 
     def expire(self) -> None:
         now = time.time()
-        state = self.store.read()
         for name in TRANSIENT:
-            item = state["modes"][name]
+            # Fresh per mode: an earlier backend call can block for seconds.
+            item = self.store.read()["modes"][name]
             if name == "night-light" and item["expires_at"] is not None:
                 revision = item.get("shader_revision")
                 if revision is None or revision != self._shader_revision():
-                    self.store.update(lambda value: value["modes"]["night-light"].update(expires_at=None))
+                    # Someone else changed the shader: drop our timer, unless
+                    # it was renewed since this read.
+                    def disown(value: dict[str, Any], seen: float = item["expires_at"]) -> None:
+                        if value["modes"]["night-light"]["expires_at"] == seen:
+                            value["modes"]["night-light"]["expires_at"] = None
+                    self.store.update(disown)
                     continue
             if item["desired"] and item["expires_at"] is not None and item["expires_at"] <= now:
                 try:
-                    self.set(name, False)
+                    self.set(name, False, if_expires_at=item["expires_at"])
                 except ModeError:
                     pass
+
+    def stay_awake_active(self, state: dict[str, Any] | None = None) -> bool:
+        item = (state or self.store.read())["modes"]["stay-awake"]
+        return item["desired"] and (item["expires_at"] is None or item["expires_at"] > time.time())
+
+    def hold_awake(self) -> None:
+        """Hold the idle inhibitor exactly while stay-awake is active.
+
+        While it is held Hypridle counts no idle time, so when stay-awake ends
+        the screensaver, lock, screen-off and suspend timers start over from
+        zero instead of all firing at once.
+
+        Called by the daemon on every pass, so a dead inhibitor (logind
+        restart, OOM) is replaced within one pass. A failure is recorded on the
+        mode until a replacement survives a pass; the hypridle condition_cmd
+        gates keep the session awake meanwhile.
+        """
+        state = self.store.read()
+        active = self.stay_awake_active(state)
+        error = None
+        if not active:
+            self.release_awake()
+        elif self.inhibitor is not None and self.inhibitor.poll() is not None:
+            error = f"idle inhibitor exited with status {self.inhibitor.returncode}"
+            self.release_awake()
+        if active and self.inhibitor is None:
+            try:
+                self.inhibitor = subprocess.Popen(
+                    list(self.config.inhibit_command), stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError as caught:
+                error = f"idle inhibitor unavailable: {caught}"
+        def record(value: dict[str, Any]) -> None:
+            # An off or expiry that landed since the read wins over a late failure.
+            if error is None or self.stay_awake_active(value):
+                value["modes"]["stay-awake"]["error"] = error
+        if state["modes"]["stay-awake"]["error"] != error:
+            self.store.update(record)
+
+    def release_awake(self) -> None:
+        if self.inhibitor is None:
+            return
+        if self.inhibitor.stdin:
+            self.inhibitor.stdin.close()
+        try:
+            self.inhibitor.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            self.inhibitor.kill()
+            self.inhibitor.wait()
+        self.inhibitor = None
 
     def reconcile(self) -> None:
         """Restore owned transient backends after a daemon/service restart."""
@@ -439,6 +547,7 @@ def daemon(controller: Controller) -> int:
         passes = 0
         while not stopped:
             controller.expire()
+            controller.hold_awake()
             # Repairing out-of-band DND changes starts notificationctl and a
             # Quickshell IPC client, so it runs every fifth pass or at once on
             # SIGHUP. Expiry is file reads only and keeps the full rate. The
@@ -452,6 +561,7 @@ def daemon(controller: Controller) -> int:
                 time.sleep(min(0.1, max(0, deadline - time.monotonic())))
         return 0
     finally:
+        controller.release_awake()
         pid_path(root).unlink(missing_ok=True)
         lock.close()
         for sig, handler in old.items():
@@ -491,7 +601,8 @@ def parser() -> argparse.ArgumentParser:
     action.add_argument("name", choices=("screensaver",))
     commands.add_parser("menu")
     condition = commands.add_parser("condition")
-    condition.add_argument("kind", choices=("screensaver", "lock"))
+    # lock and idle (screen off, suspend) fail open; see main().
+    condition.add_argument("kind", choices=("screensaver", "lock", "idle"))
     commands.add_parser("daemon")
     commands.add_parser("watch").add_argument("--json", action="store_true")
     doctor = commands.add_parser("doctor")
@@ -534,10 +645,7 @@ def main(argv: list[str] | None = None) -> int:
             print("reset")
             return 0
         if args.command == "condition":
-            stay = controller.store.read()["modes"]["stay-awake"]
-            stay_awake = stay["desired"] and (
-                stay["expires_at"] is None or stay["expires_at"] > time.time())
-            if stay_awake:
+            if controller.stay_awake_active():
                 return 1
             if args.kind == "screensaver" and not controller.status_one("screensaver-auto")["observed"]:
                 return 1
@@ -590,8 +698,9 @@ def main(argv: list[str] | None = None) -> int:
     except (ModeError, OSError, ValueError) as error:
         # A broken optional mode configuration must never weaken the security
         # boundary. Hypridle interprets zero as permission to lock.
-        if getattr(args, "command", None) == "condition" and getattr(args, "kind", None) == "lock":
-            print(f"desktop-mode: lock allowed despite condition error: {error}", file=sys.stderr)
+        kind = getattr(args, "kind", None)
+        if getattr(args, "command", None) == "condition" and kind in ("lock", "idle"):
+            print(f"desktop-mode: {kind} allowed despite condition error: {error}", file=sys.stderr)
             return 0
         print(f"desktop-mode: {error}", file=sys.stderr)
         return 2

@@ -13,17 +13,21 @@ Singleton {
   property string panelScreen: ""
   property var modes: []
   property string lastError: ""
+  // stderr of the last failed action. Kept apart from lastError, which every
+  // good status refresh clears, so the message stays until the next success.
+  property string actionError: ""
   property bool daemonRunning: false
   property int warmTemperature: 1000
   property int normalTemperature: 6500
-  property var durationPresets: ["15m", "30m", "1h"]
+  readonly property var defaultPresets: ["30m", "1h", "3h", "8h"]
+  property var durationPresets: defaultPresets
 
   readonly property var metadata: ({
     "night-light": { label: "Night light", glyph: String.fromCodePoint(0xf0594), detail: root.warmTemperature + "K warm display" },
     // badge is optional short text drawn beside the glyph in the bar pill.
     // DND carries one because the bell glyph alone is easy to miss.
     "do-not-disturb": { label: "Do not disturb", glyph: String.fromCodePoint(0xf0a91), badge: "DND", detail: "Hide toasts, preserve history" },
-    "stay-awake": { label: "Stay awake", glyph: String.fromCodePoint(0xf0f2e), detail: "Skip idle screensaver and lock" },
+    "stay-awake": { label: "Stay awake", glyph: String.fromCodePoint(0xf0f2e), detail: "No screensaver, screen off, lock or sleep" },
     "screensaver-auto": { label: "Automatic screensaver", glyph: String.fromCodePoint(0xf06a9), detail: "Run after configured inactivity" }
   })
 
@@ -48,15 +52,27 @@ Singleton {
   function close() { panelVisible = false }
   function refresh() { if (!statusProc.running) statusProc.running = true }
 
+  // Emitted when an invoke()d command exits; ok is exit status 0.
+  signal actionFinished(bool ok)
+
+  // False when another action is still running and this one did not start.
   function invoke(args) {
-    if (actionProc.running) return
+    if (actionProc.running) return false
     actionProc.command = [root.executable].concat(args)
     actionProc.running = true
+    return true
   }
 
-  function toggle(name) { invoke(["toggle", name]) }
-  function timed(name, duration) { invoke(["enable", name, "--for", duration]) }
+  function toggle(name) { return invoke(["toggle", name]) }
+  function timed(name, duration) { return invoke(["enable", name, "--for", duration]) }
   function screensaver() { invoke(["action", "screensaver"]) }
+
+  // "18:30" for an expires_at in epoch seconds; adds the weekday past today.
+  function clockTime(epochSeconds) {
+    const end = new Date(epochSeconds * 1000)
+    const sameDay = end.toDateString() === new Date().toDateString()
+    return Qt.formatDateTime(end, sameDay ? "HH:mm" : "ddd HH:mm")
+  }
 
   function applyStatus(text) {
     if (text.trim() === "") return
@@ -67,7 +83,7 @@ Singleton {
       const settings = value.settings || ({})
       root.warmTemperature = settings.warm_temperature || 1000
       root.normalTemperature = settings.normal_temperature || 6500
-      root.durationPresets = settings.duration_presets || ["15m", "30m", "1h"]
+      root.durationPresets = settings.duration_presets || root.defaultPresets
       root.lastError = ""
     } catch (error) {
       root.lastError = "Invalid desktop-mode status: " + error
@@ -90,11 +106,12 @@ Singleton {
     command: [root.executable, "status"]
     stdout: StdioCollector {}
     stderr: StdioCollector {
-      onTextChanged: if (text.trim() !== "") root.lastError = text.trim()
+      onTextChanged: if (text.trim() !== "") root.actionError = text.trim()
     }
     onExited: (code, status) => {
-      if (code === 0) root.lastError = ""
+      if (code === 0) root.actionError = ""
       refreshDelay.restart()
+      root.actionFinished(code === 0)
     }
   }
 

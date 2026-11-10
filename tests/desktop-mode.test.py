@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -11,6 +13,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from typing import Callable
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,7 +44,7 @@ class DesktopModeTests(unittest.TestCase):
     def test_config_and_duration_validation(self) -> None:
         self.assertEqual(self.config.warm_temperature, 1000)
         self.assertEqual(parse_duration("15m", 3600), 900)
-        with self.assertRaisesRegex(ModeError, "integer followed"):
+        with self.assertRaisesRegex(ModeError, "look like"):
             parse_duration("forever")
         with self.assertRaisesRegex(ModeError, "exceeds"):
             parse_duration("2h", 3600)
@@ -49,6 +52,25 @@ class DesktopModeTests(unittest.TestCase):
         invalid.write_text("unknown = true\n", encoding="utf-8")
         with self.assertRaisesRegex(ModeError, "unknown configuration"):
             load_config(invalid)
+
+    def test_custom_durations(self) -> None:
+        day = 86400
+        for text, seconds in (("30m", 1800), ("1h", 3600), ("3h", 10800), ("8h", 28800),
+                              ("1h30m", 5400), ("90", 5400), (" 2H ", 7200),
+                              ("1h 15m", 4500), ("45s", 45)):
+            self.assertEqual(parse_duration(text, day), seconds, text)
+        for text in ("", "0m", "0", "h", "1d", "-5m", "1.5h", "m30"):
+            with self.assertRaises(ModeError, msg=text):
+                parse_duration(text, day)
+
+    def test_default_presets_are_30m_1h_3h_8h(self) -> None:
+        expected = ("30m", "1h", "3h", "8h")
+        self.assertEqual(Config().duration_presets, expected)
+        bare = self.temp / "bare.toml"
+        bare.write_text("", encoding="utf-8")
+        self.assertEqual(load_config(bare).duration_presets, expected)
+        shipped = load_config(ROOT / "modes/.config/desktop-mode/config.toml")
+        self.assertEqual(shipped.duration_presets, expected)
 
     def test_atomic_state_permissions_and_validation(self) -> None:
         state = self.store.update(lambda value: value["modes"]["stay-awake"].update(desired=True))
@@ -82,6 +104,33 @@ class DesktopModeTests(unittest.TestCase):
             desired=True, expires_at=time.time() - 1))
         controller.expire()
         self.assertFalse(controller.status_one("stay-awake")["observed"])
+
+    def test_expiry_never_overwrites_a_renewal_made_meanwhile(self) -> None:
+        # The user renews while expire() waits on a slow backend call.
+        def runner(argv, **_kwargs):
+            if argv[-1] == "dnd-off":
+                for name in ("do-not-disturb", "stay-awake"):
+                    self.store.update(lambda value, n=name: value["modes"][n].update(
+                        desired=True, expires_at=time.time() + 3600))
+            if argv[-2:] == ["status", "--json"]:
+                return subprocess.CompletedProcess(argv, 0, json.dumps({"available": True, "dnd": True}), "")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        controller = Controller(self.config, self.store, runner)
+        for name in ("do-not-disturb", "stay-awake"):
+            self.store.update(lambda value, n=name: value["modes"][n].update(
+                desired=True, expires_at=time.time() - 1))
+        controller.expire()
+        for name in ("do-not-disturb", "stay-awake"):
+            item = self.store.read()["modes"][name]
+            self.assertTrue(item["desired"], name)
+            self.assertGreater(item["expires_at"], time.time(), name)
+
+    def test_expired_stay_awake_reads_off_without_a_daemon(self) -> None:
+        controller = Controller(self.config, self.store)
+        self.store.update(lambda value: value["modes"]["stay-awake"].update(
+            desired=True, expires_at=time.time() - 1))
+        self.assertFalse(controller.status_one("stay-awake")["observed"])
+        self.assertTrue(controller.toggle("stay-awake")["observed"], "toggle of an expired timer turns it on")
 
     def test_backend_commands_are_argv_and_observed(self) -> None:
         calls = []
@@ -157,6 +206,65 @@ class DesktopModeTests(unittest.TestCase):
                 self.assertEqual(shader.exists(), external == "on")
                 self.assertIsNone(self.store.read()["modes"]["night-light"]["expires_at"])
 
+    def test_night_light_renewed_during_expiry_stays_on(self) -> None:
+        # night-light.sh serializes calls, so the renewal's "on" can finish
+        # before the expiry's "off" runs.
+        shader = self.temp / "shader"
+        renewed = []
+        def runner(argv, **_kwargs):
+            if argv[-1] == "off" and not renewed:
+                renewed.append(True)
+                Controller(self.config, self.store, runner).set("night-light", True, "1h")
+            if argv[-1] == "on":
+                shader.write_text("enabled\n")
+            elif argv[-1] == "off":
+                shader.unlink(missing_ok=True)
+            status = "on" if shader.exists() else "off"
+            return subprocess.CompletedProcess(argv, 0, f"night-light: {status}\n", "")
+        controller = Controller(self.config, self.store, runner)
+        controller.set("night-light", True, "1h")
+        self.store.update(lambda value: value["modes"]["night-light"].update(
+            expires_at=time.time() - 1))
+        controller.expire()
+        self.assertTrue(renewed)
+        self.assertTrue(shader.exists(), "renewed night light was turned off")
+        controller.expire()
+        item = self.store.read()["modes"]["night-light"]
+        self.assertGreater(item["expires_at"] or 0, time.time(), "renewed timer was dropped")
+
+    def test_off_queued_behind_a_reapply_wins(self) -> None:
+        # Expiry loses to a renewal; the user's off then completes just before
+        # the re-apply's queued "on" runs. The light must end off.
+        shader = self.temp / "shader"
+        # Steps: the expiry "off" triggers a renewal (its own "on"), then the
+        # re-apply's "on" triggers the user's off.
+        script = ["renew", "renewal-on", "user-off"]
+        def runner(argv, **_kwargs):
+            if argv[-1] == "off" and script and script[0] == "renew":
+                script.pop(0)
+                Controller(self.config, self.store, runner).set("night-light", True, "1h")
+            elif argv[-1] == "on" and script and script[0] == "renewal-on":
+                script.pop(0)
+            elif argv[-1] == "on" and script == ["user-off"]:
+                # The user's off was queued first, so it completes before
+                # this "on" executes.
+                script.pop(0)
+                Controller(self.config, self.store, runner).set("night-light", False)
+            if argv[-1] == "on":
+                shader.write_text("enabled\n")
+            elif argv[-1] == "off":
+                shader.unlink(missing_ok=True)
+            status = "on" if shader.exists() else "off"
+            return subprocess.CompletedProcess(argv, 0, f"night-light: {status}\n", "")
+        controller = Controller(self.config, self.store, runner)
+        controller.set("night-light", True, "1h")
+        self.store.update(lambda value: value["modes"]["night-light"].update(
+            expires_at=time.time() - 1))
+        controller.expire()
+        self.assertEqual(script, [])
+        self.assertFalse(self.store.read()["modes"]["night-light"]["desired"])
+        self.assertFalse(shader.exists(), "night light left on after the user turned it off")
+
     def test_probed_mode_error_clears_when_backend_recovers(self) -> None:
         def runner(argv, **_kwargs):
             if argv[-2:] == ["status", "--json"]:
@@ -194,6 +302,134 @@ class DesktopModeTests(unittest.TestCase):
             desired=True, expires_at=time.time() - 1))
         expired = subprocess.run([str(WRAPPER), "condition", "lock"], env=env)
         self.assertEqual(expired.returncode, 0)
+
+    def _inhibit_fixture(self) -> tuple[Path, Path]:
+        """An inhibitor stand-in that, like systemd-inhibit + cat, runs until stdin closes."""
+        log = self.temp / "inhibit-log"
+        fixture = self.temp / "inhibit-fixture"
+        fixture.write_text("#!/bin/sh\necho start >> \"$INHIBIT_LOG\"\ncat >/dev/null\n"
+                           "echo stop >> \"$INHIBIT_LOG\"\n", encoding="utf-8")
+        fixture.chmod(0o755)
+        self.config_path.write_text(self.config_path.read_text(encoding="utf-8")
+                                    + f'inhibit_command = ["{fixture}"]\n', encoding="utf-8")
+        return fixture, log
+
+    def _log(self, log: Path) -> list[str]:
+        return log.read_text(encoding="utf-8").split() if log.exists() else []
+
+    def _wait_for(self, predicate: Callable[[], bool], timeout: float = 4) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return True
+            time.sleep(0.05)
+        return predicate()
+
+    def test_stay_awake_holds_idle_inhibitor_until_off_or_expired(self) -> None:
+        _fixture, log = self._inhibit_fixture()
+        with mock.patch.dict(os.environ, INHIBIT_LOG=str(log)):
+            controller = Controller(load_config(self.config_path), self.store)
+            controller.hold_awake()
+            self.assertIsNone(controller.inhibitor, "no inhibitor while stay-awake is off")
+            controller.set("stay-awake", True, "1h")
+            controller.hold_awake()
+            first = controller.inhibitor
+            self.assertIsNotNone(first)
+            controller.hold_awake()
+            self.assertIs(controller.inhibitor, first, "a held inhibitor is not respawned")
+            controller.set("stay-awake", False)
+            controller.hold_awake()
+            self.assertIsNone(controller.inhibitor)
+            self.assertIsNotNone(first.returncode, "inhibitor still running after stay-awake off")
+            controller.set("stay-awake", True, "1h")
+            controller.hold_awake()
+            self.assertIsNotNone(controller.inhibitor)
+            self.store.update(lambda value: value["modes"]["stay-awake"].update(
+                expires_at=time.time() - 1))
+            controller.expire()
+            controller.hold_awake()
+            self.assertIsNone(controller.inhibitor, "expired timer kept the inhibitor")
+        self.assertTrue(self._wait_for(lambda: self._log(log) == ["start", "stop"] * 2), self._log(log))
+
+    def test_dead_or_missing_inhibitor_is_reported_and_replaced(self) -> None:
+        missing = self.temp / "does-not-exist"
+        self.config_path.write_text(self.config_path.read_text(encoding="utf-8")
+                                    + f'inhibit_command = ["{missing}"]\n', encoding="utf-8")
+        controller = Controller(load_config(self.config_path), self.store)
+        controller.set("stay-awake", True)
+        controller.hold_awake()
+        self.assertIn("idle inhibitor unavailable", controller.status_one("stay-awake")["error"])
+        dying = Config(**{**load_config(self.config_path).__dict__, "inhibit_command": ("true",)})
+        controller = Controller(dying, self.store)
+        controller.hold_awake()
+        self.assertTrue(self._wait_for(lambda: controller.inhibitor.poll() is not None))
+        first = controller.inhibitor
+        controller.hold_awake()
+        self.assertIsNot(controller.inhibitor, first, "dead inhibitor was not replaced")
+        self.assertIn("exited with status 0", controller.status_one("stay-awake")["error"])
+        controller.release_awake()
+
+    def test_inhibitor_error_clears_once_stay_awake_is_off(self) -> None:
+        dying = Config(**{**self.config.__dict__, "inhibit_command": ("true",)})
+        controller = Controller(dying, self.store)
+        controller.set("stay-awake", True)
+        controller.hold_awake()
+        self.assertTrue(self._wait_for(lambda: controller.inhibitor.poll() is not None))
+        controller.hold_awake()
+        self.assertIsNotNone(controller.status_one("stay-awake")["error"])
+        # Turning stay-awake off clears a recorded inhibitor failure.
+        self.store.update(lambda value: value["modes"]["stay-awake"].update(desired=False))
+        controller.hold_awake()
+        self.assertIsNone(controller.status_one("stay-awake")["error"])
+        self.assertIsNone(controller.inhibitor)
+
+    def test_daemon_inhibitor_follows_cli_and_dies_with_daemon(self) -> None:
+        _fixture, log = self._inhibit_fixture()
+        env = os.environ.copy()
+        env.update({"DESKTOP_MODE_CONFIG": str(self.config_path),
+                    "DESKTOP_MODE_RUNTIME_DIR": str(self.temp / "awake-runtime"),
+                    "INHIBIT_LOG": str(log)})
+        daemon = subprocess.Popen([str(WRAPPER), "daemon"], env=env,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(lambda: daemon.poll() is None and daemon.kill())
+        self.assertTrue(self._wait_for(lambda: (self.temp / "awake-runtime/daemon.pid").exists()))
+        cli = lambda *args: subprocess.run([str(WRAPPER), *args], env=env, check=True,
+                                           capture_output=True, text=True)
+        cli("enable", "stay-awake", "--for", "1h")
+        self.assertTrue(self._wait_for(lambda: self._log(log) == ["start"]), self._log(log))
+        cli("disable", "stay-awake")
+        self.assertTrue(self._wait_for(lambda: self._log(log) == ["start", "stop"]), self._log(log))
+        cli("enable", "stay-awake")
+        self.assertTrue(self._wait_for(lambda: self._log(log) == ["start", "stop", "start"]))
+        # A hard kill runs no cleanup; the closed stdin pipe must still end the block.
+        daemon.send_signal(signal.SIGKILL)
+        daemon.wait(timeout=4)
+        self.assertTrue(self._wait_for(lambda: self._log(log) == ["start", "stop"] * 2), self._log(log))
+
+    def test_idle_condition_blocks_only_while_stay_awake_is_active(self) -> None:
+        env = os.environ.copy()
+        env.update({"DESKTOP_MODE_CONFIG": str(self.config_path),
+                    "DESKTOP_MODE_RUNTIME_DIR": str(self.store.root)})
+        idle = lambda: subprocess.run([str(WRAPPER), "condition", "idle"], env=env).returncode
+        self.assertEqual(idle(), 0)
+        self.store.update(lambda value: value["modes"]["stay-awake"].update(desired=True, expires_at=None))
+        self.assertEqual(idle(), 1)
+        self.store.update(lambda value: value["modes"]["stay-awake"].update(expires_at=time.time() - 1))
+        self.assertEqual(idle(), 0)
+        env["DESKTOP_MODE_CONFIG"] = str(self.temp / "missing.toml")
+        broken = subprocess.run([str(WRAPPER), "condition", "idle"], env=env, text=True, capture_output=True)
+        self.assertEqual(broken.returncode, 0, "a broken config must not block suspend")
+        self.assertIn("idle allowed", broken.stderr)
+
+    def test_every_hypridle_listener_is_gated_by_stay_awake(self) -> None:
+        text = (ROOT / "hypr/.config/hypr/hypridle.conf").read_text(encoding="utf-8")
+        listeners = re.findall(r"^listener\s*\{\n(.*?)^\}", text, re.DOTALL | re.MULTILINE)
+        self.assertEqual(len(listeners), 4)
+        for block in listeners:
+            action = re.search(r"on-timeout\s*=\s*(.*)", block).group(1)
+            self.assertRegex(block, r"condition_cmd\s*=.*desktop-mode\" condition (idle|lock)",
+                             f"listener '{action}' ignores stay-awake")
+        self.assertNotRegex(text, r"ignore_systemd_inhibit\s*=\s*(true|1)")
 
     def test_daemon_signal_cleanup(self) -> None:
         env = os.environ.copy()
