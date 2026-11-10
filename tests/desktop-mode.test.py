@@ -206,6 +206,32 @@ class DesktopModeTests(unittest.TestCase):
                 self.assertEqual(shader.exists(), external == "on")
                 self.assertIsNone(self.store.read()["modes"]["night-light"]["expires_at"])
 
+    def test_night_light_renewed_during_expiry_stays_on(self) -> None:
+        # night-light.sh serializes calls, so the renewal's "on" can finish
+        # before the expiry's "off" runs.
+        shader = self.temp / "shader"
+        renewed = []
+        def runner(argv, **_kwargs):
+            if argv[-1] == "off" and not renewed:
+                renewed.append(True)
+                Controller(self.config, self.store, runner).set("night-light", True, "1h")
+            if argv[-1] == "on":
+                shader.write_text("enabled\n")
+            elif argv[-1] == "off":
+                shader.unlink(missing_ok=True)
+            status = "on" if shader.exists() else "off"
+            return subprocess.CompletedProcess(argv, 0, f"night-light: {status}\n", "")
+        controller = Controller(self.config, self.store, runner)
+        controller.set("night-light", True, "1h")
+        self.store.update(lambda value: value["modes"]["night-light"].update(
+            expires_at=time.time() - 1))
+        controller.expire()
+        self.assertTrue(renewed)
+        self.assertTrue(shader.exists(), "renewed night light was turned off")
+        controller.expire()
+        item = self.store.read()["modes"]["night-light"]
+        self.assertGreater(item["expires_at"] or 0, time.time(), "renewed timer was dropped")
+
     def test_probed_mode_error_clears_when_backend_recovers(self) -> None:
         def runner(argv, **_kwargs):
             if argv[-2:] == ["status", "--json"]:

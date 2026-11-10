@@ -360,18 +360,40 @@ class Controller:
             self._set_backend(name, enabled)
         except ModeError as caught:
             error = str(caught)
+        superseded = False
         if name in TRANSIENT:
             def mutate(state: dict[str, Any]) -> None:
+                nonlocal superseded
                 if if_expires_at is not None and state["modes"][name]["expires_at"] != if_expires_at:
+                    superseded = True
                     return
                 state["modes"][name] = {"desired": enabled, "expires_at": expiry, "error": error}
                 if name == "night-light" and enabled and not error:
                     state["modes"][name]["shader_revision"] = self._shader_revision()
             self.store.update(mutate)
+        if superseded:
+            # A renewal landed during our backend call, and its own backend
+            # call may have run first. Put the backend back to what it asked for.
+            self._reapply(name)
+            return self.status_one(name)
         signal_daemon(self.store.root)
         if error:
             raise ModeError(error)
         return self.status_one(name)
+
+    def _reapply(self, name: str) -> None:
+        item = self.store.read()["modes"][name]
+        try:
+            self._set_backend(name, item["desired"])
+        except ModeError:
+            return
+        if name == "night-light" and item["desired"]:
+            revision = self._shader_revision()
+            def own(state: dict[str, Any]) -> None:
+                current = state["modes"][name]
+                if current["desired"] and current["expires_at"] == item["expires_at"]:
+                    current["shader_revision"] = revision
+            self.store.update(own)
 
     def toggle(self, name: str, duration: str | None = None) -> dict[str, Any]:
         return self.set(name, not self.status_one(name)["observed"], duration)
@@ -384,7 +406,12 @@ class Controller:
             if name == "night-light" and item["expires_at"] is not None:
                 revision = item.get("shader_revision")
                 if revision is None or revision != self._shader_revision():
-                    self.store.update(lambda value: value["modes"]["night-light"].update(expires_at=None))
+                    # Someone else changed the shader: drop our timer, unless
+                    # it was renewed since this read.
+                    def disown(value: dict[str, Any], seen: float = item["expires_at"]) -> None:
+                        if value["modes"]["night-light"]["expires_at"] == seen:
+                            value["modes"]["night-light"]["expires_at"] = None
+                    self.store.update(disown)
                     continue
             if item["desired"] and item["expires_at"] is not None and item["expires_at"] <= now:
                 try:

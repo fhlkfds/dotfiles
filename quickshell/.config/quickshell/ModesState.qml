@@ -13,6 +13,9 @@ Singleton {
   property string panelScreen: ""
   property var modes: []
   property string lastError: ""
+  // stderr of the last failed action. Kept apart from lastError, which every
+  // good status refresh clears, so the message stays until the next success.
+  property string actionError: ""
   property bool daemonRunning: false
   property int warmTemperature: 1000
   property int normalTemperature: 6500
@@ -103,10 +106,10 @@ Singleton {
     command: [root.executable, "status"]
     stdout: StdioCollector {}
     stderr: StdioCollector {
-      onTextChanged: if (text.trim() !== "") root.lastError = text.trim()
+      onTextChanged: if (text.trim() !== "") root.actionError = text.trim()
     }
     onExited: (code, status) => {
-      if (code === 0) root.lastError = ""
+      if (code === 0) root.actionError = ""
       refreshDelay.restart()
       root.actionFinished(code === 0)
     }

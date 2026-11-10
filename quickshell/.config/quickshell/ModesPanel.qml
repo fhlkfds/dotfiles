@@ -7,18 +7,20 @@ PanelWindow {
   required property string ownerScreen
   // Mode whose row shows the custom-duration box instead of the presets.
   property string customMode: ""
-  // A custom duration was sent; the box closes only if it succeeds, so a
-  // rejected entry stays editable beside the error banner.
-  property bool customPending: false
+  // Mode whose custom duration is running. Its box closes only if that
+  // command succeeds and the box is still the one open, so a rejected entry
+  // stays editable beside the error banner.
+  property string customPending: ""
 
-  onVisibleChanged: if (!visible) { customMode = ""; customPending = false }
+  // Every close path (Escape, scrim, keybind, SUPER+Q) lands here.
+  onVisibleChanged: if (!visible) { customMode = ""; customPending = ""; ModesState.actionError = "" }
 
   Connections {
     target: ModesState
     function onActionFinished(ok) {
-      if (!panel.customPending) return
-      panel.customPending = false
-      if (ok) {
+      const submitted = panel.customPending
+      panel.customPending = ""
+      if (ok && submitted !== "" && panel.customMode === submitted) {
         panel.customMode = ""
         card.forceActiveFocus()
       }
@@ -72,9 +74,9 @@ PanelWindow {
         font.pixelSize: Theme.menuFontBody
       }
       Text {
-        visible: ModesState.lastError !== "" || !ModesState.daemonRunning
+        visible: ModesState.actionError !== "" || ModesState.lastError !== "" || !ModesState.daemonRunning
         width: parent.width
-        text: ModesState.lastError !== "" ? ModesState.lastError : "Expiry daemon is not running; untimed controls still work."
+        text: ModesState.actionError || ModesState.lastError || "Expiry daemon is not running; untimed controls still work."
         color: Theme.warning
         wrapMode: Text.WordWrap
         font.pixelSize: Theme.menuFontBody
@@ -191,13 +193,15 @@ PanelWindow {
                     text = ""
                     if (visible) forceActiveFocus()
                   }
+                  onTextEdited: ModesState.actionError = ""
                   onAccepted: {
-                    if (text.trim() === "" || panel.customPending) return
+                    if (text.trim() === "" || panel.customPending !== "") return
                     // Busy with another action: keep the text, Enter again.
-                    panel.customPending = ModesState.timed(modeRow.modelData, text.trim())
+                    if (ModesState.timed(modeRow.modelData, text.trim()))
+                      panel.customPending = modeRow.modelData
                   }
                   Keys.onEscapePressed: event => {
-                    panel.customPending = false
+                    panel.customPending = ""
                     panel.customMode = ""
                     card.forceActiveFocus()
                     event.accepted = true
