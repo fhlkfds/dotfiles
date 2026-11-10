@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Bar centre: BarCenterSmoke.qml measures the real BarCenter clock and capsule
-# on a roomy bar and a crowded one. Also checks the centre stays a plain
-# capsule, with no theme-bypassing colours and nothing that spawns or polls.
+# Bar centre: the clock capsule is static. Nothing pops out of it for track
+# changes or notifications. Static checks first: no theme-bypassing colours,
+# nothing that spawns or polls, no leftover island references. Then
+# BarCenterSmoke.qml measures the real BarCenter on a roomy bar and a crowded
+# one, and before and after notifications arrive.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -24,8 +26,17 @@ if grep -nE 'Process|execDetached|repeat: *true' "$shell_dir/BarCenter.qml"; the
   fail 'BarCenter.qml spawns processes or polls'
 fi
 
+# The pop-out island is gone. A leftover reference would stop the whole shell
+# from loading, so catch it here rather than on the next reload.
+if grep -rnE '\bIsland(State|Glance|Panel|PanelContent|Logic)\b|island/' \
+    --include='*.qml' --include='*.js' "$shell_dir"; then
+  fail 'quickshell still references the removed island glance'
+fi
+
 if ! command -v quickshell >/dev/null 2>&1; then
   printf 'skip: quickshell is not installed, BarCenterSmoke.qml not run\n'
+elif ! command -v dbus-run-session >/dev/null 2>&1; then
+  printf 'skip: quickshell smoke needs dbus-run-session, which is not installed\n'
 else
   test_root=$(mktemp -d)
   trap 'rm -rf -- "$test_root"' EXIT
@@ -38,7 +49,7 @@ else
   env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
     HOME="$test_root" XDG_STATE_HOME="$test_root/state" XDG_RUNTIME_DIR="$test_root/runtime" \
     PATH="$test_root/bin:$PATH" QT_QPA_PLATFORM=offscreen \
-    timeout 30 quickshell -p "$smoke" >"$smoke_log" 2>&1 || true
+    dbus-run-session -- timeout 30 quickshell -p "$smoke" >"$smoke_log" 2>&1 || true
   if grep -Fq 'FAIL' "$smoke_log"; then
     grep -F 'FAIL' "$smoke_log" >&2
     fail 'BarCenterSmoke.qml reported a failing assertion'

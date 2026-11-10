@@ -1,8 +1,9 @@
 import QtQuick
 
 // The bar's centre: the clock pinned to the screen centre, the indicator row
-// to its left, and the capsule drawn behind both. Bar.qml passes the
-// indicators and the neighbouring islands' edges, which is what lets
+// to its left, and the capsule drawn behind both. The capsule never grows or
+// pops out; track changes and notifications leave it alone. Bar.qml passes
+// the indicators and the neighbouring islands' edges, which is what lets
 // BarCenterSmoke load this headless.
 Item {
   id: centerGroup

@@ -955,6 +955,13 @@ workspaces and special (scratchpad) workspaces are hidden. Selection rules are
 in `workspaces/WorkspacesLogic.js`; validate with
 `bash tests/workspaces-module.test.sh`.
 
+### Bar centre
+
+The centre island holds the clock, pinned to the screen centre, with the
+indicator row to its left. It never pops out: track changes and videos stay
+in the media panel and dashboard, and notifications keep their card in the
+top-right stack. Validate with `bash tests/bar-center.test.sh`.
+
 ## What's Included
 
 | Package | Tool | Description |
