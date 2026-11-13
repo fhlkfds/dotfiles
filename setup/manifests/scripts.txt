@@ -20,3 +20,7 @@ socat
 xdg-terminal-exec
 # record.sh and lmenu entries open files with xdg-open
 xdg-utils
+# sshpersist: reconnecting SSH sessions
+autossh
+# bluetooth-control and the Bluetooth panel
+bluez-utils
