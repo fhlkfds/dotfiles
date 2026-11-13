@@ -373,4 +373,113 @@ fi
   fail 'stow conflict was not reported clearly'
 [[ $(<"$fixture_state") == "$initial_sha" ]] || fail 'failed deploy advanced state'
 
+# Script dependencies: whatever setup/manifests/scripts.txt lists and pacman -T
+# reports missing is installed through the elevation command, before restowing,
+# on every deploy. Real pacman, doas and sudo are never reached.
+cat > "$stub_bin/stow" <<'STUB'
+#!/usr/bin/env bash
+printf 'stow arg=%q\n' "$*" >> "$DOTS_TEST_CALLS"
+STUB
+cat > "$stub_bin/fake-pacman" <<'STUB'
+#!/usr/bin/env bash
+if [[ $1 == -T ]]; then
+  shift
+  [[ -z ${DOTS_TEST_QUERY_RC:-} ]] || exit "$DOTS_TEST_QUERY_RC"
+  for dep in "$@"; do
+    [[ " ${DOTS_TEST_MISSING:-} " == *" $dep "* ]] && printf '%s\n' "$dep"
+  done
+  [[ -z ${DOTS_TEST_MISSING:-} ]] || exit 127
+  exit 0
+fi
+printf 'pacman arg=%q\n' "$*" >> "$DOTS_TEST_CALLS"
+exit "${DOTS_TEST_PACMAN_RC:-0}"
+STUB
+cat > "$stub_bin/fake-elevate" <<'STUB'
+#!/usr/bin/env bash
+printf 'elevate %s\n' "${1##*/}" >> "$DOTS_TEST_CALLS"
+exec "$@"
+STUB
+chmod +x "$stub_bin/stow" "$stub_bin/fake-pacman" "$stub_bin/fake-elevate"
+mkdir -p "$fixture_repo/setup/manifests"
+printf '# comment line\npython-numpy\n\n  python-pillow  \ngrim\n' \
+  > "$fixture_repo/setup/manifests/scripts.txt"
+git -C "$fixture_repo" add setup
+git -C "$fixture_repo" commit -qm 'script dependencies'
+deps_sha=$(git -C "$fixture_repo" rev-parse HEAD)
+
+logged() { cat "$calls" 2>/dev/null || true; }
+
+run_deps() {
+  DOTS_PACMAN=fake-pacman DOTS_SUDO=fake-elevate DOTS_INTERACTIVE=${DOTS_TEST_TTY:-1} \
+    run_dots "$@"
+}
+
+printf '%s\n' "$deps_sha" > "$fixture_state"
+rm -f "$calls"
+output=$(DOTS_TEST_MISSING='python-pillow grim' run_deps --dry-run)
+[[ $output == *'  - install script dependencies: python-pillow grim'* ]] ||
+  fail 'dry run did not plan the missing script dependencies'
+[[ $output != *'state record only'* ]] || fail 'missing dependencies were reported as no change'
+[[ ! -e $calls ]] || fail 'dry run installed script dependencies'
+
+output=$(DOTS_TEST_MISSING='python-pillow grim' run_deps)
+[[ $(logged) == $'elevate fake-pacman\npacman arg=-S\\ --needed\\ python-pillow\\ grim' ]] ||
+  fail "unexpected install calls: $(logged)"
+[[ $output == *'Installing script dependencies: python-pillow grim'* ]] ||
+  fail 'install was not announced'
+
+rm -f "$calls"
+output=$(run_deps)
+[[ ! -e $calls ]] || fail "satisfied dependencies still ran: $(logged)"
+[[ $output == *'state record only'* ]] || fail 'satisfied dependencies were planned'
+
+# Deps are checked even when no package changed, and installed before stow.
+printf 'three\n' >> "$fixture_repo/alpha/.config/alpha/config"
+git -C "$fixture_repo" commit -qam 'alpha again'
+rm -f "$calls"
+DOTS_TEST_MISSING=grim run_deps >/dev/null
+[[ $(logged | head -1) == 'elevate fake-pacman' && $(logged | tail -1) == stow* ]] ||
+  fail "dependencies were not installed before restowing: $(logged)"
+
+# Without a terminal nothing can ask for a password: deploy anyway, then fail
+# with the command to run.
+printf '%s\n' "$deps_sha" > "$fixture_state"
+rm -f "$calls"
+if output=$(DOTS_TEST_MISSING=grim DOTS_TEST_TTY=0 run_deps 2>&1); then
+  fail 'skipped dependencies exited 0'
+fi
+[[ $output == *'no terminal to ask for a password'* &&
+  $output == *'Install them with: sudo pacman -S --needed grim'* ]] ||
+  fail 'non-interactive skip was not explained'
+grep -q '^stow' "$calls" && ! grep -q '^elevate' "$calls" ||
+  fail "non-interactive run should deploy without installing: $(logged)"
+[[ $(<"$fixture_state") == "$(git -C "$fixture_repo" rev-parse HEAD)" ]] ||
+  fail 'skipped dependencies blocked recording the deploy'
+
+# A refused or failed install still deploys and names what is missing.
+printf '%s\n' "$deps_sha" > "$fixture_state"
+rm -f "$calls"
+if output=$(DOTS_TEST_MISSING=grim DOTS_TEST_PACMAN_RC=1 run_deps 2>&1); then
+  fail 'failed dependency install exited 0'
+fi
+[[ $output == *'script dependencies not installed: grim'* ]] ||
+  fail 'failed install did not name the missing dependency'
+grep -q '^stow' "$calls" || fail 'failed install stopped the deploy'
+
+# pacman itself failing is not "nothing missing": deploy, then fail.
+printf '%s\n' "$deps_sha" > "$fixture_state"
+rm -f "$calls"
+if output=$(DOTS_TEST_QUERY_RC=1 run_deps 2>&1); then
+  fail 'a failed dependency query exited 0'
+fi
+[[ $output == *'fake-pacman -T failed (exit 1)'* &&
+  $output == *'could not check script dependencies'* ]] ||
+  fail 'a failed dependency query was not reported'
+grep -q '^stow' "$calls" || fail 'a failed dependency query stopped the deploy'
+
+# Without pacman (not Arch) the check is skipped with a notice.
+output=$(DOTS_PACMAN=no-such-pacman run_dots --dry-run)
+[[ $output == *'no-such-pacman not found; script dependencies were not checked.'* ]] ||
+  fail 'missing pacman was not reported'
+
 printf 'ok: dots deploy fixtures\n'

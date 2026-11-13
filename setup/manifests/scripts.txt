@@ -1,0 +1,34 @@
+# Small runtime dependencies of this repository's own scripts and shell
+# features: libraries and helper commands, not the desktop itself. `dots
+# deploy` and `dots update` install whatever is missing from this list, and
+# setup installs it by default. Full-line comments only.
+
+# wallfx: contagion maps for the wallpaper transitions
+python-numpy
+python-pillow
+# capture.sh: screenshots, region selection and the colour picker
+grim
+slurp
+hyprpicker
+# capture.sh qr and ocr, the Wi-Fi and clipboard QR codes
+zbar
+tesseract
+tesseract-data-eng
+qrencode
+# ascii-screensaver: Hyprland events and the terminal it opens
+socat
+xdg-terminal-exec
+# record.sh and lmenu entries open files with xdg-open
+xdg-utils
+# sshpersist: reconnecting SSH sessions
+autossh
+# bluetooth-control and the Bluetooth panel
+bluez-utils
+# calculator.sh: SUPER+SHIFT+C
+libqalculate
+# the transcode menu
+ffmpeg
+# arch-updates: the bar's update count (checkupdates)
+pacman-contrib
+# keybinds-collector: the SUPER+K palette replays the Lua config
+lua
