@@ -1043,6 +1043,9 @@ top-right stack. Validate with `bash tests/bar-center.test.sh`.
 - `swaync` (optional rollback backend)
 - `fastfetch`
 
+**Scripts:** the packages in `setup/manifests/scripts.txt`, which `dots deploy`
+and `dots update` keep installed (see **Script dependencies**).
+
 **Shell:**
 - `zsh`, `oh-my-zsh`
 - `zsh-autosuggestions`, `zsh-syntax-highlighting`

@@ -24,3 +24,11 @@ xdg-utils
 autossh
 # bluetooth-control and the Bluetooth panel
 bluez-utils
+# calculator.sh: SUPER+SHIFT+C
+libqalculate
+# the transcode menu
+ffmpeg
+# arch-updates: the bar's update count (checkupdates)
+pacman-contrib
+# keybinds-collector: the SUPER+K palette replays the Lua config
+lua
