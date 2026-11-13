@@ -384,6 +384,7 @@ cat > "$stub_bin/fake-pacman" <<'STUB'
 #!/usr/bin/env bash
 if [[ $1 == -T ]]; then
   shift
+  [[ -z ${DOTS_TEST_QUERY_RC:-} ]] || exit "$DOTS_TEST_QUERY_RC"
   for dep in "$@"; do
     [[ " ${DOTS_TEST_MISSING:-} " == *" $dep "* ]] && printf '%s\n' "$dep"
   done
@@ -464,6 +465,17 @@ fi
 [[ $output == *'script dependencies not installed: grim'* ]] ||
   fail 'failed install did not name the missing dependency'
 grep -q '^stow' "$calls" || fail 'failed install stopped the deploy'
+
+# pacman itself failing is not "nothing missing": deploy, then fail.
+printf '%s\n' "$deps_sha" > "$fixture_state"
+rm -f "$calls"
+if output=$(DOTS_TEST_QUERY_RC=1 run_deps 2>&1); then
+  fail 'a failed dependency query exited 0'
+fi
+[[ $output == *'fake-pacman -T failed (exit 1)'* &&
+  $output == *'could not check script dependencies'* ]] ||
+  fail 'a failed dependency query was not reported'
+grep -q '^stow' "$calls" || fail 'a failed dependency query stopped the deploy'
 
 # Without pacman (not Arch) the check is skipped with a notice.
 output=$(DOTS_PACMAN=no-such-pacman run_dots --dry-run)

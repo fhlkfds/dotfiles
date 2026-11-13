@@ -138,6 +138,7 @@ deps_manifest=$repo/setup/manifests/scripts.txt
 pacman_cmd=${DOTS_PACMAN:-pacman}
 declare -a missing_deps=()
 deps_unchecked=false
+deps_query_status=0
 if [[ -f $deps_manifest ]]; then
   if command -v "$pacman_cmd" >/dev/null 2>&1; then
     declare -a wanted_deps=()
@@ -147,9 +148,15 @@ if [[ -f $deps_manifest ]]; then
       [[ -n $line ]] && wanted_deps+=("$line")
     done < "$deps_manifest"
     if ((${#wanted_deps[@]} > 0)); then
-      while IFS= read -r dep; do
-        [[ -n $dep ]] && missing_deps+=("$dep")
-      done < <("$pacman_cmd" -T "${wanted_deps[@]}" || true)
+      # 127 means "some are missing" and lists them; anything else but 0 is
+      # pacman failing, which must not read as "nothing missing".
+      deps_output=$("$pacman_cmd" -T "${wanted_deps[@]}") || deps_query_status=$?
+      if ((deps_query_status == 127)); then
+        while IFS= read -r dep; do
+          [[ -n $dep ]] && missing_deps+=("$dep")
+        done <<< "$deps_output"
+        deps_query_status=0
+      fi
     fi
   else
     deps_unchecked=true
@@ -360,6 +367,10 @@ fi
 if [[ $deps_unchecked == true ]]; then
   printf 'Notice: %s not found; script dependencies were not checked.\n' "$pacman_cmd"
 fi
+if ((deps_query_status != 0)); then
+  printf 'Notice: %s -T failed (exit %s); script dependencies were not checked.\n' \
+    "$pacman_cmd" "$deps_query_status"
+fi
 if ((${#packages[@]} == 0 && ${#missing_deps[@]} == 0)) && [[ $deploy_system == false ]]; then
   printf '  (state record only; no package changes)\n'
 fi
@@ -528,5 +539,10 @@ if [[ $deps_failed == true ]]; then
   printf '%s: error: script dependencies not installed: %s\n' "$program" "${missing_deps[*]}" >&2
   printf 'Install them with: sudo pacman -S --needed %s\n' "${missing_deps[*]}" >&2
   printf '(If pacman cannot find a package, sync first with: sudo pacman -Syu)\n' >&2
+  exit 1
+fi
+if ((deps_query_status != 0)); then
+  printf '%s: error: could not check script dependencies: %s -T exited %s\n' \
+    "$program" "$pacman_cmd" "$deps_query_status" >&2
   exit 1
 fi

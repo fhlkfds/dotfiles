@@ -15,7 +15,8 @@ zbar
 tesseract
 tesseract-data-eng
 qrencode
-# ascii-screensaver
+# ascii-screensaver: Hyprland events and the terminal it opens
 socat
+xdg-terminal-exec
 # record.sh and lmenu entries open files with xdg-open
 xdg-utils
