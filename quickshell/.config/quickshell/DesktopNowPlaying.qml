@@ -29,7 +29,7 @@ PanelWindow {
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
   WlrLayershell.namespace: "quickshell-desktop-now-playing"
-  WlrLayershell.layer: WlrLayer.Background
+  WlrLayershell.layer: WlrLayer.Bottom
   WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
   DesktopNowPlayingCard {

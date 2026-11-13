@@ -47,6 +47,9 @@ notify-send() {
 wallpaper_dir="$test_root/wallpapers"
 runtime_dir="$test_root/runtime"
 state_file="$test_root/state/current"
+# Never the real wallfx or shell: a transition would play on the live desktop.
+wallfx_bin="$test_root/bin/wallfx"
+quickshell_bin="$test_root/bin/quickshell"
 mkdir -p "$wallpaper_dir/one" "$wallpaper_dir/two"
 printf x > "$wallpaper_dir/b space.JPG"
 printf x > "$wallpaper_dir/a-雪.png"
@@ -187,6 +190,98 @@ jq -e --arg path "$(realpath -e -- "$downloaded")" '.path == $path' \
 assert_eq "$(realpath -e -- "$downloaded")" "$(current_wallpaper)"
 assert_eq "$(realpath -e -- "$downloaded")" \
     "$(HYPR_WALLPAPER_STATE_FILE="$state_file" "$picker" current)"
+
+# A change with a wallpaper on screen goes through the shell's transition, which
+# switches hyprpaper itself; anything missing falls back to hyprpaper directly.
+mkdir -p "$test_root/bin"
+transition_log="$test_root/transition.log"
+cat > "$wallfx_bin" <<'STUB'
+#!/usr/bin/env bash
+printf 'wallfx %s\n' "$*" >> "$WALLFX_TEST_LOG"
+[[ "$1" == pick && -z "${WALLFX_TEST_FAIL:-}" ]] && printf '%s\n' contagion '/my maps/spread-3.png' '/my maps/spread-3-smooth.png'
+[[ "$1" != pick || -z "${WALLFX_TEST_FAIL:-}" ]]
+STUB
+cat > "$quickshell_bin" <<'STUB'
+#!/usr/bin/env bash
+printf 'quickshell %s\n' "$*" >> "$WALLFX_TEST_LOG"
+printf '%s\n' "$@" > "$WALLFX_TEST_LOG.args"
+printf '%s\n' "${QUICKSHELL_TEST_REPLY-ok}"
+STUB
+chmod +x "$wallfx_bin" "$quickshell_bin"
+export WALLFX_TEST_LOG="$transition_log"
+hyprctl() { printf 'hyprctl %s\n' "$*" >> "$transition_log"; }
+pgrep() { return 0; }
+old_wallpaper="$(realpath -e -- "$downloaded")"
+new_wallpaper="$wallpaper_dir/b space.JPG"
+
+set_wallpaper "$new_wallpaper" || fail "transitioned change failed"
+wait
+assert_contains "$transition_log" "wallfx pick $new_wallpaper"
+# One argument per line in the log: a cache path with a space stays one path.
+assert_eq "$(printf '%s\n' ipc call wallfx play "$old_wallpaper" "$new_wallpaper" contagion \
+    '/my maps/spread-3.png' '/my maps/spread-3-smooth.png')" "$(cat "$transition_log.args")"
+assert_contains "$transition_log" "wallfx warm $wallpaper_dir"
+if grep -Fq hyprctl "$transition_log"; then
+    fail "a transitioned change also set hyprpaper directly"
+fi
+assert_eq "$new_wallpaper" "$(current_wallpaper)"
+
+: > "$transition_log"
+set_wallpaper "$new_wallpaper" || fail "re-applying the current wallpaper failed"
+wait
+assert_contains "$transition_log" "hyprctl hyprpaper wallpaper ,$new_wallpaper,cover"
+if grep -Fq quickshell "$transition_log"; then
+    fail "re-applying the wallpaper on screen played a transition"
+fi
+
+persist_wallpaper "$old_wallpaper"
+: > "$transition_log"
+QUICKSHELL_TEST_REPLY="" set_wallpaper "$new_wallpaper" || fail "change without a shell failed"
+wait
+assert_contains "$transition_log" "quickshell ipc call wallfx play"
+assert_contains "$transition_log" "hyprctl hyprpaper wallpaper ,$new_wallpaper,cover"
+
+persist_wallpaper "$old_wallpaper"
+: > "$transition_log"
+WALLFX_TEST_FAIL=1 set_wallpaper "$new_wallpaper" || fail "change without transition maps failed"
+wait
+assert_contains "$transition_log" "hyprctl hyprpaper wallpaper ,$new_wallpaper,cover"
+if grep -Fq quickshell "$transition_log"; then
+    fail "a change without maps still asked the shell to play"
+fi
+
+persist_wallpaper "$old_wallpaper"
+: > "$transition_log"
+pgrep() { return 1; }
+hyprpaper() { printf 'hyprpaper started\n' >> "$transition_log"; }
+set_wallpaper "$new_wallpaper" || fail "change with hyprpaper stopped failed"
+wait
+assert_contains "$transition_log" "hyprpaper started"
+assert_contains "$transition_log" "hyprctl hyprpaper wallpaper ,$new_wallpaper,cover"
+if grep -Fq quickshell "$transition_log"; then
+    fail "a change with hyprpaper stopped played a transition nothing would switch"
+fi
+pgrep() { return 0; }
+
+rm -f -- "$state_file"
+: > "$transition_log"
+set_wallpaper "$new_wallpaper" || fail "first-ever change failed"
+wait
+assert_contains "$transition_log" "hyprctl hyprpaper wallpaper ,$new_wallpaper,cover"
+if grep -Fq quickshell "$transition_log"; then
+    fail "a change with nothing on screen played a transition"
+fi
+
+: > "$transition_log"
+restore_wallpaper || fail "restore after a transitioned change failed"
+assert_contains "$transition_log" "hyprctl hyprpaper wallpaper ,$new_wallpaper,cover"
+if grep -Fq -e quickshell -e wallfx "$transition_log"; then
+    fail "restoring at login played a transition"
+fi
+persist_wallpaper "$downloaded"
+hyprctl() { return 0; }
+pgrep() { return 1; }
+hyprpaper() { return 0; }
 
 printf '{broken json\n' > "$state_file"
 if current_wallpaper; then

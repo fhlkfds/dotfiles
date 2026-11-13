@@ -23,7 +23,7 @@ PanelWindow {
   mask: Region {}
   WlrLayershell.namespace: panel.anchorTop
                            ? "quickshell-cava-top" : "quickshell-cava-bottom"
-  WlrLayershell.layer: WlrLayer.Background
+  WlrLayershell.layer: WlrLayer.Bottom
   WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
   // Repaint when cava delivers a frame (it already caps itself at 30 fps) or

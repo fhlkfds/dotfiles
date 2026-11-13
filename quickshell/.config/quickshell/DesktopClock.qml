@@ -3,6 +3,8 @@ import Quickshell.Wayland
 import QtQuick
 
 // Persistent, click-through clock above the wallpaper and below application windows.
+// Bottom, not Background: hyprpaper rebuilds its Background surface on every
+// wallpaper change, and the newest surface in a layer draws on top.
 PanelWindow {
   id: panel
   required property var output
@@ -13,7 +15,7 @@ PanelWindow {
   exclusionMode: ExclusionMode.Ignore
   mask: Region {}
   WlrLayershell.namespace: "quickshell-desktop-clock"
-  WlrLayershell.layer: WlrLayer.Background
+  WlrLayershell.layer: WlrLayer.Bottom
   WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
   Row {
