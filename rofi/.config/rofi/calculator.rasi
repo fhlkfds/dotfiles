@@ -5,7 +5,7 @@ window {
     transparency: "real";
     location: center;
     anchor: center;
-    width: 540px;
+    width: 600px;
     padding: 24px;
     border: @border-width;
     border-radius: @radius-window;
@@ -36,7 +36,7 @@ textbox-prompt-colon {
 }
 
 entry {
-    placeholder: "Type an expression…";
+    placeholder: "Type a problem…";
     placeholder-color: @fg2;
     text-color: @fg0;
     cursor: text;
@@ -48,15 +48,18 @@ message {
     background-color: transparent;
 }
 
+/* The calculator display: the answer is drawn in full colour, and the script
+ * dims the problem and key hints with Pango alpha. */
 textbox {
     background-color: transparent;
-    text-color: @fg2;
+    text-color: @fg0;
     vertical-align: 0.5;
 }
 
 listview {
     columns: 1;
-    lines: 1;
+    lines: 7;
+    spacing: 4px;
     fixed-height: false;
     cycle: true;
     scrollbar: false;
@@ -64,12 +67,18 @@ listview {
 }
 
 element {
-    padding: 18px;
+    padding: 10px 16px;
     border: 1px solid;
     border-radius: @radius-row;
-    border-color: @selected-border;
-    background-color: @selected-bg;
-    text-color: @fg0;
+    border-color: transparent;
+    background-color: transparent;
+    text-color: @fg1;
+}
+
+element normal.normal,
+element alternate.normal {
+    background-color: transparent;
+    text-color: @fg1;
 }
 
 element selected.normal {
