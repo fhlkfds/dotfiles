@@ -295,6 +295,7 @@ if ((${#history_entries[@]})); then
   current_answer=${history_entries[0]#*$'\t'}
 fi
 error=""
+shown_error="" shown_problem="" shown_answer=""
 prefill=""
 hint="Enter: calculate or pick • + * / ^ carries on • Esc: close"
 
