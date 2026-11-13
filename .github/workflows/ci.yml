@@ -33,7 +33,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             git diffutils python nodejs jq lua zsh shellcheck stow cliphist arch-audit \
-            imagemagick ffmpeg dbus fontconfig rofi hyprland quickshell \
+            imagemagick ffmpeg dbus fontconfig rofi hyprland quickshell libqalculate \
             pyside6 qt6-declarative qt6-shadertools \
             python-numpy python-pillow python-opencv \
             noto-fonts-emoji ttf-jetbrains-mono-nerd
