@@ -242,7 +242,7 @@ def contagion():
 
 def _key(img):
     st = os.stat(img)
-    return hashlib.sha1(f"{os.path.realpath(img)}|{st.st_size}|{int(st.st_mtime)}".encode()).hexdigest()[:16]
+    return hashlib.sha256(f"{os.path.realpath(img)}|{st.st_size}|{int(st.st_mtime)}".encode()).hexdigest()[:16]
 
 
 _session = None
