@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # WallpaperFx.qml, the shell's wallpaper transitions: static wiring, the pure
 # helpers under node, the shader against its compiled copy, and the headless
-# smoke driving the state machine with stand-in hyprctl scripts.
+# smoke driving the state machine and one screen's content with stand-in
+# hyprctl scripts.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 shell_dir="$repo_root/quickshell/.config/quickshell"
 fx="$shell_dir/WallpaperFx.qml"
+fx_files=("$fx" "$shell_dir/WallpaperFxState.qml" "$shell_dir/WallpaperFxContent.qml")
 smoke="$shell_dir/WallpaperFxSmoke.qml"
 shader="$shell_dir/shaders/wallfx.frag"
 
@@ -19,8 +21,8 @@ test_root=$(mktemp -d)
 trap 'rm -rf -- "$test_root"' EXIT
 
 # Kept: colours come from Theme so the burning edge follows the palette.
-if grep -nE '"#[0-9a-fA-F]{3,8}"' "$fx"; then
-  fail 'WallpaperFx.qml contains a hardcoded color'
+if grep -nE '"#[0-9a-fA-F]{3,8}"' "${fx_files[@]}"; then
+  fail 'WallpaperFx QML contains a hardcoded color'
 fi
 
 # Kept as text checks: the offscreen smoke cannot see layer-shell stacking.
@@ -36,8 +38,8 @@ bar_line=$(grep -n 'Bar {}' "$shell_dir/shell.qml" | cut -d: -f1)
 [[ -n "$fx_line" && -n "$bar_line" && "$fx_line" -lt "$bar_line" ]] \
   || fail 'shell.qml must create WallpaperFx before the bar and desktop widgets'
 
-qsb_file=$(sed -n 's|.*Qt.resolvedUrl("\(shaders/[^"]*\.qsb\)").*|\1|p' "$fx")
-[[ -n "$qsb_file" && -f "$shell_dir/$qsb_file" ]] || fail "WallpaperFx.qml points at a missing shader: $qsb_file"
+qsb_file=$(sed -n 's|.*Qt.resolvedUrl("\(shaders/[^"]*\.qsb\)").*|\1|p' "$shell_dir/WallpaperFxContent.qml")
+[[ -n "$qsb_file" && -f "$shell_dir/$qsb_file" ]] || fail "WallpaperFxContent.qml points at a missing shader: $qsb_file"
 
 if command -v node >/dev/null 2>&1; then
   node "$repo_root/tests/wallpaper-fx.logic.test.js" "$shell_dir/wallfx/WallpaperFxLogic.js"

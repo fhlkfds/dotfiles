@@ -209,6 +209,7 @@ STUB
 chmod +x "$wallfx_bin" "$quickshell_bin"
 export WALLFX_TEST_LOG="$transition_log"
 hyprctl() { printf 'hyprctl %s\n' "$*" >> "$transition_log"; }
+pgrep() { return 0; }
 old_wallpaper="$(realpath -e -- "$downloaded")"
 new_wallpaper="$wallpaper_dir/b space.JPG"
 
@@ -247,6 +248,19 @@ if grep -Fq quickshell "$transition_log"; then
     fail "a change without maps still asked the shell to play"
 fi
 
+persist_wallpaper "$old_wallpaper"
+: > "$transition_log"
+pgrep() { return 1; }
+hyprpaper() { printf 'hyprpaper started\n' >> "$transition_log"; }
+set_wallpaper "$new_wallpaper" || fail "change with hyprpaper stopped failed"
+wait
+assert_contains "$transition_log" "hyprpaper started"
+assert_contains "$transition_log" "hyprctl hyprpaper wallpaper ,$new_wallpaper,cover"
+if grep -Fq quickshell "$transition_log"; then
+    fail "a change with hyprpaper stopped played a transition nothing would switch"
+fi
+pgrep() { return 0; }
+
 rm -f -- "$state_file"
 : > "$transition_log"
 set_wallpaper "$new_wallpaper" || fail "first-ever change failed"
@@ -264,6 +278,8 @@ if grep -Fq -e quickshell -e wallfx "$transition_log"; then
 fi
 persist_wallpaper "$downloaded"
 hyprctl() { return 0; }
+pgrep() { return 1; }
+hyprpaper() { return 0; }
 
 printf '{broken json\n' > "$state_file"
 if current_wallpaper; then

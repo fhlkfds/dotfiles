@@ -261,11 +261,13 @@ current_wallpaper() {
 # Hands the change to the shell's transition (WallpaperFx.qml), which switches
 # hyprpaper itself once the old wallpaper is covered. Fails, so the caller sets
 # hyprpaper directly, when there is no wallpaper on screen to start from, no
-# wallfx, or no shell answering.
+# wallfx, or no shell answering. The shell only switches a running hyprpaper;
+# the direct path is the one that starts it.
 transition_wallpaper() {
     local wallpaper old choice kind map line
     wallpaper="$(realpath -e -- "$1")" || return 1
     old="$(current_wallpaper)" || return 1
+    pgrep -x hyprpaper >/dev/null || return 1
     [[ "$old" != "$wallpaper" && -x "$wallfx_bin" ]] || return 1
     choice="$("$wallfx_bin" pick "$wallpaper" 2>/dev/null)" || return 1
     read -r kind map line <<< "$choice"
