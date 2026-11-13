@@ -74,7 +74,7 @@ check(not (tmp / "data").exists(), "install --dry-run creates nothing")
 
 spread = run("spread")
 check(spread.returncode == 0, "spread exits 0")
-field, smooth = (Path(p) for p in spread.stdout.split())
+field, smooth = (Path(p) for p in spread.stdout.splitlines())
 check(field.exists() and smooth.exists(), "spread prints a map and its smooth twin")
 with Image.open(field) as f:
     check(f.mode == "RGB" and f.size == (480, 270),
@@ -95,7 +95,7 @@ check(field.read_bytes() != before, "a used pool map is renewed in the backgroun
 
 new = image(tmp / "walls" / "new.png")
 pick = run("pick", str(new))
-words = pick.stdout.split()
+words = pick.stdout.splitlines()
 check(pick.returncode == 0 and words[0] == "contagion" and len(words) == 3
       and all(Path(p).exists() for p in words[1:]),
       "a wallpaper with no outline support gets contagion maps")
@@ -106,16 +106,16 @@ base.parent.mkdir(parents=True, exist_ok=True)
 for suffix in ("-field.png", "-line.png"):
     image(Path(str(base) + suffix))
 Path(str(base) + ".json").write_text('{"ok": true}')
-check(run("pick", str(new)).stdout.split() == ["outline", f"{base}-field.png", f"{base}-line.png"],
+check(run("pick", str(new)).stdout.splitlines() == ["outline", f"{base}-field.png", f"{base}-line.png"],
       "a wallpaper with a cached character gets its outline maps")
 
 (tmp / "no-outline").write_text("# comment\nnew.png\n")
-check(run("pick", str(new)).stdout.split()[0] == "contagion",
+check(run("pick", str(new)).stdout.splitlines()[0] == "contagion",
       "a wallpaper on the no-outline list gets contagion anyway")
 (tmp / "no-outline").unlink()
 
 Path(str(base) + ".json").write_text('{"ok": false}')
-check(run("pick", str(new)).stdout.split()[0] == "contagion",
+check(run("pick", str(new)).stdout.splitlines()[0] == "contagion",
       "a wallpaper cached as having no character gets contagion")
 
 try:

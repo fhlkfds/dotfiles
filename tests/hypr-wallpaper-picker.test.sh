@@ -198,12 +198,13 @@ transition_log="$test_root/transition.log"
 cat > "$wallfx_bin" <<'STUB'
 #!/usr/bin/env bash
 printf 'wallfx %s\n' "$*" >> "$WALLFX_TEST_LOG"
-[[ "$1" == pick && -z "${WALLFX_TEST_FAIL:-}" ]] && printf 'contagion /maps/spread-3.png /maps/spread-3-smooth.png\n'
+[[ "$1" == pick && -z "${WALLFX_TEST_FAIL:-}" ]] && printf '%s\n' contagion '/my maps/spread-3.png' '/my maps/spread-3-smooth.png'
 [[ "$1" != pick || -z "${WALLFX_TEST_FAIL:-}" ]]
 STUB
 cat > "$quickshell_bin" <<'STUB'
 #!/usr/bin/env bash
 printf 'quickshell %s\n' "$*" >> "$WALLFX_TEST_LOG"
+printf '%s\n' "$@" > "$WALLFX_TEST_LOG.args"
 printf '%s\n' "${QUICKSHELL_TEST_REPLY-ok}"
 STUB
 chmod +x "$wallfx_bin" "$quickshell_bin"
@@ -216,8 +217,9 @@ new_wallpaper="$wallpaper_dir/b space.JPG"
 set_wallpaper "$new_wallpaper" || fail "transitioned change failed"
 wait
 assert_contains "$transition_log" "wallfx pick $new_wallpaper"
-assert_contains "$transition_log" \
-    "quickshell ipc call wallfx play $old_wallpaper $new_wallpaper contagion /maps/spread-3.png /maps/spread-3-smooth.png"
+# One argument per line in the log: a cache path with a space stays one path.
+assert_eq "$(printf '%s\n' ipc call wallfx play "$old_wallpaper" "$new_wallpaper" contagion \
+    '/my maps/spread-3.png' '/my maps/spread-3-smooth.png')" "$(cat "$transition_log.args")"
 assert_contains "$transition_log" "wallfx warm $wallpaper_dir"
 if grep -Fq hyprctl "$transition_log"; then
     fail "a transitioned change also set hyprpaper directly"

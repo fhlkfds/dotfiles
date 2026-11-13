@@ -23,8 +23,10 @@ usage:
   wallfx outline IMG [--force]  print IMG's outline maps; exit 1 if it has no
                                 clear character
   wallfx warm [DIR]             precompute the pool and a folder's outline maps
-  wallfx pick NEW [--no-wait]   print "outline MAP LINE" or "contagion MAP SMOOTH"
+  wallfx pick NEW [--no-wait]   print outline MAP LINE or contagion MAP SMOOTH
   wallfx install [--dry-run]    set up the cut-out (venv + model, about 1 GB)
+
+Results are printed one per line, so paths with spaces survive.
 
 The cut-out needs $WALLFX_DATA_DIR/venv (rembg, onnxruntime, opencv) and the
 birefnet-general-lite model; without them every wallpaper gets contagion.
@@ -534,7 +536,7 @@ def main(argv):
     if flags - known or (count is not None and len(args) != count) or (count is None and len(args) > 1):
         return usage(2)
     if cmd == "spread":
-        print(*contagion())
+        print(*contagion(), sep="\n")
         return 0
     if cmd in ("outline", "warm"):
         _reexec_in_venv()
@@ -542,13 +544,13 @@ def main(argv):
         r = outline(args[0], force="--force" in flags)
         if not r:
             return 1
-        print(*r)
+        print(*r, sep="\n")
         return 0
     if cmd == "warm":
         warm(args[0] if args else WALLS)
         return 0
     if cmd == "pick":
-        print(*pick(args[0], wait="--no-wait" not in flags))
+        print(*pick(args[0], wait="--no-wait" not in flags), sep="\n")
         return 0
     return install("--dry-run" in flags)
 

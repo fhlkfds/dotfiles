@@ -98,19 +98,19 @@ Scope {
     return [root.hyprctl, "hyprpaper", "wallpaper", root.onlyScreen + "," + path + ",cover"]
   }
   function swap() {
-    const p = swapProcess.createObject(root, { forGen: root.gen, command: root.hyprpaperSet(root.newPath) })
+    const p = swapProcess.createObject(root, { forGen: root.gen, forPath: root.newPath,
+                                               command: root.hyprpaperSet(root.newPath) })
     p.running = true
   }
   // If hyprpaper did not switch, uncovering would bring the OLD one back: stop
-  // here and let hyprpaper try once more on its own. A switch from a change
-  // that has since been replaced is left alone: reacting to it would cut the
-  // new one.
-  function swapExited(forGen, code) {
+  // here and let hyprpaper try once more on its own, even if the watchdog has
+  // already stepped aside. A switch from a change that has since been replaced
+  // is left alone: reacting to it would cut the new one.
+  function swapExited(forGen, forPath, code) {
     if (forGen !== root.gen) return
-    if (code === 0) { settle.restart(); return }
-    const n = root.newPath
-    root.finish()
-    Quickshell.execDetached(root.hyprpaperSet(n))
+    if (code === 0) { if (root.active) settle.restart(); return }
+    if (root.active) root.finish()
+    Quickshell.execDetached(root.hyprpaperSet(forPath))
   }
   function finish() {
     fadeIn.stop(); run.stop(); fadeOut.stop(); watchdog.stop(); settle.stop()
@@ -150,7 +150,8 @@ Scope {
     id: swapProcess
     Process {
       property int forGen: -1
-      onExited: (code) => { root.swapExited(forGen, code); destroy() }
+      property string forPath: ""
+      onExited: (code) => { root.swapExited(forGen, forPath, code); destroy() }
     }
   }
   // hyprpaper has the new image; give it two frames to present it before
