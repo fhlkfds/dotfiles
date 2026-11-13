@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-DRY_RUN=0; USER_NAME=""; SETUP_GROUPS=(core hyprland); HARDEN_SSH=0; CONFIG_UFW=0; CONFIG_DOCKER=0; CONFIG_IOMMU=0; YES=0
+DRY_RUN=0; USER_NAME=""; SETUP_GROUPS=(core hyprland scripts); HARDEN_SSH=0; CONFIG_UFW=0; CONFIG_DOCKER=0; CONFIG_IOMMU=0; YES=0
 STAMP=$(date +%Y%m%d-%H%M%S)
 LOG_FILE="(stdout; dry-run is filesystem-immutable)"
 say(){ printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*"; }
@@ -11,7 +11,7 @@ run(){ if ((DRY_RUN)); then say "DRY-RUN: $*"; else "$@"; fi; }
 confirm(){ ((YES)) && return 0; ((DRY_RUN)) && return 1; read -r -p "$1 [y/N] " a; [[ $a == y || $a == Y ]]; }
 usage(){ cat <<EOF
 Usage: $0 [--user NAME] [--group NAME ...] [--ssh-hardening] [--ufw] [--docker-forwarding] [--iommu] [--yes] [--dry-run]
-Groups: core hyprland desktop-apps virtualization docker optional. Root invocation requires --user.
+Groups: core hyprland scripts desktop-apps virtualization docker optional. Root invocation requires --user.
 EOF
 }
 while (($#)); do case $1 in --user) USER_NAME=$2; shift 2;; --group) SETUP_GROUPS+=("$2"); shift 2;; --ssh-hardening) HARDEN_SSH=1; shift;; --ufw) CONFIG_UFW=1; shift;; --docker-forwarding) CONFIG_DOCKER=1; shift;; --iommu) CONFIG_IOMMU=1; shift;; --yes) YES=1; shift;; --dry-run) DRY_RUN=1; shift;; -h|--help) usage; exit 0;; *) usage >&2; exit 2;; esac; done

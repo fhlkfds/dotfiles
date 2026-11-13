@@ -14,8 +14,6 @@ libnotify
 udiskie
 jq
 python
-python-numpy
-python-pillow
 curl
 imagemagick
 wofi

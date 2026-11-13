@@ -1,0 +1,21 @@
+# Small runtime dependencies of this repository's own scripts and shell
+# features: libraries and helper commands, not the desktop itself. `dots
+# deploy` and `dots update` install whatever is missing from this list, and
+# setup installs it by default. Full-line comments only.
+
+# wallfx: contagion maps for the wallpaper transitions
+python-numpy
+python-pillow
+# capture.sh: screenshots, region selection and the colour picker
+grim
+slurp
+hyprpicker
+# capture.sh qr and ocr, the Wi-Fi and clipboard QR codes
+zbar
+tesseract
+tesseract-data-eng
+qrencode
+# ascii-screensaver
+socat
+# record.sh and lmenu entries open files with xdg-open
+xdg-utils

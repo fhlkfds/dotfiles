@@ -219,8 +219,8 @@ re-applying the wallpaper already on screen, and `theme set --wallpaper` switch
 directly. If the shell is not running or the maps cannot be made, the picker
 falls back to a direct switch, so the wallpaper always changes.
 
-Contagion needs `python-numpy` and `python-pillow` (in the `hyprland` setup
-group). Outline is opt-in. It cuts characters out with BiRefNet, in a venv of
+Contagion needs `python-numpy` and `python-pillow`, which `dots` installs
+(see **Script dependencies** below). Outline is opt-in. It cuts characters out with BiRefNet, in a venv of
 about 1 GB:
 
 ```bash
@@ -414,6 +414,18 @@ dots deploy --all      # restow every package
 dots deploy --system   # also install the greetd and PAM templates via sudo
 dots update            # fast-forward pull, then restow packages changed upstream
 ```
+
+**Script dependencies.** `setup/manifests/scripts.txt` lists the small
+packages the repository's own scripts need: Python libraries such as
+`python-pillow`, and helpers such as `grim`, `slurp` and `tesseract`. It does not
+list the desktop itself (Hyprland, Quickshell). Every `dots deploy` and
+`dots update` checks the list with `pacman -T`, which needs no root. It installs
+anything missing with `pacman -S --needed` through `doas` or `sudo` before
+restowing, and pacman asks before installing. A run with no terminal, or a
+declined or failed install, still deploys. It then exits with an error that
+names the missing packages and the command to install them. `--dry-run` lists
+them under Actions. Add a package to the list when a script starts needing it.
+`SUPER+CTRL+U` runs `dots update` in a terminal, so it can ask for your password.
 
 `dots update` pulls the branch's upstream. A branch pushed without `-u` has
 none, so it pulls the same-named branch on `origin` instead; a branch that only

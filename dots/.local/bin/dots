@@ -24,6 +24,10 @@ Deploy changed GNU Stow packages from ~/dotfiles.
   --no-folding-pkg PACKAGE
              Explicitly deploy neovim or obsidian safely
 
+Both commands also install any missing package listed in
+setup/manifests/scripts.txt (the scripts' own libraries and helpers) with
+pacman -S --needed, through doas or sudo, after asking.
+
 update pulls the configured upstream with --ff-only, then deploys packages
 changed by the new commit. A branch with no upstream pulls the same-named
 branch from \$DOTS_REMOTE (default origin), or skips the pull when the remote
@@ -125,6 +129,31 @@ if [[ $command_name == update ]]; then
     esac
   fi
   exec "$repo/dots/.local/bin/dots" deploy
+fi
+
+# The scripts' small runtime dependencies (Python libraries, capture helpers),
+# checked on every run so a dependency added upstream arrives with the scripts
+# that need it. `pacman -T` prints only what is missing and needs no root.
+deps_manifest=$repo/setup/manifests/scripts.txt
+pacman_cmd=${DOTS_PACMAN:-pacman}
+declare -a missing_deps=()
+deps_unchecked=false
+if [[ -f $deps_manifest ]]; then
+  if command -v "$pacman_cmd" >/dev/null 2>&1; then
+    declare -a wanted_deps=()
+    while IFS= read -r line || [[ -n $line ]]; do
+      [[ $line == \#* ]] && continue
+      line=${line//[[:space:]]/}
+      [[ -n $line ]] && wanted_deps+=("$line")
+    done < "$deps_manifest"
+    if ((${#wanted_deps[@]} > 0)); then
+      while IFS= read -r dep; do
+        [[ -n $dep ]] && missing_deps+=("$dep")
+      done < <("$pacman_cmd" -T "${wanted_deps[@]}" || true)
+    fi
+  else
+    deps_unchecked=true
+  fi
 fi
 
 head_sha=$(git -C "$repo" rev-parse --verify 'HEAD^{commit}') ||
@@ -325,7 +354,13 @@ if [[ $deploy_system == true ]]; then
       "${pam_file#"$repo"/}" "$pam_target"
   done
 fi
-if ((${#packages[@]} == 0)) && [[ $deploy_system == false ]]; then
+if ((${#missing_deps[@]} > 0)); then
+  printf '  - install script dependencies: %s\n' "${missing_deps[*]}"
+fi
+if [[ $deps_unchecked == true ]]; then
+  printf 'Notice: %s not found; script dependencies were not checked.\n' "$pacman_cmd"
+fi
+if ((${#packages[@]} == 0 && ${#missing_deps[@]} == 0)) && [[ $deploy_system == false ]]; then
   printf '  (state record only; no package changes)\n'
 fi
 
@@ -368,6 +403,31 @@ for package in "${packages[@]}"; do
     reload_hypr=true
   fi
 done
+
+# Installed before restowing, so a script is usable the moment it is linked.
+# A refused or failed install does not stop the deploy: configs still go out,
+# and the run ends with an error naming what is missing.
+deps_failed=false
+if ((${#missing_deps[@]} > 0)); then
+  interactive=${DOTS_INTERACTIVE:-}
+  if [[ -z $interactive ]]; then
+    if [[ -t 0 ]]; then interactive=1; else interactive=0; fi
+  fi
+  elevate=${DOTS_SUDO:-}
+  if [[ -z $elevate ]]; then
+    if command -v doas >/dev/null 2>&1; then elevate=doas; else elevate=sudo; fi
+  fi
+  if [[ $interactive != 1 ]]; then
+    printf 'Notice: no terminal to ask for a password; skipping script dependencies.\n'
+    deps_failed=true
+  elif ! command -v "$elevate" >/dev/null 2>&1; then
+    printf 'Notice: %s not found; skipping script dependencies.\n' "$elevate"
+    deps_failed=true
+  else
+    printf 'Installing script dependencies: %s\n' "${missing_deps[*]}"
+    "$elevate" "$pacman_cmd" -S --needed "${missing_deps[@]}" || deps_failed=true
+  fi
+fi
 
 for package in "${packages[@]}"; do
   if package_removed "$package"; then
@@ -463,3 +523,10 @@ mv -f "$state_tmp" "$state_file"
 trap - EXIT
 
 printf 'Deployed %s and updated %s.\n' "$head_sha" "$state_file"
+
+if [[ $deps_failed == true ]]; then
+  printf '%s: error: script dependencies not installed: %s\n' "$program" "${missing_deps[*]}" >&2
+  printf 'Install them with: sudo pacman -S --needed %s\n' "${missing_deps[*]}" >&2
+  printf '(If pacman cannot find a package, sync first with: sudo pacman -Syu)\n' >&2
+  exit 1
+fi
