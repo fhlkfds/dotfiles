@@ -13,6 +13,9 @@ Scope {
   readonly property var bluetoothState: BluetoothState
   readonly property var osdState: OsdState
 
+  // Wallpaper transitions. Declared first: its Bottom-layer windows must be
+  // created before the desktop widgets so the widgets stack above it.
+  WallpaperFx {}
   Bar {}
   // Desktop widgets hide under a visible scratchpad (DesktopCover.js), which
   // Hyprland reports only in the monitor IPC object. Refresh it on the event.

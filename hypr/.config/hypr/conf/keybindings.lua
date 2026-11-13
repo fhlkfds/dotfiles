@@ -52,7 +52,10 @@ exec(mod .. " + P", "power menu", "bash " .. cfg.scripts_dir .. "/power-menu.sh"
 exec(mod .. " + ALT + P", "monitor profiles", cfg.scripts_dir .. "/monitor-profile-menu.sh")
 exec(mod .. " + ALT + E", "emoji menu", cfg.scripts_dir .. "/RofiEmoji.sh")
 shell(mod .. " + K", "keybindings", "keybinds")
-package_exec(mod .. " + CTRL + U", "pull and deploy dotfiles updates", "dots", "dots update")
+-- In a terminal: dots asks for a password when a script dependency is missing.
+exec(mod .. " + CTRL + U", "pull and deploy dotfiles updates",
+    cfg.terminal .. " -e bash -c '" .. cfg.scripts_dir
+        .. "/run-if-deployed.sh dots dots update; read -rp \"Press enter to close.\"'")
 shell(mod .. " + N", "Neovim keybindings", "neovim-keybinds")
 shell(mod .. " + H", "Herdr keybindings", "herdr-keybinds")
 exec(mod .. " + I", "coding agent",

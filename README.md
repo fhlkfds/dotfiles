@@ -199,6 +199,47 @@ backlight device only get the volume pill.
 
 Validate with `bash tests/osd.test.sh`.
 
+## Wallpaper transitions
+
+Picking a wallpaper (`SUPER+SHIFT+W`, or a Wallhaven download) plays an
+animated transition, drawn by the shell over hyprpaper. The transitions,
+shader and maps are adapted from
+[pocket-dots](https://github.com/diegoMalagrida/pocket-dots) (GPL-3.0):
+
+- **Contagion**, for any wallpaper: colonies land at random places and eat
+  through the old wallpaper in crisp 4 px cells, each burning for an instant in
+  the theme's most vivid colour.
+- **Outline**, for a wallpaper with a character: a thin line draws the
+  character's outline, the character fills in, and the rest spreads out of it.
+
+`hypr-wallpaper-picker` asks `wallfx pick` which transition the new wallpaper
+gets, then hands it to `WallpaperFx.qml` over IPC. The shell covers the screen,
+switches hyprpaper underneath, and uncovers. Restoring the wallpaper at login,
+re-applying the wallpaper already on screen, and `theme set --wallpaper` switch
+directly. If the shell is not running or the maps cannot be made, the picker
+falls back to a direct switch, so the wallpaper always changes.
+
+Contagion needs `python-numpy` and `python-pillow`, which `dots` installs
+(see **Script dependencies** below). Outline is opt-in. It cuts characters out with BiRefNet, in a venv of
+about 1 GB:
+
+```bash
+wallfx install          # venv + rembg under ~/.local/share/wallfx (needs uv)
+wallfx warm             # cut out every wallpaper ahead of time
+wallfx pick <image>     # print the transition and maps the picker would use
+```
+
+After each change the picker also runs `wallfx warm` in the background, so a
+new download gets its outline the next time. A wallpaper picked before it was
+warmed is cut out on the spot, for up to 25 seconds, with a notification. List
+a file name in `~/.config/wallfx/no-outline` to always give that wallpaper
+contagion, for when the model outlines a building or a bridge. Maps are cached
+in `~/.cache/wallfx`. `quickshell ipc call wallfx stats` reports the frame
+rate of the last transition.
+
+Validate with `bash tests/wallpaper-fx.test.sh`, `python3 tests/wallfx.test.py`
+and `bash tests/hypr-wallpaper-picker.test.sh`.
+
 ## Network speed test
 
 `network-speedtest` resolves the active interface through `ip route`, runs eight
@@ -373,6 +414,18 @@ dots deploy --all      # restow every package
 dots deploy --system   # also install the greetd and PAM templates via sudo
 dots update            # fast-forward pull, then restow packages changed upstream
 ```
+
+**Script dependencies.** `setup/manifests/scripts.txt` lists the small
+packages the repository's own scripts need: Python libraries such as
+`python-pillow`, and helpers such as `grim`, `slurp` and `tesseract`. It does not
+list the desktop itself (Hyprland, Quickshell). Every `dots deploy` and
+`dots update` checks the list with `pacman -T`, which needs no root. It installs
+anything missing with `pacman -S --needed` through `doas` or `sudo` before
+restowing, and pacman asks before installing. A run with no terminal, or a
+declined or failed install, still deploys. It then exits with an error that
+names the missing packages and the command to install them. `--dry-run` lists
+them under Actions. Add a package to the list when a script starts needing it.
+`SUPER+CTRL+U` runs `dots update` in a terminal, so it can ask for your password.
 
 `dots update` pulls the branch's upstream. A branch pushed without `-u` has
 none, so it pulls the same-named branch on `origin` instead; a branch that only
@@ -989,6 +1042,9 @@ top-right stack. Validate with `bash tests/bar-center.test.sh`.
 - `quickshell`
 - `swaync` (optional rollback backend)
 - `fastfetch`
+
+**Scripts:** the packages in `setup/manifests/scripts.txt`, which `dots deploy`
+and `dots update` keep installed (see **Script dependencies**).
 
 **Shell:**
 - `zsh`, `oh-my-zsh`
