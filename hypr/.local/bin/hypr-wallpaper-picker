@@ -3,6 +3,8 @@
 wallpaper_dir="${HYPR_WALLPAPER_DIR:-$HOME/Pictures/Wallpapers}"
 runtime_dir="${HYPR_WALLPAPER_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-/tmp}/hypr-wallpaper-picker-$UID}"
 state_file="${HYPR_WALLPAPER_STATE_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprland-desktop/wallpaper/current}"
+wallfx_bin="${HYPR_WALLPAPER_WALLFX:-$HOME/.local/bin/wallfx}"
+quickshell_bin="${HYPR_WALLPAPER_QUICKSHELL:-quickshell}"
 
 notify() {
     notify-send "Wallpaper picker" "$1"
@@ -256,9 +258,33 @@ current_wallpaper() {
     realpath -e -- "$wallpaper"
 }
 
+# Hands the change to the shell's transition (WallpaperFx.qml), which switches
+# hyprpaper itself once the old wallpaper is covered. Fails, so the caller sets
+# hyprpaper directly, when there is no wallpaper on screen to start from, no
+# wallfx, or no shell answering.
+transition_wallpaper() {
+    local wallpaper old choice kind map line
+    wallpaper="$(realpath -e -- "$1")" || return 1
+    old="$(current_wallpaper)" || return 1
+    [[ "$old" != "$wallpaper" && -x "$wallfx_bin" ]] || return 1
+    choice="$("$wallfx_bin" pick "$wallpaper" 2>/dev/null)" || return 1
+    read -r kind map line <<< "$choice"
+    [[ -n "$kind" && -n "$map" ]] || return 1
+    [[ "$("$quickshell_bin" ipc call wallfx play "$old" "$wallpaper" "$kind" "$map" \
+        "${line:-$map}" 2>/dev/null)" == ok ]]
+}
+
+# Precomputes outline maps for wallpapers nobody has seen yet (a new
+# download), in the background and at low priority, for next time.
+warm_transitions() {
+    [[ -x "$wallfx_bin" ]] || return 0
+    nice -n 15 "$wallfx_bin" warm "$wallpaper_dir" >/dev/null 2>&1 &
+}
+
 set_wallpaper() {
     local wallpaper="$1"
-    apply_wallpaper "$wallpaper" || return 1
+    transition_wallpaper "$wallpaper" || apply_wallpaper "$wallpaper" || return 1
+    warm_transitions
     if ! persist_wallpaper "$wallpaper"; then
         notify "Wallpaper applied, but its persistent state could not be saved"
         printf 'Wallpaper state could not be saved: %s\n' "$state_file" >&2

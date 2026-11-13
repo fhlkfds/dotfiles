@@ -34,7 +34,8 @@ jobs:
           pacman -Syu --noconfirm --needed \
             git diffutils python nodejs jq lua zsh shellcheck stow cliphist arch-audit \
             imagemagick ffmpeg dbus fontconfig rofi hyprland quickshell \
-            pyside6 qt6-declarative \
+            pyside6 qt6-declarative qt6-shadertools \
+            python-numpy python-pillow python-opencv \
             noto-fonts-emoji ttf-jetbrains-mono-nerd
           useradd --create-home ci
           echo /usr/lib/qt6/bin >> "$GITHUB_PATH"
