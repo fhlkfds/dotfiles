@@ -13,6 +13,8 @@ hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
 -- ponytail: legacy DRM avoids Aquamarine's hotplug crash; remove after the page-flip bug is fixed.
 hl.env("AQ_NO_ATOMIC", "1")
+-- cua-driver (started in conf/autostart.lua) only drives Wayland with this set.
+hl.env("CUA_DRIVER_RS_ENABLE_WAYLAND", "1")
 
 local home = assert(os.getenv("HOME"), "HOME is required")
 local state_home = os.getenv("XDG_STATE_HOME") or (home .. "/.local/state")
