@@ -74,3 +74,12 @@ browser/.config/**/NativeMessagingHosts/com.openai.codexextension.json
 # hyprland.lua when it adds its capture-window bind.
 /.claude/
 *.t3-capture-backup-*
+
+# Chromium-family browsers write crash-report state (settings.dat, minidumps)
+# into their folded config directory here. It is per-machine runtime data.
+browser/.config/**/Crash Reports/
+
+# Noctalia is retired and its package was dropped (672ba31), but leftover
+# ~/.config/noctalia symlinks still let the app write colours, generated
+# colour schemes and clipboard pins back into this path. None of it is config.
+/noctalia/
