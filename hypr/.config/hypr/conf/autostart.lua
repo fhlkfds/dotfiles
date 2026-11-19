@@ -35,4 +35,8 @@ hl.on("hyprland.start", function()
     -- than closing the window, so the workspace always has a terminal.
     start("kitty zsh -c 'herdr; exec zsh'", { workspace = "1 silent" })
     start("udiskie --automount --notify --no-tray")
+    -- Computer-use daemon. It must run inside the Hyprland session to see the
+    -- display and the AT-SPI accessibility bus; SSH clients only proxy to its
+    -- socket.
+    start("cua-driver serve")
 end)
