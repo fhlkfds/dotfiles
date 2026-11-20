@@ -14,6 +14,12 @@ hyprctl_bin=${HYPRCTL:-hyprctl}
 playerctl_bin=${PLAYERCTL:-playerctl}
 journalctl_bin=${JOURNALCTL:-journalctl}
 last_file=${VOICE_DICTATION_LAST:-"${XDG_STATE_HOME:-$HOME/.local/state}/voice-dictation/last.txt"}
+wl_copy=${WL_COPY:-wl-copy}
+wl_paste=${WL_PASTE:-wl-paste}
+scripts_dir=${BASH_SOURCE[0]%/*}
+[[ $scripts_dir != "${BASH_SOURCE[0]}" ]] || scripts_dir=.
+paste_action=${VOICE_DICTATION_PASTE:-"$scripts_dir/universal-clipboard.sh"}
+restore_delay=${VOICE_DICTATION_RESTORE_DELAY:-0.3}
 target_file=${VOICE_DICTATION_TARGET:-"${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/voice-dictation-target"}
 paused_media_file="$target_file.media"
 started_file="$target_file.started"
@@ -111,9 +117,8 @@ resolve_source() {
   resolved_label=$(source_label "$source")
 }
 
-notify_fallback() {
-  local label=$1 title='Voice dictation' body
-  body="Using $label microphone"
+notify() {
+  local body=$1 title='Voice dictation'
   "$notify_send" -a 'Voice dictation' -r 9931 -t 2500 "$title" "$body" >/dev/null 2>&1 && return
   "$gdbus" call --session \
     --dest org.freedesktop.Notifications \
@@ -441,7 +446,7 @@ toggle() {
       # Stopping must still work if the selected microphone was unplugged.
       resolve_source
       sync_hyprvoice_config "$resolved_source"
-      [[ $used_fallback == false ]] || notify_fallback "$resolved_label"
+      [[ $used_fallback == false ]] || notify "Using $resolved_label microphone"
       start_dictation
       ;;
     transcribing) finish_dictation ;;
@@ -450,8 +455,64 @@ toggle() {
   esac
 }
 
+# What paste-last puts back once the dictation is pasted: "copy TYPE" offers
+# the saved bytes again, "clear" empties the clipboard as it was, and "keep"
+# leaves the dictation, because re-offering one type drops a password
+# manager's marker and clipboard-store.sh would then save the secret.
+clipboard_plan() {
+  local types type
+  types=$(timeout 1 "$wl_paste" --list-types 2>/dev/null) || types=
+  [[ -n $types ]] || { printf 'clear\n'; return; }
+  while IFS= read -r type; do
+    [[ ! ${type,,} =~ (^|/)(x-kde-passwordmanagerhint|x-(bitwarden|keepassxc|1password))$ ]] ||
+      { printf 'keep\n'; return; }
+  done <<<"$types"
+  for type in 'text/plain;charset=utf-8' text/plain UTF8_STRING image/png "${types%%$'\n'*}"; do
+    [[ $'\n'$types$'\n' != *$'\n'"$type"$'\n'* ]] || { printf 'copy %s\n' "$type"; return; }
+  done
+}
+
+# The shortcut fires with its modifiers held, so typing the text would turn
+# letters into shortcuts. Pasting through universal-clipboard.sh's
+# send_shortcut path is immune; the clipboard is lent and then handed back.
+paste_last() {
+  local dry_run=$1 plan status=0
+  if [[ ! -f $last_file ]]; then
+    if [[ $dry_run == true ]]; then
+      printf 'notification=No dictation saved yet\n'
+    else
+      notify 'No dictation saved yet'
+    fi
+    return 0
+  fi
+  plan=$(clipboard_plan)
+  if [[ $dry_run == true ]]; then
+    printf 'copy=%s\npaste=%s paste\nwait=%s\nrestore=%s\n' \
+      "$last_file" "$paste_action" "$restore_delay" "$plan"
+    return
+  fi
+  # Global: the EXIT trap runs after Bash has unwound function-local variables.
+  snapshot=$(mktemp)
+  trap 'rm -f -- "$snapshot"' EXIT
+  trap 'exit 1' INT TERM HUP
+  if [[ $plan == copy\ * ]] &&
+    ! timeout 1 "$wl_paste" --no-newline --type "${plan#copy }" >"$snapshot" 2>/dev/null; then
+    plan=clear
+  fi
+  # wl-copy leaves a server running that would hold a caller's pipes open.
+  "$wl_copy" --type 'text/plain;charset=utf-8' <"$last_file" >/dev/null 2>&1
+  "$paste_action" paste || status=$?
+  sleep "$restore_delay"
+  case $plan in
+    copy\ *) "$wl_copy" --type "${plan#copy }" <"$snapshot" >/dev/null 2>&1 ;;
+    clear) "$wl_copy" --clear >/dev/null 2>&1 ;;
+    keep) ;;
+  esac
+  return "$status"
+}
+
 usage() {
-  printf 'usage: %s {toggle [--dry-run]|resolve-source|use-default-output|use-source NAME|choose|status}\n' "${0##*/}" >&2
+  printf 'usage: %s {toggle [--dry-run]|paste-last [--dry-run]|resolve-source|use-default-output|use-source NAME|choose|status}\n' "${0##*/}" >&2
   exit 2
 }
 
@@ -462,6 +523,14 @@ case ${1:-} in
       toggle true
     else
       toggle false
+    fi
+    ;;
+  paste-last)
+    [[ $# -eq 1 || ( $# -eq 2 && $2 == --dry-run ) ]] || usage
+    if [[ ${2:-} == --dry-run ]]; then
+      paste_last true
+    else
+      paste_last false
     fi
     ;;
   resolve-source) [[ $# -eq 1 ]] || usage; resolve_source; printf '%s\n' "$resolved_source" ;;
