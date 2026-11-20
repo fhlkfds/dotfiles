@@ -110,7 +110,6 @@ else
   exit 2
 fi
 SH
-# Serves JOURNAL_FIXTURE (or one plain transcript) after JOURNAL_LAG empty reads.
 cat >"$test_root/bin/journalctl" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$JOURNAL_CALLS"
@@ -163,8 +162,6 @@ with open(sys.argv[1], 'rb') as config:
     assert loaded['injection']['backends'] == ['ydotool', 'wtype']
 PY
 
-# Typing only: an existing clipboard fallback is dropped, in one-line and
-# multi-line arrays, and every other setting survives.
 for backends in '["ydotool","wtype","clipboard"]' $'[\n  "clipboard",\n  "wtype",\n]  # fallback order'; do
   cat >"$hyprvoice_config" <<TOML
 [recording]
@@ -511,9 +508,6 @@ printf idle >"$HYPRVOICE_STATE"
 HYPR_ACTIVE=0xaaa "$script" toggle
 [[ $(<"$test_root/victim") == 'keep me' && ! -L $VOICE_DICTATION_TARGET ]] || fail 'target write followed a symlink'
 
-# Each finished dictation keeps its transcript, read from Hyprvoice's journal
-# since the dictation started. The typed text wins: the LLM result when one
-# follows the latest raw transcript, with line breaks typed as spaces.
 last=$VOICE_DICTATION_LAST
 journal="$test_root/journal"
 dictate() {
@@ -549,7 +543,6 @@ dictate "$(log 5 $'Final transcription text: first line\nsecond line\n\nthird\xe
 JOURNAL_LAG=3 dictate "$(log 5 'Final transcription text: late journal')"
 [[ $(<"$last") == 'late journal' ]] || fail 'transcript logged after idle was not retried'
 
-# A closed target window skips the focus dance but still keeps the transcript.
 : >"$calls"
 dictate "$(log 5 'Final transcription text: no target')" 0xdead
 [[ $(<"$last") == 'no target' ]] || fail 'finish without a target window did not save the transcript'

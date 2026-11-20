@@ -128,8 +128,7 @@ notify() {
 }
 
 # Hyprvoice falls back to its clipboard backend only after typing fails, and
-# that backend overwrites the clipboard without restoring it. Typing only keeps
-# the clipboard intact; the transcript still reaches last.txt.
+# that backend overwrites the clipboard without restoring it.
 sync_hyprvoice_config() {
   local source=$1
   [[ -f $hyprvoice_config ]] || die 'Hyprvoice is not configured; run hyprvoice onboarding first'
@@ -146,8 +145,6 @@ text = original if original.endswith("\n") or not original else original + "\n"
 
 def set_key(text, section_name, key, value):
     section = re.compile(rf"(?ms)^\[{section_name}\][ \t]*(?:#[^\n]*)?\n(.*?)(?=^\[|\Z)")
-    # A value runs to the end of its line, or to the closing bracket of a
-    # multi-line array.
     assignment = re.compile(rf"(?m)^(?P<indent>[ \t]*){key}[ \t]*=[ \t]*(?:\[[^\]]*\][^\n]*|[^\n]*)\n?")
     line = f"{key} = {value}\n"
     match = section.search(text)
@@ -264,9 +261,7 @@ start_dictation() {
   start_interrupted=false
   start_requested=false
   rm -f -- "$paused_media_file" 2>/dev/null || true
-  # The journal read after this dictation starts here. Written without a
-  # process, as the target is: EPOCHREALTIME is a builtin, and some locales
-  # give it a decimal comma.
+  # Some locales give EPOCHREALTIME a decimal comma.
   [[ -L $started_file ]] || printf '%s\n' "${EPOCHREALTIME/,/.}" >"$started_file" || true
   tmp=$(mktemp "$target_file.XXXXXX") || exec "$hyprvoice_bin" toggle
   active_window >"$tmp" || true
@@ -313,8 +308,6 @@ finish_dictation() {
   capture_transcript
 }
 
-# ponytail: polls every 0.1s for at most two minutes; an LLM step slower than
-# that gets its focus back early.
 wait_until_idle() {
   for _ in {1..1200}; do
     [[ $(hyprvoice_status) =~ ^(transcribing|processing|injecting)$ ]] || return 0
@@ -323,14 +316,13 @@ wait_until_idle() {
 }
 
 # Hyprvoice has no transcript output, but it logs each result to its journal
-# (internal/pipeline/pipeline.go). No match keeps the previous last.txt.
+# (internal/pipeline/pipeline.go).
 capture_transcript() {
   local since
   [[ -f $started_file ]] || return 0
   since=$(<"$started_file")
   rm -f -- "$started_file"
   [[ $since =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 0
-  # Let the next dictation start while journald catches up.
   exec 9>&-
   python3 - "$journalctl_bin" "$since" "$last_file" <<'PY' || true
 import os
@@ -455,10 +447,6 @@ toggle() {
   esac
 }
 
-# What paste-last puts back once the dictation is pasted: "copy TYPE" offers
-# the saved bytes again, "clear" empties the clipboard as it was, and "keep"
-# leaves the dictation, because re-offering one type drops a password
-# manager's marker and clipboard-store.sh would then save the secret.
 clipboard_plan() {
   local types type
   types=$(timeout 1 "$wl_paste" --list-types 2>/dev/null) || types=
@@ -474,7 +462,7 @@ clipboard_plan() {
 
 # The shortcut fires with its modifiers held, so typing the text would turn
 # letters into shortcuts. Pasting through universal-clipboard.sh's
-# send_shortcut path is immune; the clipboard is lent and then handed back.
+# send_shortcut path is immune.
 paste_last() {
   local dry_run=$1 plan status=0
   if [[ ! -f $last_file ]]; then
@@ -499,7 +487,7 @@ paste_last() {
     ! timeout 1 "$wl_paste" --no-newline --type "${plan#copy }" >"$snapshot" 2>/dev/null; then
     plan=clear
   fi
-  # wl-copy leaves a server running that would hold a caller's pipes open.
+  # wl-copy's background server keeps the caller's stderr open.
   "$wl_copy" --type 'text/plain;charset=utf-8' <"$last_file" >/dev/null 2>&1
   "$paste_action" paste || status=$?
   sleep "$restore_delay"
