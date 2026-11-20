@@ -61,6 +61,7 @@ PRIORITY = (
     r"^share with LocalSend$", r"^activity \(btop", r"^network speed test$",
     r"^disks$",
     r"^eject removable drives$", r"^obsidian$", r"^voice dictation$",
+    r"^paste last dictation$",
     r"^hermes$", r"^web app manager$",
     r"^install current site as a web app$", r"^coding agent$",
     r"^drop-down terminal$", r"^emoji menu$", r"^files here", r"^screenshot",
