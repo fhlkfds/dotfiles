@@ -122,6 +122,8 @@ elif [[ -n ${JOURNAL_FIXTURE:-} ]]; then
 else
   printf '2026/11/20 10:00:05 Pipeline: Final transcription text: default\n'
   printf '2026/11/20 10:00:06 Config reloaded, restarting pipeline\n'
+  [[ -n ${HYPRVOICE_RELOAD_PENDING:-} ]] ||
+    printf '2026/11/20 10:00:06 Config manager: configuration successfully reloaded\n'
 fi
 SH
 chmod +x "$test_root/bin/wpctl" "$test_root/bin/pw-dump" "$test_root/bin/hyprvoice" \
@@ -565,6 +567,13 @@ for unusable in "$(log 5 'Final transcription text: ')" "$(log 5 'Final transcri
   [[ $(<"$last") == 'previous dictation' ]] || fail "unusable journal replaced the saved transcript: $unusable"
 done
 [[ $(wc -l <"$JOURNAL_CALLS") == 10 ]] || fail 'missing transcript was not retried a bounded number of times'
+
+sed -i 's/^\([[:space:]]*device = \).*/\1"stale-device"/' "$hyprvoice_config"
+printf idle >"$HYPRVOICE_STATE"
+: >"$calls"
+status=0
+HYPRVOICE_RELOAD_PENDING=1 HYPR_ACTIVE=0xaaa "$script" toggle 2>/dev/null || status=$?
+[[ $status != 0 ]] && ! grep -Fxq toggle "$calls" || fail 'recording started while Hyprvoice was still reloading'
 
 # Without a session runtime directory, use private per-user cache storage.
 jq '.pause_media = true' "$config" >"$config.tmp" && mv "$config.tmp" "$config"

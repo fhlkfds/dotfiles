@@ -175,19 +175,22 @@ tmp.replace(path)
 print("changed")
 PY
 )
-  [[ $changed == changed ]] && wait_for_reload "$written"
-  return 0
+  [[ $changed != changed ]] || wait_for_reload "$written" ||
+    die 'Hyprvoice has not reloaded its settings yet; press the shortcut again'
 }
 
 # Hyprvoice reloads its config 500 ms after a change and cancels any recording
-# running at that moment (internal/config/manager.go, daemon.go onConfigReload).
+# running at that moment. Its last reload message comes after that cancel, and
+# a rejected reload cancels nothing (internal/config/manager.go reloadConfig).
 wait_for_reload() {
   local since=$1
   for _ in {1..20}; do
     "$journalctl_bin" --user -u hyprvoice --since "@$since" -o cat --no-pager 2>/dev/null |
-      grep -Fq 'Config reloaded' && return 0
+      grep -Eq 'Config manager: (configuration successfully reloaded|failed to reload config|config still in legacy format|invalid config after reload)' &&
+      return 0
     sleep 0.1
   done
+  return 1
 }
 
 hyprvoice_status() {
@@ -519,12 +522,13 @@ paste_last() {
     return 1
   fi
   # wl-copy's background server keeps the caller's stderr open.
-  "$wl_copy" --type 'text/plain;charset=utf-8' <"$last_file" >/dev/null 2>&1
+  # wl-copy's server outlives this run; it must not inherit the paste lock.
+  "$wl_copy" --type 'text/plain;charset=utf-8' <"$last_file" >/dev/null 2>&1 8>&-
   "$paste_action" paste || status=$?
   sleep "$restore_delay"
   case $plan in
-    copy\ *) "$wl_copy" --type "${plan#copy }" <"$snapshot" >/dev/null 2>&1 ;;
-    clear) "$wl_copy" --clear >/dev/null 2>&1 ;;
+    copy\ *) "$wl_copy" --type "${plan#copy }" <"$snapshot" >/dev/null 2>&1 8>&- ;;
+    clear) "$wl_copy" --clear >/dev/null 2>&1 8>&- ;;
     keep) ;;
   esac
   return "$status"

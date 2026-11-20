@@ -23,6 +23,7 @@ fi
 SH
 cat >"$test_root/bin/wl-copy" <<'SH'
 #!/usr/bin/env bash
+[[ -z ${WL_COPY_SERVES:-} ]] || { sleep 3 & }
 if [[ $1 == --clear ]]; then
   printf 'wl-copy --clear\n' >>"$CALLS"
 else
@@ -113,6 +114,11 @@ flock 7
 CLIP_TYPES=text/plain "$script" paste-last
 [[ ! -s $CALLS ]] || { cat "$CALLS" >&2; fail 'a second paste-last ran while the first held the clipboard'; }
 exec 7>&-
+
+WL_COPY_SERVES=1 CLIP_TYPES=text/plain paste_last
+: >"$CALLS"
+WL_COPY_SERVES=1 CLIP_TYPES=text/plain "$script" paste-last
+grep -q '^paste paste$' "$CALLS" || fail 'a finished paste-last kept the lock through the clipboard server'
 
 CLIP_TYPES=text/plain paste_last --dry-run >"$test_root/dry-run"
 [[ $(<"$test_root/dry-run") == "copy=$VOICE_DICTATION_LAST
