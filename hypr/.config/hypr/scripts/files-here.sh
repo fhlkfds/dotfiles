@@ -2,8 +2,7 @@
 # Omarchy-style "Files Here" for Hyprland: open Nautilus at the current working
 # directory of the focused terminal.
 #
-# Bound to Super+Shift+Alt+F. Super+Shift+E opens Nautilus plainly; this script
-# is the context-aware variant.
+# Bound to Super+Shift+Alt+F.
 #
 # Behaviour, in order:
 #   focused window is not a terminal  -> open Nautilus normally
