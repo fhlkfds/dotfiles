@@ -199,6 +199,54 @@ backlight device only get the volume pill.
 
 Validate with `bash tests/osd.test.sh`.
 
+## Voice dictation
+
+`SUPER+R` toggles dictation. It runs through
+[Hyprvoice](https://github.com/leonardotrapani/hyprvoice) and the
+`voice-dictation` script. The Hyprvoice service gets wrappers from
+`~/.local/libexec/hyprvoice-gpu` (Stow package `systemd`) through a drop-in that
+puts that directory first on its `PATH`.
+
+### GPU acceleration
+
+GPU use is a per-machine choice, so the same dotfiles work on an AMD desktop,
+an Intel laptop, and a machine with no supported GPU. Whisper runs on the CPU
+unless `~/.local/share/hyprvoice-gpu/device.env` exists, and it falls back to
+the CPU whenever a GPU run fails.
+
+```bash
+hyprvoice-gpu-install --dry-run   # show the detected GPU, driver and files; change nothing
+hyprvoice-gpu-install --enable    # verify the installed GPU build and turn it on
+hyprvoice-gpu-install --install   # build whisper.cpp with Vulkan, verify it, turn it on
+```
+
+The script supports AMD (RADV) and Intel (ANV) GPUs. It picks AMD first when a
+machine has both, and `--vendor amd|intel` overrides that. It writes
+`device.env` only after a sample transcription ran on that vendor's GPU through
+Vulkan. A failed `--enable` removes `device.env`, so dictation stays on the CPU
+until the check passes.
+
+A successful run also renames older hand-made drop-ins that pin a GPU, such as
+a copied `10-amd-gpu.conf`, to `*.disabled`. It then tells you to run
+`dots deploy`, `systemctl --user daemon-reload` and a Hyprvoice restart. The
+script never runs those itself.
+
+### Clipboard mode
+
+Choose how text is delivered in the menu under Setup, Voice dictation: "Type
+automatically" (the default) or "Copy to clipboard". The commands behind them
+are `voice-dictation use-typing` and `voice-dictation use-clipboard`;
+`voice-dictation delivery` prints the current mode.
+
+In clipboard mode you paste the text yourself. One notification covers the
+whole dictation. It reads "Recording Started", then "Transcribing…", then
+"Dictation copied — ready to paste" once the clipboard has been read back and
+matches. If anything fails it reads "Dictation failed" instead, with
+"No speech was recognized." when the recording had no words.
+
+Validate with `bash tests/hyprvoice-gpu.test.sh`,
+`bash tests/hyprvoice-clipboard.test.sh` and `bash tests/voice-dictation.test.sh`.
+
 ## Wallpaper transitions
 
 Picking a wallpaper (`SUPER+SHIFT+W`, or a Wallhaven download) plays an

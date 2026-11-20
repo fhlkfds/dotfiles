@@ -603,6 +603,22 @@
     "action": "~/.config/hypr/scripts/voice-dictation choose"
   },
   {
+    "id": "setup.voice-dictation.clipboard",
+    "icon": "󰆏",
+    "label": "Copy to clipboard",
+    "description": "You paste the text yourself, and a notice says when it is ready",
+    "checked": "~/.config/hypr/scripts/voice-dictation delivery | grep -qx clipboard",
+    "action": "~/.config/hypr/scripts/voice-dictation use-clipboard"
+  },
+  {
+    "id": "setup.voice-dictation.typing",
+    "icon": "󰌌",
+    "label": "Type automatically",
+    "description": "Types the text into the focused window",
+    "checked": "~/.config/hypr/scripts/voice-dictation delivery | grep -qx typing",
+    "action": "~/.config/hypr/scripts/voice-dictation use-typing"
+  },
+  {
     "id": "setup.voice-dictation.configure",
     "icon": "󰒓",
     "label": "Configure Hyprvoice…",
