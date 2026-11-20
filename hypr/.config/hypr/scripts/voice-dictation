@@ -130,9 +130,10 @@ notify() {
 # Hyprvoice falls back to its clipboard backend only after typing fails, and
 # that backend overwrites the clipboard without restoring it.
 sync_hyprvoice_config() {
-  local source=$1
+  local source=$1 written changed
   [[ -f $hyprvoice_config ]] || die 'Hyprvoice is not configured; run hyprvoice onboarding first'
-  python3 - "$hyprvoice_config" "$source" <<'PY'
+  written=${EPOCHREALTIME/,/.}
+  changed=$(python3 - "$hyprvoice_config" "$source" <<'PY'
 from pathlib import Path
 import re
 import sys
@@ -171,7 +172,22 @@ if text == original:
 tmp = path.with_suffix(path.suffix + ".tmp")
 tmp.write_text(text)
 tmp.replace(path)
+print("changed")
 PY
+)
+  [[ $changed == changed ]] && wait_for_reload "$written"
+  return 0
+}
+
+# Hyprvoice reloads its config 500 ms after a change and cancels any recording
+# running at that moment (internal/config/manager.go, daemon.go onConfigReload).
+wait_for_reload() {
+  local since=$1
+  for _ in {1..20}; do
+    "$journalctl_bin" --user -u hyprvoice --since "@$since" -o cat --no-pager 2>/dev/null |
+      grep -Fq 'Config reloaded' && return 0
+    sleep 0.1
+  done
 }
 
 hyprvoice_status() {
@@ -336,6 +352,7 @@ journalctl, since, destination = sys.argv[1:]
 PREFIX = re.compile(r"\d{4}/\d\d/\d\d \d\d:\d\d:\d\d ")
 FINAL = "Pipeline: Final transcription text: "
 LLM = "Pipeline: LLM processed text: "
+DONE = "Pipeline: Text injection completed successfully"
 # Hyprvoice types each of these as a space.
 BREAKS = {ord(char): " " for char in "\r\n\v\f\x85\u2028\u2029"}
 
@@ -349,21 +366,25 @@ def transcript(log):
         elif entries:
             # Go's logger prefixes only the first line of a multi-line message.
             entries[-1] += " " + line
-    text = None
+    text, done = None, False
     for entry in entries:
         # An empty message may reach the journal without its trailing space.
         if entry.startswith(FINAL.rstrip()):
-            text = entry[len(FINAL):]
+            text, done = entry[len(FINAL):], False
         elif entry.startswith(LLM.rstrip()) and text is not None:
             text = entry[len(LLM):]
+        elif entry.startswith(DONE) and text is not None:
+            done = True
     if text is None or not text.strip():
-        return None
-    return text.translate(BREAKS)
+        return None, False
+    return text.translate(BREAKS), done
 
 
 command = [journalctl, "--user", "-u", "hyprvoice", "--since", f"@{since}",
            "-o", "cat", "-a", "--no-pager"]
-# journald can lag behind Hyprvoice reporting idle.
+# journald can lag behind Hyprvoice reporting idle. A failed injection never
+# logs completion, so the latest text found is kept once retries run out.
+text = None
 for attempt in range(10):
     if attempt:
         time.sleep(0.1)
@@ -374,10 +395,11 @@ for attempt in range(10):
         continue
     except OSError as error:
         raise SystemExit(f"voice-dictation: cannot read the Hyprvoice journal: {error}")
-    text = transcript(result.stdout.decode("utf-8", "replace"))
-    if text is not None:
+    found, done = transcript(result.stdout.decode("utf-8", "replace"))
+    text = found or text
+    if done:
         break
-else:
+if text is None:
     raise SystemExit(0)
 
 directory = os.path.dirname(destination)
@@ -448,9 +470,11 @@ toggle() {
 }
 
 clipboard_plan() {
-  local types type
-  types=$(timeout 1 "$wl_paste" --list-types 2>/dev/null) || types=
-  [[ -n $types ]] || { printf 'clear\n'; return; }
+  local types type status=0
+  types=$(timeout 1 "$wl_paste" --list-types 2>/dev/null) || status=$?
+  # wl-paste exits 1 for an empty clipboard; anything else is unreadable.
+  (( status == 0 || status == 1 )) || return 1
+  [[ $status == 0 && -n $types ]] || { printf 'clear\n'; return; }
   while IFS= read -r type; do
     [[ ! ${type,,} =~ (^|/)(x-kde-passwordmanagerhint|x-(bitwarden|keepassxc|1password))$ ]] ||
       { printf 'keep\n'; return; }
@@ -473,7 +497,13 @@ paste_last() {
     fi
     return 0
   fi
-  plan=$(clipboard_plan)
+  if [[ $dry_run == false ]]; then
+    mkdir -p -- "$(dirname -- "$target_file")"
+    # A second press would snapshot the first press's dictation as the clipboard.
+    exec 8>"$target_file.paste.lock"
+    flock -n 8 || return 0
+  fi
+  plan=$(clipboard_plan) || plan=unreadable
   if [[ $dry_run == true ]]; then
     printf 'copy=%s\npaste=%s paste\nwait=%s\nrestore=%s\n' \
       "$last_file" "$paste_action" "$restore_delay" "$plan"
@@ -483,9 +513,10 @@ paste_last() {
   snapshot=$(mktemp)
   trap 'rm -f -- "$snapshot"' EXIT
   trap 'exit 1' INT TERM HUP
-  if [[ $plan == copy\ * ]] &&
-    ! timeout 1 "$wl_paste" --no-newline --type "${plan#copy }" >"$snapshot" 2>/dev/null; then
-    plan=clear
+  if [[ $plan == unreadable ]] || { [[ $plan == copy\ * ]] &&
+    ! timeout 1 "$wl_paste" --no-newline --type "${plan#copy }" >"$snapshot" 2>/dev/null; }; then
+    notify 'The clipboard did not answer, so nothing was pasted'
+    return 1
   fi
   # wl-copy's background server keeps the caller's stderr open.
   "$wl_copy" --type 'text/plain;charset=utf-8' <"$last_file" >/dev/null 2>&1

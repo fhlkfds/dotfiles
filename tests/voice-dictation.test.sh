@@ -115,10 +115,13 @@ cat >"$test_root/bin/journalctl" <<'SH'
 printf '%s\n' "$*" >>"$JOURNAL_CALLS"
 reads=$(wc -l <"$JOURNAL_CALLS")
 (( reads > ${JOURNAL_LAG:-0} )) || exit 0
-if [[ -n ${JOURNAL_FIXTURE:-} ]]; then
+if [[ -n ${JOURNAL_LATER:-} ]] && (( reads > 2 )); then
+  cat "$JOURNAL_LATER"
+elif [[ -n ${JOURNAL_FIXTURE:-} ]]; then
   cat "$JOURNAL_FIXTURE"
 else
   printf '2026/11/20 10:00:05 Pipeline: Final transcription text: default\n'
+  printf '2026/11/20 10:00:06 Config reloaded, restarting pipeline\n'
 fi
 SH
 chmod +x "$test_root/bin/wpctl" "$test_root/bin/pw-dump" "$test_root/bin/hyprvoice" \
@@ -146,7 +149,9 @@ mkdir -p "$MEDIA_STATE_DIR"
 
 "$script" use-default-output
 [[ $("$script" resolve-source) == bluez_input.airpods ]] || fail 'default output does not resolve to its matching source'
+: >"$JOURNAL_CALLS"
 "$script" toggle
+grep -Fq 'hyprvoice --since' "$JOURNAL_CALLS" || fail 'recording started before Hyprvoice reloaded the changed config'
 [[ $(<"$calls") == toggle ]] || fail 'toggle did not invoke hyprvoice'
 grep -Fq 'device = "bluez_input.airpods"' "$hyprvoice_config" || fail 'resolved source was not written to Hyprvoice recording config'
 [[ $(grep -c '^[[:space:]]*device[[:space:]]*=' "$hyprvoice_config") == 1 ]] || fail 'Hyprvoice config has duplicate device keys'
@@ -532,6 +537,10 @@ awk -v since="${args[4]#@}" -v started="${started/,/.}" 'BEGIN { exit !(since >=
 
 dictate "$(log 5 'Final transcription text: um so hello'; log 6 'LLM post-processing enabled, processing text'; log 7 'LLM processed text: So, hello.')"
 [[ $(<"$last") == 'So, hello.' ]] || fail 'LLM result did not replace the raw transcript'
+
+printf '%s' "$(log 5 'Final transcription text: um raw'; log 6 'LLM post-processing enabled, processing text'; log 7 'LLM processed text: Cleaned.'; log 8 'Text injection completed successfully')" >"$test_root/journal-later"
+JOURNAL_LATER="$test_root/journal-later" dictate "$(log 5 'Final transcription text: um raw'; log 6 'LLM post-processing enabled, processing text')"
+[[ $(<"$last") == 'Cleaned.' ]] || fail 'raw transcript was saved before the LLM result reached the journal'
 
 dictate "$(log 1 'LLM processed text: earlier cleanup'; log 5 'Final transcription text: newer raw')"
 [[ $(<"$last") == 'newer raw' ]] || fail 'an earlier LLM result replaced a newer raw transcript'

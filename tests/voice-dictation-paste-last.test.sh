@@ -12,6 +12,7 @@ mkdir -p "$test_root/bin" "$test_root/tmp"
 cat >"$test_root/bin/wl-paste" <<'SH'
 #!/usr/bin/env bash
 printf 'wl-paste %s\n' "$*" >>"$CALLS"
+[[ ${CLIP_HANG:-} != "$1" ]] || exec sleep 5
 if [[ $1 == --list-types ]]; then
   [[ -n ${CLIP_TYPES:-} ]] || { printf 'Nothing is copied\n' >&2; exit 1; }
   printf '%s\n' "$CLIP_TYPES"
@@ -44,6 +45,7 @@ export PATH="$test_root/bin:$PATH" TMPDIR="$test_root/tmp"
 export CALLS="$test_root/calls" COPIES="$test_root" SNAPSHOT_MODE="$test_root/snapshot-mode"
 export CLIP_BYTES="$test_root/clipboard" VOICE_DICTATION_LAST="$test_root/state/last.txt"
 export VOICE_DICTATION_PASTE=paste VOICE_DICTATION_RESTORE_DELAY=0
+export VOICE_DICTATION_TARGET="$test_root/target"
 mkdir -p "$test_root/state"
 printf 'the last dictation, with "quotes" and no newline' >"$VOICE_DICTATION_LAST"
 
@@ -98,6 +100,19 @@ done
 printf 'old clipboard text' >"$CLIP_BYTES"
 VOICE_DICTATION_PASTE=false CLIP_TYPES=text/plain paste_last && fail 'failed paste reported success'
 [[ $(tail -n1 "$CALLS") == 'wl-copy --type text/plain < copy.1' ]] || fail 'failed paste left the dictation on the clipboard'
+
+for hang in --list-types --no-newline; do
+  CLIP_HANG=$hang CLIP_TYPES=text/plain paste_last && fail "unanswered clipboard ($hang) reported success"
+  ! grep -Eq '^(wl-copy|paste)' "$CALLS" || { cat "$CALLS" >&2; fail "unanswered clipboard ($hang) was replaced"; }
+  grep -Fq 'nothing was pasted' "$CALLS" || fail "unanswered clipboard ($hang) gave no notification"
+done
+
+: >"$CALLS"
+exec 7>"$VOICE_DICTATION_TARGET.paste.lock"
+flock 7
+CLIP_TYPES=text/plain "$script" paste-last
+[[ ! -s $CALLS ]] || { cat "$CALLS" >&2; fail 'a second paste-last ran while the first held the clipboard'; }
+exec 7>&-
 
 CLIP_TYPES=text/plain paste_last --dry-run >"$test_root/dry-run"
 [[ $(<"$test_root/dry-run") == "copy=$VOICE_DICTATION_LAST
