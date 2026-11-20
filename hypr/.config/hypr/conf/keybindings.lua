@@ -158,8 +158,6 @@ bind(mod .. " + SHIFT + F", "fullscreen (true)", hl.dsp.window.fullscreen({ mode
 bind(mod .. " + CTRL + F", "maximize (keep bar)", hl.dsp.window.fullscreen({ mode = "maximized" }))
 
 -- Programs.
-app_exec(mod .. " + E", "files", cfg.file_manager)
-app_exec(mod .. " + SHIFT + E", "files", cfg.file_manager)
 exec(mod .. " + SHIFT + ALT + F", "files here (terminal cwd)", cfg.scripts_dir .. "/files-here.sh")
 app_exec(mod .. " + SHIFT + D", "disks", cfg.disks)
 exec(mod .. " + U", "eject removable drives", cfg.scripts_dir .. "/eject-drive.sh")

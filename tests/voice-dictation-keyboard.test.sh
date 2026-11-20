@@ -29,7 +29,7 @@ local function press(device, keys)
     if devices[device] and devices[device].keybinds == false then return nil end
     return binds[keys]
 end
-local keys = { "SUPER + E", "SUPER + W", "SUPER + Return", "SUPER + T", "SUPER + code:10", "SUPER + R" }
+local keys = { "SUPER + W", "SUPER + Return", "SUPER + T", "SUPER + code:10", "SUPER + R" }
 for _, device in ipairs({ "ydotoold-virtual-device", "hl-virtual-keyboard-wtype", "hl-virtual-keyboard" }) do
     for _, key in ipairs(keys) do
         assert(press("physical-keyboard", key), "missing physical shortcut: " .. key)
