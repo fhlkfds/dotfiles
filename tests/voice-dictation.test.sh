@@ -138,13 +138,53 @@ mkdir -p "$MEDIA_STATE_DIR"
 grep -Fq 'device = "bluez_input.airpods"' "$hyprvoice_config" || fail 'resolved source was not written to Hyprvoice recording config'
 [[ $(grep -c '^[[:space:]]*device[[:space:]]*=' "$hyprvoice_config") == 1 ]] || fail 'Hyprvoice config has duplicate device keys'
 [[ ! -e $notifications ]] || fail 'paired microphone selection produced a fallback notification'
-python3 - "$hyprvoice_config" <<'PY' || fail 'Hyprvoice config is not valid TOML'
+python3 - "$hyprvoice_config" <<'PY' || fail 'Hyprvoice config is invalid or keeps the clipboard backend'
 import sys
 import tomllib
 
 with open(sys.argv[1], 'rb') as config:
-    assert tomllib.load(config)['recording']['device'] == 'bluez_input.airpods'
+    loaded = tomllib.load(config)
+    assert loaded['recording']['device'] == 'bluez_input.airpods'
+    assert loaded['recording']['sample_rate'] == 16000
+    assert loaded['injection']['backends'] == ['ydotool', 'wtype']
 PY
+
+# Typing only: an existing clipboard fallback is dropped, in one-line and
+# multi-line arrays, and every other setting survives.
+for backends in '["ydotool","wtype","clipboard"]' $'[\n  "clipboard",\n  "wtype",\n]  # fallback order'; do
+  cat >"$hyprvoice_config" <<TOML
+[recording]
+device = "bluez_input.airpods"
+
+[injection]
+ydotool_timeout = "5s"
+backends = $backends
+wtype_timeout = "5s"
+
+[transcription]
+provider = "openai"
+TOML
+  printf idle >"$HYPRVOICE_STATE"
+  "$script" use-default-output
+  "$script" toggle
+  python3 - "$hyprvoice_config" <<'PY' || fail 'clipboard backend was not removed cleanly'
+import sys
+import tomllib
+
+with open(sys.argv[1], 'rb') as config:
+    loaded = tomllib.load(config)
+assert loaded['injection'] == {
+    'ydotool_timeout': '5s', 'backends': ['ydotool', 'wtype'], 'wtype_timeout': '5s'}, loaded
+assert loaded['transcription'] == {'provider': 'openai'}, loaded
+assert loaded['recording'] == {'device': 'bluez_input.airpods'}, loaded
+PY
+  enforced=$(<"$hyprvoice_config")
+  config_inode=$(stat -c %i "$hyprvoice_config")
+  printf idle >"$HYPRVOICE_STATE"
+  "$script" toggle
+  [[ $(<"$hyprvoice_config") == "$enforced" && $(stat -c %i "$hyprvoice_config") == "$config_inode" ]] ||
+    fail 'enforcing typing-only backends is not idempotent'
+done
 
 config_inode=$(stat -c %i "$hyprvoice_config")
 "$script" toggle

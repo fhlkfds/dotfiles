@@ -117,6 +117,9 @@ notify_fallback() {
     'Voice dictation' 9931 '' "$title" "$body" '[]' '{}' 2500 >/dev/null 2>&1 || true
 }
 
+# Hyprvoice falls back to its clipboard backend only after typing fails, and
+# that backend overwrites the clipboard without restoring it. Typing only keeps
+# the clipboard intact; the transcript still reaches last.txt.
 sync_hyprvoice_config() {
   local source=$1
   [[ -f $hyprvoice_config ]] || die 'Hyprvoice is not configured; run hyprvoice onboarding first'
@@ -127,33 +130,35 @@ import sys
 
 path = Path(sys.argv[1])
 device = sys.argv[2]
-text = path.read_text()
-original = text
-section = re.compile(r"(?ms)^\[recording\]\s*$\n(.*?)(?=^\[|\Z)")
-match = section.search(text)
-if match:
+original = path.read_text()
+text = original if original.endswith("\n") or not original else original + "\n"
+
+
+def set_key(text, section_name, key, value):
+    section = re.compile(rf"(?ms)^\[{section_name}\][ \t]*(?:#[^\n]*)?\n(.*?)(?=^\[|\Z)")
+    # A value runs to the end of its line, or to the closing bracket of a
+    # multi-line array.
+    assignment = re.compile(rf"(?m)^(?P<indent>[ \t]*){key}[ \t]*=[ \t]*(?:\[[^\]]*\][^\n]*|[^\n]*)\n?")
+    line = f"{key} = {value}\n"
+    match = section.search(text)
+    if not match:
+        return text + f"\n[{section_name}]\n" + line
     body = match.group(1)
-    lines = body.splitlines(keepends=True)
-    device_lines = [index for index, line in enumerate(lines)
-                    if re.match(r"^(?P<indent>\s*)device\s*=.*(?:\n|$)", line)]
-    if device_lines:
-        first = device_lines[0]
-        indent = re.match(r"^(?P<indent>\s*)", lines[first]).group("indent")
-        lines[first] = f'{indent}device = "{device}"\n'
-        # Older runs could have appended another device key.  TOML forbids
-        # duplicate keys, so remove every remaining one in this section.
-        for index in reversed(device_lines[1:]):
-            del lines[index]
-        body = "".join(lines)
+    found = list(assignment.finditer(body))
+    if found:
+        first = found[0]
+        # Older runs could have appended another key.  TOML forbids duplicate
+        # keys, so remove every remaining one in this section.
+        for extra in reversed(found[1:]):
+            body = body[:extra.start()] + body[extra.end():]
+        body = body[:first.start()] + first.group("indent") + line + body[first.end():]
     else:
-        line = f'device = "{device}"\n'
         body = line + body
-    text = text[:match.start(1)] + body + text[match.end(1):]
-else:
-    line = f'device = "{device}"\n'
-    if text and not text.endswith("\n"):
-        text += "\n"
-    text += "\n[recording]\n" + line
+    return text[:match.start(1)] + body + text[match.end(1):]
+
+
+text = set_key(text, "recording", "device", f'"{device}"')
+text = set_key(text, "injection", "backends", '["ydotool", "wtype"]')
 if text == original:
     raise SystemExit(0)
 tmp = path.with_suffix(path.suffix + ".tmp")
