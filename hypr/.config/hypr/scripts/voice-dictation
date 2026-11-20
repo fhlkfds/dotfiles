@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Route Hyprvoice through either the microphone paired with the default audio
-# output or an explicitly selected PipeWire source.
+# output or an explicitly selected PipeWire source, and keep the last
+# transcript in its own slot so paste-last can paste it without the clipboard
+# losing what was on it.
 set -euo pipefail
 
 config=${VOICE_DICTATION_CONFIG:-"${XDG_CONFIG_HOME:-$HOME/.config}/hypr/voice-dictation.json"}
@@ -10,8 +12,11 @@ notify_send=${NOTIFY_SEND:-notify-send}
 gdbus=${GDBUS:-gdbus}
 hyprctl_bin=${HYPRCTL:-hyprctl}
 playerctl_bin=${PLAYERCTL:-playerctl}
+journalctl_bin=${JOURNALCTL:-journalctl}
+last_file=${VOICE_DICTATION_LAST:-"${XDG_STATE_HOME:-$HOME/.local/state}/voice-dictation/last.txt"}
 target_file=${VOICE_DICTATION_TARGET:-"${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/voice-dictation-target"}
 paused_media_file="$target_file.media"
+started_file="$target_file.started"
 
 resolved_source=
 resolved_label=
@@ -254,13 +259,17 @@ start_dictation() {
   start_interrupted=false
   start_requested=false
   rm -f -- "$paused_media_file" 2>/dev/null || true
+  # The journal read after this dictation starts here. Written without a
+  # process, as the target is: EPOCHREALTIME is a builtin, and some locales
+  # give it a decimal comma.
+  [[ -L $started_file ]] || printf '%s\n' "${EPOCHREALTIME/,/.}" >"$started_file" || true
   tmp=$(mktemp "$target_file.XXXXXX") || exec "$hyprvoice_bin" toggle
   active_window >"$tmp" || true
   mv -fT -- "$tmp" "$target_file" || rm -f -- "$tmp"
   trap '
     if [[ $start_requested == false || $(hyprvoice_status || true) != transcribing ]]; then
       resume_media
-      rm -f -- "$target_file"
+      rm -f -- "$target_file" "$started_file"
     fi
   ' EXIT
   # Defer exit until a successful pause has been recorded for cleanup.
@@ -282,6 +291,8 @@ finish_dictation() {
   if [[ ! $target =~ ^0x[[:xdigit:]]+$ ]] || ! window_open "$target" ||
     ! follow=$(option_value input:follow_mouse) || ! warps=$(option_value cursor:no_warps); then
     stop_listening
+    wait_until_idle
+    capture_transcript
     exit
   fi
   return_to=$(active_window || true)
@@ -291,12 +302,98 @@ finish_dictation() {
   "$hyprctl_bin" -q eval 'hl.config({ input = { follow_mouse = 0 }, cursor = { no_warps = true } })'
   focus_window "$target"
   stop_listening
-  # ponytail: polls every 0.1s for at most two minutes; an LLM step slower than
-  # that gets its focus back early.
+  wait_until_idle
+  restore_focus
+  trap - EXIT
+  capture_transcript
+}
+
+# ponytail: polls every 0.1s for at most two minutes; an LLM step slower than
+# that gets its focus back early.
+wait_until_idle() {
   for _ in {1..1200}; do
-    [[ $(hyprvoice_status) =~ ^(transcribing|processing|injecting)$ ]] || break
+    [[ $(hyprvoice_status) =~ ^(transcribing|processing|injecting)$ ]] || return 0
     sleep 0.1
   done
+}
+
+# Hyprvoice has no transcript output, but it logs each result to its journal
+# (internal/pipeline/pipeline.go). No match keeps the previous last.txt.
+capture_transcript() {
+  local since
+  [[ -f $started_file ]] || return 0
+  since=$(<"$started_file")
+  rm -f -- "$started_file"
+  [[ $since =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 0
+  # Let the next dictation start while journald catches up.
+  exec 9>&-
+  python3 - "$journalctl_bin" "$since" "$last_file" <<'PY' || true
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+
+journalctl, since, destination = sys.argv[1:]
+PREFIX = re.compile(r"\d{4}/\d\d/\d\d \d\d:\d\d:\d\d ")
+FINAL = "Pipeline: Final transcription text: "
+LLM = "Pipeline: LLM processed text: "
+# Hyprvoice types each of these as a space.
+BREAKS = {ord(char): " " for char in "\r\n\v\f\x85\u2028\u2029"}
+
+
+def transcript(log):
+    entries = []
+    for line in log.removesuffix("\n").split("\n"):
+        prefix = PREFIX.match(line)
+        if prefix:
+            entries.append(line[prefix.end():])
+        elif entries:
+            # Go's logger prefixes only the first line of a multi-line message.
+            entries[-1] += " " + line
+    text = None
+    for entry in entries:
+        # An empty message may reach the journal without its trailing space.
+        if entry.startswith(FINAL.rstrip()):
+            text = entry[len(FINAL):]
+        elif entry.startswith(LLM.rstrip()) and text is not None:
+            text = entry[len(LLM):]
+    if text is None or not text.strip():
+        return None
+    return text.translate(BREAKS)
+
+
+command = [journalctl, "--user", "-u", "hyprvoice", "--since", f"@{since}",
+           "-o", "cat", "-a", "--no-pager"]
+# journald can lag behind Hyprvoice reporting idle.
+for attempt in range(10):
+    if attempt:
+        time.sleep(0.1)
+    try:
+        result = subprocess.run(command, stdin=subprocess.DEVNULL,
+                                capture_output=True, timeout=2)
+    except subprocess.TimeoutExpired:
+        continue
+    except OSError as error:
+        raise SystemExit(f"voice-dictation: cannot read the Hyprvoice journal: {error}")
+    text = transcript(result.stdout.decode("utf-8", "replace"))
+    if text is not None:
+        break
+else:
+    raise SystemExit(0)
+
+directory = os.path.dirname(destination)
+os.makedirs(directory, mode=0o700, exist_ok=True)
+descriptor, tmp = tempfile.mkstemp(dir=directory, prefix=".last.")
+try:
+    with os.fdopen(descriptor, "w", encoding="utf-8") as out:
+        out.write(text)
+    os.replace(tmp, destination)
+except BaseException:
+    os.unlink(tmp)
+    raise
+PY
 }
 
 restore_focus() {

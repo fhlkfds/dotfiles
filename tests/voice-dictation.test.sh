@@ -110,8 +110,21 @@ else
   exit 2
 fi
 SH
+# Serves JOURNAL_FIXTURE (or one plain transcript) after JOURNAL_LAG empty reads.
+cat >"$test_root/bin/journalctl" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$JOURNAL_CALLS"
+reads=$(wc -l <"$JOURNAL_CALLS")
+(( reads > ${JOURNAL_LAG:-0} )) || exit 0
+if [[ -n ${JOURNAL_FIXTURE:-} ]]; then
+  cat "$JOURNAL_FIXTURE"
+else
+  printf '2026/11/20 10:00:05 Pipeline: Final transcription text: default\n'
+fi
+SH
 chmod +x "$test_root/bin/wpctl" "$test_root/bin/pw-dump" "$test_root/bin/hyprvoice" \
-  "$test_root/bin/notify-send" "$test_root/bin/hyprctl" "$test_root/bin/playerctl"
+  "$test_root/bin/notify-send" "$test_root/bin/hyprctl" "$test_root/bin/playerctl" \
+  "$test_root/bin/journalctl"
 
 config="$test_root/voice-dictation.json"
 hyprvoice_config="$test_root/hyprvoice/config.toml"
@@ -129,6 +142,7 @@ export VOICE_DICTATION_NOTIFICATIONS="$notifications"
 export HYPRVOICE_STATE="$test_root/hyprvoice-state" VOICE_DICTATION_TARGET="$test_root/target"
 export HYPRVOICE_SEQUENCE="$test_root/sequence"
 export MEDIA_STATE_DIR="$test_root/media"
+export JOURNAL_CALLS="$test_root/journal-calls" VOICE_DICTATION_LAST="$test_root/state/voice-dictation/last.txt"
 mkdir -p "$MEDIA_STATE_DIR"
 
 "$script" use-default-output
@@ -496,6 +510,59 @@ ln -s "$test_root/victim" "$VOICE_DICTATION_TARGET"
 printf idle >"$HYPRVOICE_STATE"
 HYPR_ACTIVE=0xaaa "$script" toggle
 [[ $(<"$test_root/victim") == 'keep me' && ! -L $VOICE_DICTATION_TARGET ]] || fail 'target write followed a symlink'
+
+# Each finished dictation keeps its transcript, read from Hyprvoice's journal
+# since the dictation started. The typed text wins: the LLM result when one
+# follows the latest raw transcript, with line breaks typed as spaces.
+last=$VOICE_DICTATION_LAST
+journal="$test_root/journal"
+dictate() {
+  printf '%s' "$1" >"$journal"
+  printf idle >"$HYPRVOICE_STATE"
+  : >"$JOURNAL_CALLS"
+  started=$EPOCHREALTIME
+  HYPR_ACTIVE=${2:-0xaaa} "$script" toggle
+  JOURNAL_FIXTURE="$journal" HYPR_ACTIVE=0xbbb "$script" toggle
+}
+log() { printf '2026/11/20 10:00:0%s Pipeline: %s\n' "$1" "$2"; }
+rm -f -- "$last"
+dictate "$(log 1 'Starting recording'; log 5 'Final transcription text: hello world'; log 6 'Text injection completed successfully')"
+[[ $(<"$last") == 'hello world' ]] || fail 'raw transcript was not saved'
+[[ $(stat -c %a "$last") == 600 ]] || fail 'saved transcript is not private'
+read -r -a args <"$JOURNAL_CALLS"
+[[ ${args[*]:0:4} == '--user -u hyprvoice --since' && ${args[4]} =~ ^@[0-9]+\.[0-9]{6}$ && ${args[*]:5} == '-o cat -a --no-pager' ]] ||
+  fail "journal read uses unexpected arguments: ${args[*]}"
+awk -v since="${args[4]#@}" -v started="${started/,/.}" 'BEGIN { exit !(since >= started) }' ||
+  fail 'journal read does not start at the dictation start'
+[[ ! -e $VOICE_DICTATION_TARGET.started ]] || fail 'dictation start marker outlived the dictation'
+
+dictate "$(log 5 'Final transcription text: um so hello'; log 6 'LLM post-processing enabled, processing text'; log 7 'LLM processed text: So, hello.')"
+[[ $(<"$last") == 'So, hello.' ]] || fail 'LLM result did not replace the raw transcript'
+
+dictate "$(log 1 'LLM processed text: earlier cleanup'; log 5 'Final transcription text: newer raw')"
+[[ $(<"$last") == 'newer raw' ]] || fail 'an earlier LLM result replaced a newer raw transcript'
+
+dictate "$(log 5 $'Final transcription text: first line\nsecond line\n\nthird\xe2\x80\xa8fourth\vfifth'; log 6 'Text injection completed successfully')"
+[[ $(<"$last") == 'first line second line  third fourth fifth' ]] ||
+  { cat "$last" >&2; fail 'wrapped transcript was not joined the way Hyprvoice types it'; }
+
+JOURNAL_LAG=3 dictate "$(log 5 'Final transcription text: late journal')"
+[[ $(<"$last") == 'late journal' ]] || fail 'transcript logged after idle was not retried'
+
+# A closed target window skips the focus dance but still keeps the transcript.
+: >"$calls"
+dictate "$(log 5 'Final transcription text: no target')" 0xdead
+[[ $(<"$last") == 'no target' ]] || fail 'finish without a target window did not save the transcript'
+! grep -Fq dispatch "$calls" || fail 'finish without a target window changed focus'
+
+for unusable in "$(log 5 'Final transcription text: ')" "$(log 5 'Final transcription text:    ')" \
+  "$(log 1 'LLM processed text: earlier cleanup')" \
+  "$(log 1 'Starting recording'; log 2 'Recording error: no device')"; do
+  printf '%s' 'previous dictation' >"$last"
+  dictate "$unusable"
+  [[ $(<"$last") == 'previous dictation' ]] || fail "unusable journal replaced the saved transcript: $unusable"
+done
+[[ $(wc -l <"$JOURNAL_CALLS") == 10 ]] || fail 'missing transcript was not retried a bounded number of times'
 
 # Without a session runtime directory, use private per-user cache storage.
 jq '.pause_media = true' "$config" >"$config.tmp" && mv "$config.tmp" "$config"
