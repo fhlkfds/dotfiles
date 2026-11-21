@@ -138,7 +138,9 @@ jobs:
               for line in result.stdout.splitlines():
                   if line.startswith('skip:') or 'skipped=' in line:
                       skipped.append(f'{label}: {line}')
-                      if not re.search(r'quickshell|Wayland|docker', line, re.IGNORECASE):
+                      # Hyprvoice is AUR-only, so its real-daemon test cannot run here.
+                      if not re.search(r'quickshell|Wayland|docker|hyprvoice not installed',
+                                       line, re.IGNORECASE):
                           unexpected_skip = True
               if result.returncode or unexpected_skip:
                   failed.append(label)

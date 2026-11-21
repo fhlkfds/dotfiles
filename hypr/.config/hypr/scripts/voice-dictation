@@ -127,56 +127,103 @@ notify() {
     'Voice dictation' 9931 '' "$title" "$body" '[]' '{}' 2500 >/dev/null 2>&1 || true
 }
 
-# Hyprvoice falls back to its clipboard backend only after typing fails, and
-# that backend overwrites the clipboard without restoring it.
-sync_hyprvoice_config() {
-  local source=$1 written changed
+# Apply {"section.name": {key: value}} to the Hyprvoice config in one write,
+# keeping every other byte. Values are strings or lists of strings. Hyprvoice
+# notifies on each reload, so an unchanged config is not rewritten. Prints
+# "changed" after a write. With keep-clipboard, a clipboard-only backend list
+# (the clipboard mode that delivery reports) is left as it is.
+edit_hyprvoice_config() {
   [[ -f $hyprvoice_config ]] || die 'Hyprvoice is not configured; run hyprvoice onboarding first'
-  written=${EPOCHREALTIME/,/.}
-  changed=$(python3 - "$hyprvoice_config" "$source" <<'PY'
+  python3 - "$hyprvoice_config" "$@" <<'PY'
 from pathlib import Path
+import json
+import os
 import re
 import sys
+import tomllib
 
 path = Path(sys.argv[1])
-device = sys.argv[2]
-original = path.read_text()
-text = original if original.endswith("\n") or not original else original + "\n"
+edits = json.loads(sys.argv[2])
+text = original = path.read_text(encoding="utf-8")
+if sys.argv[3:] == ["keep-clipboard"]:
+    try:
+        current = tomllib.loads(original).get("injection", {}).get("backends")
+    except tomllib.TOMLDecodeError:
+        current = None
+    if current == ["clipboard"]:
+        edits.get("injection", {}).pop("backends", None)
 
 
-def set_key(text, section_name, key, value):
-    section = re.compile(rf"(?ms)^\[{section_name}\][ \t]*(?:#[^\n]*)?\n(.*?)(?=^\[|\Z)")
-    assignment = re.compile(rf"(?m)^(?P<indent>[ \t]*){key}[ \t]*=[ \t]*(?:\[[^\]]*\][^\n]*|[^\n]*)\n?")
-    line = f"{key} = {value}\n"
-    match = section.search(text)
+def die(message):
+    sys.exit(f"voice-dictation: {message}")
+
+
+def value_end(lines, start):
+    """Index after the line that closes a value, which an array can span."""
+    depth = 0
+    for i in range(start, len(lines)):
+        code = re.sub(r'"(?:[^"\\]|\\.)*"|\'[^\']*\'|#.*', "", lines[i])
+        if i == start:
+            code = code.split("=", 1)[1]
+        depth += code.count("[") - code.count("]")
+        if depth <= 0:
+            return i + 1
+    return len(lines)
+
+
+def apply(text, name, key, value):
+    header = re.compile(rf"(?m)^[ \t]*\[[ \t]*{re.escape(name)}[ \t]*\][ \t]*(?:#.*)?\n?")
+    line_for = lambda indent: f"{indent}{key} = {json.dumps(value, ensure_ascii=False)}\n"
+    match = header.search(text)
     if not match:
-        return text + f"\n[{section_name}]\n" + line
-    body = match.group(1)
-    found = list(assignment.finditer(body))
-    if found:
-        first = found[0]
-        # Older runs could have appended another key.  TOML forbids duplicate
-        # keys, so remove every remaining one in this section.
-        for extra in reversed(found[1:]):
-            body = body[:extra.start()] + body[extra.end():]
-        body = body[:first.start()] + first.group("indent") + line + body[first.end():]
+        if text and not text.endswith("\n"):
+            text += "\n"
+        return text + f"\n[{name}]\n" + line_for("")
+    end = re.compile(r"(?m)^[ \t]*\[").search(text, match.end())
+    stop = end.start() if end else len(text)
+    lines = text[match.end():stop].splitlines(keepends=True)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    keyed = [i for i, line in enumerate(lines)
+             if re.match(rf"[ \t]*{re.escape(key)}[ \t]*=", line)]
+    if keyed:
+        indent = re.match(r"[ \t]*", lines[keyed[0]]).group()
+        # TOML forbids duplicate keys, and older runs could append another.
+        for i in reversed(keyed):
+            del lines[i:value_end(lines, i)]
+        lines.insert(keyed[0], line_for(indent))
     else:
-        body = line + body
-    return text[:match.start(1)] + body + text[match.end(1):]
+        lines.insert(0, line_for(""))
+    head = text[:match.end()]
+    if not head.endswith("\n"):
+        head += "\n"
+    return head + "".join(lines) + text[stop:]
 
 
-text = set_key(text, "recording", "device", f'"{device}"')
-text = set_key(text, "injection", "backends", '["ydotool", "wtype"]')
+for name, keys in edits.items():
+    for key, value in keys.items():
+        text = apply(text, name, key, value)
 if text == original:
     raise SystemExit(0)
-tmp = path.with_suffix(path.suffix + ".tmp")
-tmp.write_text(text)
+
+try:
+    parsed = tomllib.loads(text)
+except tomllib.TOMLDecodeError as error:
+    die(f"the edited Hyprvoice config would not parse ({error}); left it unchanged")
+for name, keys in edits.items():
+    table = parsed
+    for part in name.split("."):
+        table = table.get(part, {}) if isinstance(table, dict) else {}
+    for key, value in keys.items():
+        if table.get(key) != value:
+            die(f"{name}.{key} would not read back as set; left the Hyprvoice config unchanged")
+
+tmp = path.with_name(path.name + ".tmp")
+tmp.write_text(text, encoding="utf-8")
+os.chmod(tmp, path.stat().st_mode & 0o7777)
 tmp.replace(path)
 print("changed")
 PY
-)
-  [[ $changed != changed ]] || wait_for_reload "$written" ||
-    die 'Hyprvoice has not reloaded its settings yet; press the shortcut again'
 }
 
 # Hyprvoice reloads its config 500 ms after a change and cancels any recording
@@ -191,6 +238,49 @@ wait_for_reload() {
     sleep 0.1
   done
   return 1
+}
+
+# Hyprvoice falls back to its clipboard backend only after typing fails, and
+# that backend overwrites the clipboard without restoring it. So typing mode is
+# kept typing-only, and clipboard mode is left as the machine chose it.
+sync_hyprvoice_config() {
+  local device=${1//\\/\\\\} written changed
+  device=${device//\"/\\\"}
+  written=${EPOCHREALTIME/,/.}
+  # Built without jq: this runs on every start. PipeWire names have no
+  # control characters, so escaping backslashes and quotes is enough.
+  changed=$(edit_hyprvoice_config \
+    "{\"recording\":{\"device\":\"$device\"},\"injection\":{\"backends\":[\"ydotool\",\"wtype\"]}}" \
+    keep-clipboard)
+  [[ $changed != changed ]] || wait_for_reload "$written" ||
+    die 'Hyprvoice has not reloaded its settings yet; press the shortcut again'
+}
+
+# Clipboard dictation: Hyprvoice copies, and the wl-copy wrapper tells you when
+# the text can be pasted. The label covers the wait for transcription.
+use_clipboard() {
+  edit_hyprvoice_config '{"injection":{"backends":["clipboard"]},"notifications.messages.transcribing":{"body":"Transcribing…"}}' >/dev/null
+}
+
+use_typing() {
+  edit_hyprvoice_config '{"injection":{"backends":["ydotool","wtype"]}}' >/dev/null
+}
+
+# Runs on every menu render, so it reads the file without Python.
+delivery() {
+  local backends=
+  [[ -r $hyprvoice_config ]] && backends=$(awk '
+    /^[ \t]*\[/ { in_injection = ($0 ~ /^[ \t]*\[[ \t]*injection[ \t]*\][ \t]*(#.*)?$/); next }
+    in_injection && /^[ \t]*backends[ \t]*=/ { sub(/^[^=]*=/, ""); value = ""; collecting = 1 }
+    collecting {
+      sub(/#.*/, ""); gsub(/[ \t]/, ""); value = value $0
+      if (value !~ /^\[/ || value ~ /\]/) { sub(/,\]/, "]", value); print value; exit }
+    }' "$hyprvoice_config")
+  if [[ $backends == '["clipboard"]' || $backends == "['clipboard']" ]]; then
+    printf 'clipboard\n'
+  else
+    printf 'typing\n'
+  fi
 }
 
 hyprvoice_status() {
@@ -535,7 +625,7 @@ paste_last() {
 }
 
 usage() {
-  printf 'usage: %s {toggle [--dry-run]|paste-last [--dry-run]|resolve-source|use-default-output|use-source NAME|choose|status}\n' "${0##*/}" >&2
+  printf 'usage: %s {toggle [--dry-run]|paste-last [--dry-run]|resolve-source|use-default-output|use-source NAME|use-clipboard|use-typing|delivery|choose|status}\n' "${0##*/}" >&2
   exit 2
 }
 
@@ -559,6 +649,9 @@ case ${1:-} in
   resolve-source) [[ $# -eq 1 ]] || usage; resolve_source; printf '%s\n' "$resolved_source" ;;
   use-default-output) [[ $# -eq 1 ]] || usage; save_selection default-output ;;
   use-source) [[ $# -eq 2 ]] || usage; valid_name "$2" || die 'invalid microphone name'; save_selection source "$2" ;;
+  use-clipboard) [[ $# -eq 1 ]] || usage; use_clipboard ;;
+  use-typing) [[ $# -eq 1 ]] || usage; use_typing ;;
+  delivery) [[ $# -eq 1 ]] || usage; delivery ;;
   choose) [[ $# -eq 1 ]] || usage; choose ;;
   status) printf 'mode=%s\n' "$(mode)"; resolve_source; printf 'device=%s\n' "$resolved_source" ;;
   *) usage ;;

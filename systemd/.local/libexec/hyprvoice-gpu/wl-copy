@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Hyprvoice's clipboard backend runs "wl-copy" with the dictated text on stdin
+# and says nothing when it succeeds. Copy, read the clipboard back, and only
+# then tell the user the text is ready to paste. A failure stays silent here;
+# Hyprvoice reports it.
+set -euo pipefail
+
+real=${HYPRVOICE_WL_COPY:-/usr/bin/wl-copy}
+paste=${HYPRVOICE_WL_PASTE:-/usr/bin/wl-paste}
+self_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
+(($# == 0)) || exec "$real" "$@"
+
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
+cat >"$work/text"
+
+status=0
+"$real" <"$work/text" || status=$?
+[[ $status == 0 && -s $work/text ]] || exit "$status"
+
+if ! timeout "${HYPRVOICE_CLIPBOARD_CONFIRM_TIMEOUT:-2}" "$paste" --no-newline \
+  >"$work/readback" 2>/dev/null || ! cmp -s "$work/text" "$work/readback"; then
+  printf 'wl-copy: the clipboard does not hold the dictated text\n' >&2
+  exit 1
+fi
+
+# A failed notice must not turn a successful copy into an error.
+timeout 1 "$self_dir/notify-send" -a Hyprvoice Hyprvoice 'Dictation copied — ready to paste' || true

@@ -1,40 +1,73 @@
 #!/usr/bin/env bash
+# Hyprvoice runs whisper-cli by name. Use the GPU build when device.env (written
+# by hyprvoice-gpu-install after a verified sample transcription) describes a
+# usable one, and the system CPU build otherwise, including when the GPU run
+# fails. One set of dotfiles then works on AMD, Intel and machines with no GPU.
 set -euo pipefail
 
-gpu_cli=${HYPRVOICE_GPU_WHISPER_CLI:-${XDG_DATA_HOME:-$HOME/.local/share}/hyprvoice-gpu/bin/whisper-cli}
-if [[ ! -x $gpu_cli ]]; then
-  printf 'Hyprvoice GPU transcription is unavailable: %s is missing\n' "$gpu_cli" >&2
-  exit 1
-fi
+prefix=${HYPRVOICE_GPU_PREFIX:-${XDG_DATA_HOME:-$HOME/.local/share}/hyprvoice-gpu}
+gpu_cli=${HYPRVOICE_GPU_WHISPER_CLI:-$prefix/bin/whisper-cli}
+device_file=${HYPRVOICE_GPU_DEVICE_FILE:-$prefix/device.env}
 
-gpu_lib=$(dirname -- "$gpu_cli")/../lib
-export LD_LIBRARY_PATH="$gpu_lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+note() { printf 'hyprvoice whisper-cli: %s\n' "$*" >&2; }
+
+# Replace this process with the CPU build. Skip this wrapper itself, which
+# can be reached through a Stow symlink.
+exec_cpu() {
+  local cli=${HYPRVOICE_CPU_WHISPER_CLI:-} self dir candidate dirs
+  if [[ -z $cli ]]; then
+    self=$(readlink -f -- "${BASH_SOURCE[0]}")
+    IFS=: read -ra dirs <<<"$PATH"
+    for dir in "${dirs[@]}"; do
+      candidate=${dir:-.}/whisper-cli
+      [[ -x $candidate && ! -d $candidate ]] || continue
+      [[ $(readlink -f -- "$candidate") != "$self" ]] || continue
+      cli=$candidate
+      break
+    done
+  fi
+  [[ -n $cli ]] || { note 'no CPU whisper-cli found on PATH'; exit 127; }
+  exec "$cli" "$@"
+}
+
+# device.env is data: read three allowed keys, never source it.
+gpu_vendor='' gpu_icd='' gpu_device=''
+read_device_file() {
+  local line key value
+  while IFS= read -r line || [[ -n $line ]]; do
+    [[ -z $line || $line == '#'* ]] && continue
+    [[ $line == *=* ]] || { note "device.env has a line without '='; using the CPU"; return 1; }
+    key=${line%%=*} value=${line#*=}
+    case $key in
+      vendor) gpu_vendor=$value ;;
+      icd) gpu_icd=$value ;;
+      device) gpu_device=$value ;;
+    esac
+  done <"$device_file"
+  [[ $gpu_vendor =~ ^[a-z]+$ && $gpu_icd == /* && $gpu_device =~ ^[0-9]+$ ]] ||
+    { note 'device.env is incomplete; using the CPU'; return 1; }
+}
+
+gpu_usable() {
+  [[ -f $device_file ]] || return 1
+  read_device_file || return 1
+  [[ -x $gpu_cli ]] || { note "device.env names a GPU but $gpu_cli is missing; using the CPU"; return 1; }
+  [[ -f $gpu_icd ]] || { note "Vulkan driver $gpu_icd is missing; using the CPU"; return 1; }
+}
+
+gpu_usable || exec_cpu "$@"
 
 transcript=$(mktemp)
-log=$(mktemp)
-trap 'rm -f -- "$transcript" "$log"' EXIT
-
-# Hyprvoice passes -np, which silences the backend log this wrapper needs to
-# verify GPU use. Capture that log privately; stdout stays transcript-only.
-args=()
-for arg in "$@"; do
-  case $arg in
-    -np|--no-prints) ;;
-    *) args+=("$arg") ;;
-  esac
-done
-
-if ! "$gpu_cli" "${args[@]}" >"$transcript" 2>"$log"; then
-  cat "$log" >&2
-  exit 1
+trap 'rm -f -- "$transcript"' EXIT
+if env VK_DRIVER_FILES="$gpu_icd" GGML_VK_VISIBLE_DEVICES="$gpu_device" \
+  LD_LIBRARY_PATH="$(dirname -- "$gpu_cli")/../lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+  "$gpu_cli" "$@" >"$transcript"; then
+  cat -- "$transcript"
+  exit 0
 fi
 
-# whisper.cpp silently falls back to CPU when no GPU backend is available.
-# Keep that result out of Hyprvoice rather than reporting it as GPU work.
-if ! grep -Eq '^whisper_backend_init_gpu: using Vulkan[0-9]+ backend$' "$log"; then
-  printf 'Hyprvoice GPU transcription failed: Whisper did not use Vulkan\n' >&2
-  cat "$log" >&2
-  exit 1
-fi
-
-cat "$transcript"
+# Drop the partial output so only one engine's text reaches Hyprvoice.
+note "$gpu_vendor GPU transcription failed; retrying on the CPU"
+rm -f -- "$transcript"
+trap - EXIT
+exec_cpu "$@"
