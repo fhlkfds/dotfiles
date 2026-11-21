@@ -2,14 +2,7 @@
 # verify: drive this dotfiles repo's real surfaces headless and keep proof.
 #
 # Agents have no live Hyprland session to drive, and the machine they run on
-# may have one they must not touch. Every command here runs inside a
-# bubblewrap sandbox: the real home (and the repo in it) is read-only, the
-# user's session sockets (/run/user/$UID, the system bus, X11) are hidden,
-# there is no network, and a throwaway HOME/XDG tree stands in. Stand-in
-# commands for hyprctl, notify-send, stow and friends record every call, a
-# /proc sampler records every process the sandbox ran, and a before/after
-# listing records every file it wrote. That is how a dry-run is checked
-# against what it claims to skip.
+# may have one they must not touch.
 set -euo pipefail
 
 usage() {
@@ -44,13 +37,6 @@ shell_src=$repo/quickshell/.config/quickshell
 verify_root=${VERIFY_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles-verify}
 uid=$(id -u)
 
-# Commands that change the live desktop or system, or reach outside. Each
-# gets a stand-in that logs its argv and exits with the status given here.
-# gsettings answers 0 because the shell reads it at startup and treats a
-# failure as an error, the same stand-in tests/battery-widget.test.sh uses.
-# rofi is not here: `theme validate` parses themes with `rofi -dump-theme`,
-# and with no display in the sandbox rofi cannot open a window anyway.
-# `theme` gets its own gate in cmd_launch.
 tripwires=(
   hyprctl:1 hyprpm:1 hyprshade:1 notify-send:0 gsettings:0 systemctl:1
   loginctl:1 stow:1 swww:1 awww:1 hyprpaper:1 pkill:1 killall:1
@@ -60,9 +46,8 @@ tripwires=(
   grim:1 slurp:1 hyprlock:1 hypridle:1
 )
 
-# The bwrap arguments every sandboxed command shares. Bind order matters:
-# the real home goes read-only first, then the run directory (which lives
-# under it) is bound back writable on top.
+# Bind order matters: the real home goes read-only first, then the run
+# directory (which lives under it) is bound back writable on top.
 sandbox_mounts() {
   mounts=(
     --dev-bind / /
@@ -110,15 +95,12 @@ next_slot() {
 }
 
 snapshot() {
-  # Path, size and mtime of everything a sandboxed command could write.
-  # The staged shell copy is excluded: it is input, not output.
   find "$sandbox" -path "$sandbox/shell" -prune -o -path "$sandbox/bin" -prune \
     -o -mindepth 1 -printf '%P\t%s\t%T@\n' | LC_ALL=C sort
 }
 
-# write_stand_in NAME BODY: a stand-in that logs its argv to $VERIFY_CALLS
-# in one write (so lines stay whole when guards run in parallel), then runs
-# BODY.
+# Each stand-in logs its call in one write, so lines stay whole when
+# stand-ins run in parallel.
 write_stand_in() {
   local file=$sandbox/bin/$1
   {
@@ -143,7 +125,6 @@ cmd_launch() {
   [[ -f $repo/hypr/.config/hypr/themes/$palette/colors.toml ]] \
     || die "no palette $palette in hypr/.config/hypr/themes"
   command -v bwrap >/dev/null || die 'bwrap (bubblewrap) is required: pacman -S bubblewrap'
-  # The sandbox mounts its own /tmp, which would hide a run kept under /tmp.
   case $(readlink -m -- "$verify_root")/ in
     /tmp/*) die "VERIFY_ROOT must not be under /tmp ($verify_root): the sandbox replaces /tmp" 2 ;;
   esac
@@ -161,10 +142,6 @@ cmd_launch() {
     status=${entry##*:}
     write_stand_in "$name" "exit $status"
   done
-  # theme: reading is safe and menus need it; applying is not. Reads go to
-  # this checkout's CLI, never the deployed one. The active theme is the
-  # run's palette: the generator keeps it in themes/current-theme beside
-  # itself, which a fresh worktree lacks and the read-only repo cannot gain.
   local palette_mode
   palette_mode=$(sed -n 's/^mode *= *"\(.*\)"/\1/p' "$repo/hypr/.config/hypr/themes/$palette/colors.toml")
   write_stand_in theme "case \${1:-} in
@@ -176,9 +153,6 @@ cmd_launch() {
     exit 1 ;;
 esac"
 
-  # Stand in for the deployed ~/.local/bin: link every package's commands
-  # from this checkout, so code that calls "$HOME/.local/bin/<cmd>" runs the
-  # worktree copy. A name with a stand-in links to the stand-in instead.
   mkdir -p "$sandbox/home/.local/bin"
   local bin
   for bin in "$repo"/*/.local/bin/*; do
@@ -191,8 +165,6 @@ esac"
     fi
   done
 
-  # Seed the palette Theme.qml reads, rendered by the generator's own
-  # template code. Rendering is pure; nothing is installed or reloaded.
   mkdir -p "$sandbox/home/.config/hypr/themes/.active"
   python3 - "$repo" "$palette" "$sandbox/home/.config/hypr/themes/.active/theme.json" <<'PY'
 import sys
@@ -217,8 +189,6 @@ PY
   printf 'evidence: %s\n' "$evidence"
 }
 
-# Run "$@" inside the sandbox. Writes stdout/stderr/exit/calls/processes/
-# fs-changes into $slot_dir. Returns the command's exit status.
 sandboxed() {
   local label=$1 timeout=$2; shift 2
   local -a extra_env=()
@@ -262,14 +232,12 @@ sandboxed() {
   printf '%s\n' "$status" >"$slot_dir/exit-code"
 
   snapshot >"$slot_dir/.after"
-  # A=added, M=size or mtime changed, D=deleted, relative to the sandbox.
   LC_ALL=C join -t $'\t' -a1 -a2 -e '' -o 0,1.2,1.3,2.2,2.3 \
       "$slot_dir/.before" "$slot_dir/.after" \
     | awk -F'\t' '$2=="" {print "A\t" $1; next} $4=="" {print "D\t" $1; next}
                   $2!=$4 || $3!=$5 {print "M\t" $1}' >"$slot_dir/fs-changes.txt"
   rm -f -- "$slot_dir/.before" "$slot_dir/.after"
 
-  # Attempts to leave the sandbox show up as these errors.
   grep -hE 'Read-only file system|Network is unreachable|Could not resolve|Temporary failure in name resolution|Connection refused|Permission denied' \
     "$slot_dir/stdout.txt" "$slot_dir/stderr.txt" >"$slot_dir/blocked.txt" || true
   return "$status"
@@ -336,16 +304,14 @@ cmd_smoke() {
   local oks fails
   oks=$(grep -cE '(^|[^A-Za-z])ok   ' "$log" || true)
   fails=$(grep -E '(^|[^A-Za-z])FAIL' "$log" || true)
-  local errors
-  # Load errors only. Runtime errors from services the sandbox hides (PipeWire,
-  # UPower, the session bus) are expected and do not fail a smoke.
-  errors=$(grep -E 'Failed to load configuration|ReferenceError|TypeError|is not a type|is not installed|Cannot assign|unavailable' "$log" || true)
+  local load_errors
+  load_errors=$(grep -E 'Failed to load configuration|ReferenceError|TypeError|is not a type|is not installed|Cannot assign|unavailable' "$log" || true)
   local verdict
   if [[ -n $fails ]]; then
     verdict="FAIL $name smoke: $(grep -cE '(^|[^A-Za-z])FAIL' "$log") failing line(s)"
   elif [[ -n $expect ]] && ! grep -Fq -- "$expect" "$log"; then
     verdict="FAIL $name smoke: success line \"$expect\" never printed"
-  elif [[ -z $expect && -n $errors ]]; then
+  elif [[ -z $expect && -n $load_errors ]]; then
     verdict="FAIL $name smoke: QML errors and no --expect line to prove success"
   elif [[ -z $expect ]]; then
     verdict="LOADED $name smoke: no FAIL, no QML errors, $oks ok line(s); pass --expect to prove more"
@@ -361,13 +327,11 @@ cmd_shot() {
   resolve_run; require_sandbox
   # Quickshell resolves components and singletons from the directory of the
   # file it loads, so the harness runs from a fresh copy of the shell with
-  # the harness beside it. The copy is taken now, from the working tree.
+  # the harness beside it.
   rm -rf -- "$sandbox/shell"
   cp -a "$shell_src" "$sandbox/shell"
   cp "$skill_dir/harness/BatteryPanelShot.qml" "$sandbox/shell/"
   local status=0
-  # VERIFY_EVIDENCE is only known inside the sandbox, so the harness reads
-  # its output folder from it there.
   # shellcheck disable=SC2016
   sandboxed shot-battery-panel 60 -- sh -c 'VERIFY_SHOT_DIR=$VERIFY_EVIDENCE exec quickshell -p "$1"' sh \
     "$sandbox/shell/BatteryPanelShot.qml" || status=$?
@@ -393,7 +357,6 @@ cmd_lmenu() {
     esac
   done
   resolve_run; require_sandbox
-  # The repo's menu and parser, never the deployed copies under ~/.config.
   local status=0
   sandboxed "lmenu${route:+-$route}${mode#--dry-run}" 30 \
     LMENU_MENU="$repo/menu/.config/lmenu/menu.jsonc" \
@@ -412,7 +375,6 @@ cmd_lmenu() {
 cmd_doctor() {
   resolve_run
   local bad=0
-  # check NAME CMD...: runs CMD as the test; ok when it exits 0.
   check() { local name=$1; shift; if "$@" >/dev/null 2>&1; then printf 'ok    %s\n' "$name"; else printf 'FAIL  %s\n' "$name"; bad=1; fi; }
   note() { printf 'note  %s\n' "$1"; }
   local launched_repo launched_rev palette created
@@ -440,9 +402,6 @@ cmd_doctor() {
     note 'a live Hyprland session is running on this machine; the sandbox hides it'
   fi
   [[ -d $sandbox/home ]] || { printf 'doctor: NOT safe to drive (run was cleaned up)\n'; return 1; }
-  # Prove the isolation, not just its configuration: from inside the sandbox
-  # the real home and repo must be read-only, the session sockets, system bus
-  # and network gone, and hyprctl must resolve to the stand-in.
   local probe status=0
   local -a mounts
   sandbox_mounts
@@ -469,9 +428,6 @@ cmd_evidence() {
 
 cmd_cleanup() {
   resolve_run
-  # Processes cannot outlive a command: each one ran in its own PID
-  # namespace, which the kernel tears down when the command exits. So
-  # cleanup is files only, and only the sandbox; evidence stays.
   if [[ -d $sandbox ]]; then
     rm -rf -- "$sandbox"
     printf 'cleanup: removed %s\n' "$sandbox"

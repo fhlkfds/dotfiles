@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
-# The verify skill's helper (.claude/skills/verify/bin/verify): what it builds
-# at launch, its stand-ins and theme gate, cleanup that keeps evidence, and,
-# where bubblewrap can build a sandbox, the isolation itself and the evidence
-# a sandboxed command leaves.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 verify="$repo_root/.claude/skills/verify/bin/verify"
 test_root=$(mktemp -d -t verify-skill-test.XXXXXX)
-# The sandbox replaces /tmp, so runs must live elsewhere; this is the
-# helper's own rule, checked below.
 cache_home=${XDG_CACHE_HOME:-$HOME/.cache}
 mkdir -p "$cache_home"
 runs=$(mktemp -d -p "$cache_home" verify-skill-test.XXXXXX)
@@ -22,7 +16,6 @@ fail() {
 
 run_verify() { VERIFY_ROOT="$runs" "$verify" "$@"; }
 
-# Bad arguments exit 2; --help exits 0.
 "$verify" --help >/dev/null || fail '--help did not exit 0'
 status=0; "$verify" bogus >/dev/null 2>&1 || status=$?
 [[ $status == 2 ]] || fail "an unknown command exited $status, not 2"
@@ -33,7 +26,6 @@ if [[ $status != 2 ]] || ! grep -Fq 'must not be under /tmp' "$test_root/tmp-roo
   fail 'a VERIFY_ROOT under /tmp was not refused'
 fi
 
-# launch only needs bwrap to exist; the layout checks run without a sandbox.
 launch_path=$PATH
 if ! command -v bwrap >/dev/null 2>&1; then
   mkdir -p "$test_root/bin"
@@ -59,7 +51,6 @@ python3 -c 'import json, sys; assert json.load(open(sys.argv[1]))["colors"]["acc
 [[ $(readlink "$sandbox/home/.local/bin/theme") == "$sandbox/bin/theme" ]] \
   || fail 'the sandbox home .local/bin/theme does not go through the theme gate'
 
-# A stand-in records its argv in one line and exits with its status.
 calls="$test_root/calls.log"
 status=0; VERIFY_CALLS="$calls" "$sandbox/bin/hyprctl" eval 'a b' || status=$?
 [[ $status == 1 ]] || fail "the hyprctl stand-in exited $status, not 1"
@@ -67,7 +58,6 @@ VERIFY_CALLS="$calls" "$sandbox/bin/notify-send" hi || fail 'the notify-send sta
 [[ $(cut -f2- "$calls" | head -1) == $'hyprctl\teval\ta\\ b' ]] \
   || fail "the stand-in logged the wrong line: $(head -1 "$calls")"
 
-# The theme gate answers reads from the run's palette and refuses to apply.
 [[ $(VERIFY_CALLS="$calls" "$sandbox/bin/theme" current) == tokyo-night ]] \
   || fail 'theme current is not the run palette'
 [[ $(VERIFY_CALLS="$calls" "$sandbox/bin/theme" mode) == dark ]] \
@@ -78,7 +68,6 @@ if [[ $status != 1 ]] || ! grep -Fq 'refused in the sandbox' "$test_root/set.err
 fi
 grep -q $'\ttheme\tset\tnord$' "$calls" || fail 'the refused theme set was not logged'
 
-# Cleanup removes the sandbox and keeps evidence; a cleaned run is refused.
 mkdir -p "$evidence/01-kept" && printf 'proof\n' >"$evidence/01-kept/stdout.txt"
 run_verify cleanup >/dev/null || fail 'cleanup failed'
 [[ ! -e $sandbox ]] || fail 'cleanup left the sandbox'
@@ -88,7 +77,6 @@ status=0; run_verify run -- true >/dev/null 2>&1 || status=$?
 [[ $status != 0 ]] || fail 'a cleaned run accepted a command'
 printf 'ok: verify launch layout, stand-ins, theme gate and cleanup\n'
 
-# The rest needs bubblewrap to build a real sandbox.
 in_container=0
 [[ -f /.dockerenv || -f /run/.containerenv ]] && in_container=1
 if ! command -v bwrap >/dev/null 2>&1; then
@@ -117,10 +105,8 @@ for want in home-readonly repo-readonly runtime-empty system-bus-hidden network-
   grep -qx "ok    sandbox: $want" "$test_root/doctor.out" || fail "doctor did not prove $want"
 done
 
-# Inside: writes land in the sandbox home, the real home is read-only, and
-# hyprctl reaches only the stand-in. All of it lands in evidence.
 status=0
-# shellcheck disable=SC2016 # expands inside the sandbox, not here
+# shellcheck disable=SC2016
 run_verify run --label probe --env REAL_HOME="$HOME" -- bash -c \
   'hyprctl binds -j; touch "$HOME/made"; touch "$REAL_HOME/.verify-skill-test"' \
   >/dev/null || status=$?
@@ -133,7 +119,6 @@ grep -Fq 'Read-only file system' "$probe/blocked.txt" || fail 'blocked.txt misse
 [[ $(<"$probe/exit-code") == 1 ]] || fail 'exit-code is wrong'
 grep -Fq 'FAIL (exit 1)  01-probe' "$evidence/INDEX" || fail 'INDEX missed the verdict'
 
-# A dry-run that keeps its promise leaves no stand-in calls and no state.
 run_verify run --label dry -- "$repo_root/hypr/.config/hypr/scripts/night-light.sh" --dry-run on \
   >/dev/null || fail 'night-light --dry-run failed in the sandbox'
 [[ ! -s $evidence/02-dry/calls.log ]] || fail 'night-light --dry-run called a stand-in'

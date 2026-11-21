@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# sandbox-probe: run by `verify doctor` inside the sandbox. Prints one word
-# per isolation property, so the doctor checks what the sandbox actually
-# allows rather than how it was configured.
-# usage: sandbox-probe REAL_HOME REPO STUB_BIN UID
 set -uo pipefail
 real_home=$1 repo=$2 stub_bin=$3 uid=$4
 

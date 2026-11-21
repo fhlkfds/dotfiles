@@ -3,11 +3,6 @@ import Quickshell.Services.UPower
 import QtQuick
 import QtTest
 
-// Verification harness, staged into a copy of the shell by `verify shot`.
-// Draws the real BatteryIcon, clicks it with a synthesized mouse event (the
-// user's path to the panel), then saves the panel that opened as a PNG. The
-// device and power profiles are fakes, so nothing reads UPower or switches
-// the machine's real profile.
 Scope {
   id: shot
   property int failures: 0
@@ -76,7 +71,6 @@ Scope {
     device.percentage = s.percentage; device.state = s.state; device.changeRate = s.rate
     BatteryState.refresh()
     if (shot.step === 0) {
-      // Left click in the icon's centre, the same event a user's click delivers.
       input.mouseClick(icon, icon.width / 2, icon.height / 2, Qt.LeftButton, Qt.NoModifier, -1)
       check("clicking the bar icon opens the panel", shot.panel !== null && shot.panel.visible)
     }
@@ -98,8 +92,6 @@ Scope {
       barStrip.grabToImage(function (iconImage) {
         check(s.name + ": icon saved " + iconPath, iconImage.saveToFile(iconPath))
         const panelPath = shot.outDir + "/battery-panel-" + s.name + ".png"
-        // The panel's own background Rectangle (BatteryPanel.qml), for the
-        // same engine-ownership reason as barStrip.
         shot.panel.contentItem.children[0].grabToImage(function (panelImage) {
           check(s.name + ": panel saved " + panelPath, panelImage.saveToFile(panelPath))
           if (++shot.step < shot.steps.length) shot.applyStep()
