@@ -82,6 +82,7 @@ Singleton {
     { rank: 38, re: /^eject removable drives$/i },
     { rank: 39, re: /^obsidian$/i },
     { rank: 40, re: /^voice dictation$/i },
+    { rank: 40, re: /^paste last dictation$/i },
     { rank: 41, re: /^hermes$/i },
     { rank: 42, re: /^web app manager$/i },
     // Same rank as the manager it opens, so the two web app entries sit
