@@ -236,7 +236,10 @@ script never runs those itself.
 Choose how text is delivered in the menu under Setup, Voice dictation: "Type
 automatically" (the default) or "Copy to clipboard". The commands behind them
 are `voice-dictation use-typing` and `voice-dictation use-clipboard`;
-`voice-dictation delivery` prints the current mode.
+`voice-dictation delivery` prints the current mode. Typing mode never falls
+back to the clipboard, so a failed typing attempt cannot replace what you
+copied. Each dictation start keeps it typing-only and leaves clipboard mode
+alone.
 
 In clipboard mode you paste the text yourself. One notification covers the
 whole dictation. It reads "Recording Started", then "Transcribing…", then
