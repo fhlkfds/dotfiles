@@ -105,6 +105,13 @@ for want in mounts-readonly home-readonly home-hidden repo-readonly runtime-priv
             session-env-clear; do
   grep -qx "ok    sandbox: $want" "$test_root/doctor.out" || fail "doctor did not prove $want"
 done
+broken_scanner="$runs/$run_id/sandbox/bin/python3"
+printf '#!/bin/sh\nexit 17\n' >"$broken_scanner"
+chmod +x "$broken_scanner"
+run_verify doctor >"$test_root/doctor-broken.out" && fail 'doctor said safe when its socket scan broke'
+grep -qx 'FAIL  sandbox: sockets-unreachable' "$test_root/doctor-broken.out" \
+  || fail 'a broken socket scan did not fail sockets-unreachable'
+rm -f -- "$broken_scanner"
 
 home_sockets=$(mktemp -d -p "$cache_home" verify-skill-socket.XXXXXX)
 root_sockets=$(mktemp -d -p /var/tmp verify-skill-socket.XXXXXX)

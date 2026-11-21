@@ -25,12 +25,13 @@ for ns in $host_namespaces; do
   [[ " $(readlink /proc/self/ns/ipc /proc/self/ns/net /proc/self/ns/pid | paste -sd' ') " == *" $ns "* ]] && shared+=" $ns"
 done
 if [[ -z $shared ]]; then echo namespaces-private; else echo "namespaces-shared:$shared"; fi
-reachable=$(find / \( -path /proc -o -path /sys -o -path "$run_dir" -o -path /tmp \) -prune -o -type s -print0 2>/dev/null \
-  | python3 -c '
+find / \( -path /proc -o -path /sys -o -path "$run_dir" -o -path /tmp \) -prune -o -type s -print0 \
+  >/tmp/.verify-sockets 2>/tmp/.verify-find-errors
+find_status=$?
+reachable=$(python3 -c '
 import socket, sys
-for path in sys.stdin.buffer.read().split(b"\0"):
-    if not path:
-        continue
+paths = [p for p in open(sys.argv[1], "rb").read().split(b"\0") if p]
+for path in paths:
     for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM, socket.SOCK_SEQPACKET):
         s = socket.socket(socket.AF_UNIX, kind)
         try:
@@ -41,8 +42,16 @@ for path in sys.stdin.buffer.read().split(b"\0"):
             s.close()
         print(path.decode(errors="replace"))
         break
-')
-if [[ -z $reachable ]]; then echo sockets-unreachable; else echo "socket-reachable:${reachable%%$'\n'*}"; fi
+print(f"checked {len(paths)}")
+' /tmp/.verify-sockets)
+check_status=$?
+unexpected_errors=$(grep -v 'Permission denied$' /tmp/.verify-find-errors)
+rm -f /tmp/.verify-sockets /tmp/.verify-find-errors
+if ((check_status != 0)) || [[ ${reachable##*$'\n'} != "checked "* ]] \
+   || ((find_status > 1)) || [[ -n $unexpected_errors ]]; then
+  echo "socket-scan-failed:find=$find_status,check=$check_status"
+elif [[ $reachable == "checked "* ]]; then echo sockets-unreachable
+else echo "socket-reachable:${reachable%%$'\n'*}"; fi
 if [[ -e /run/dbus/system_bus_socket ]]; then echo system-bus-visible; else echo system-bus-hidden; fi
 if (exec 3<>/dev/tcp/1.1.1.1/53) 2>/dev/null; then echo network-up; else echo network-down; fi
 if [[ -S /run/docker.sock ]]; then echo docker-visible; else echo docker-hidden; fi
