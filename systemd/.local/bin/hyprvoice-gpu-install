@@ -1,35 +1,220 @@
 #!/usr/bin/env bash
+# Set up Vulkan GPU transcription for Hyprvoice on this machine. The dotfiles
+# are shared by AMD and Intel machines and by machines with no usable GPU, so
+# the choice of GPU is local: this script detects the GPU, proves that a Vulkan
+# whisper.cpp build transcribes a sample on it, and only then writes
+# device.env, which the whisper-cli wrapper reads. Without that file, or when
+# a GPU run fails, dictation uses the CPU.
 set -euo pipefail
 
-usage() {
-  printf 'Usage: %s --dry-run|--install\n' "$0" >&2
-  exit 2
-}
+# vendor;PCI vendor id;ICD globs in preference order;device-line regex.
+# Table order is preference order. Other vendors are unsupported.
+registry=(
+  'amd;0x1002;radeon_icd*.json;RADV|AMD'
+  'intel;0x8086;intel_icd*.json intel_hasvk_icd*.json;Intel'
+)
 
-[[ $# == 1 ]] || usage
-case $1 in --dry-run|--install) ;; *) usage ;; esac
+usage() {
+  printf 'Usage: %s [--vendor amd|intel] (--install | --enable | --dry-run)\n' "${0##*/}"
+  printf '  --install  build whisper.cpp with Vulkan, verify it, install it, enable it\n'
+  printf '  --enable   verify the installed build on this GPU and enable it\n'
+  printf '  --dry-run  show what would be used and changed; change nothing\n'
+}
+bad_usage() { usage >&2; exit 2; }
+
+mode='' want_vendor=''
+while (($#)); do
+  case $1 in
+    --install|--enable|--dry-run)
+      [[ -z $mode ]] || bad_usage
+      mode=$1 ;;
+    --vendor)
+      (($# >= 2)) || bad_usage
+      want_vendor=$2
+      shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) bad_usage ;;
+  esac
+  shift
+done
+[[ -n $mode ]] || bad_usage
+if [[ -n $want_vendor ]]; then
+  known=false
+  for entry in "${registry[@]}"; do
+    [[ ${entry%%;*} != "$want_vendor" ]] || known=true
+  done
+  [[ $known == true ]] || bad_usage
+fi
 
 source_dir=${WHISPER_SOURCE:-$HOME/.local/src/whisper.cpp}
-prefix=${HYPRVOICE_GPU_PREFIX:-${XDG_DATA_HOME:-$HOME/.local/share}/hyprvoice-gpu}
-model=${HYPRVOICE_GPU_TEST_MODEL:-${XDG_DATA_HOME:-$HOME/.local/share}/hyprvoice/models/whisper/ggml-small.en.bin}
+data_home=${XDG_DATA_HOME:-$HOME/.local/share}
+prefix=${HYPRVOICE_GPU_PREFIX:-$data_home/hyprvoice-gpu}
+device_file=${HYPRVOICE_GPU_DEVICE_FILE:-$prefix/device.env}
+# Prefer small.en, but any downloaded Hyprvoice model can verify the build.
+models_dir=$data_home/hyprvoice/models/whisper
+model=${HYPRVOICE_GPU_TEST_MODEL:-$models_dir/ggml-small.en.bin}
+if [[ -z ${HYPRVOICE_GPU_TEST_MODEL:-} && ! -f $model ]]; then
+  for candidate in "$models_dir"/ggml-*.bin; do
+    [[ -f $candidate ]] && { model=$candidate; break; }
+  done
+fi
 sample=${HYPRVOICE_GPU_TEST_AUDIO:-$source_dir/samples/jfk.wav}
-icd=/usr/share/vulkan/icd.d/radeon_icd.json
+expect=${HYPRVOICE_GPU_TEST_EXPECT:-ask not}
+sysfs=${HYPRVOICE_GPU_SYSFS:-/sys}
+icd_dir=${HYPRVOICE_GPU_ICD_DIR:-/usr/share/vulkan/icd.d}
+dropin_dir=${HYPRVOICE_GPU_DROPIN_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/hyprvoice.service.d}
 headers_rev=86f980c731e62ae4eaf383d320449d71687936bf
 
-printf 'Whisper source: %s\nInstall prefix: %s\nTest model: %s\nTest audio: %s\nGPU driver: %s\n' \
-  "$source_dir" "$prefix" "$model" "$sample" "$icd"
-[[ $1 == --install ]] || exit 0
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
+
+# Real GPUs are card<N>; skip connector entries such as card0-DP-1.
+detected_ids=()
+for vendor_file in "$sysfs"/class/drm/card*/device/vendor; do
+  [[ -r $vendor_file ]] || continue
+  card=${vendor_file#"$sysfs"/class/drm/}
+  [[ ${card%%/*} =~ ^card[0-9]+$ ]] || continue
+  id=$(<"$vendor_file")
+  detected_ids+=("${id,,}")
+done
+
+vendor='' icd='' device_regex=''
+for entry in "${registry[@]}"; do
+  IFS=';' read -r name pci_id globs regex <<<"$entry"
+  [[ -z $want_vendor || $name == "$want_vendor" ]] || continue
+  [[ " ${detected_ids[*]-} " == *" $pci_id "* ]] || continue
+  vendor=$name device_regex=$regex
+  IFS=' ' read -ra glob_list <<<"$globs"
+  for glob in "${glob_list[@]}"; do
+    for candidate in "$icd_dir"/$glob; do
+      [[ -e $candidate ]] && { icd=$candidate; break 2; }
+    done
+  done
+  break
+done
+
+# Regular GPU drop-ins from older setups pin one GPU in the service itself.
+# Stowed drop-ins are symlinks and stay.
+stale_dropins() {
+  local file
+  [[ -d $dropin_dir ]] || return 0
+  for file in "$dropin_dir"/*.conf; do
+    [[ -f $file && ! -L $file ]] || continue
+    grep -Eq 'VK_DRIVER_FILES|GGML_VK_VISIBLE_DEVICES|hyprvoice-gpu' "$file" || continue
+    printf '%s\n' "$file"
+  done
+}
+
+migrate_dropins() {
+  local file moved=false relink=false
+  while IFS= read -r file; do
+    [[ -n $file ]] || continue
+    if [[ -e $file.disabled ]]; then
+      printf 'Left %s in place: %s.disabled already exists\n' "$file" "$file"
+      continue
+    fi
+    mv -- "$file" "$file.disabled"
+    printf 'Disabled old GPU drop-in %s (now %s.disabled)\n' "$file" "$file"
+    moved=true
+    [[ ${file##*/} != 10-amd-gpu.conf ]] || relink=true
+  done < <(stale_dropins)
+  if [[ $relink == true ]]; then
+    printf 'Run dots deploy so the repository 10-amd-gpu.conf is linked in its place.\n'
+  fi
+  if [[ $moved == true ]]; then
+    printf 'Run systemctl --user daemon-reload and restart Hyprvoice to drop the old\n'
+    printf 'environment. The wrapper already ignores it.\n'
+  fi
+}
+
+write_device_file() {
+  local tmp
+  mkdir -p -- "$(dirname -- "$device_file")"
+  tmp=$(mktemp "$device_file.XXXXXX")
+  printf '# Written by hyprvoice-gpu-install after a verified transcription.\nvendor=%s\nicd=%s\ndevice=0\n' \
+    "$vendor" "$icd" >"$tmp"
+  chmod 0644 -- "$tmp"
+  mv -f -- "$tmp" "$device_file"
+}
+
+# Leave the CPU in charge: the wrapper uses it whenever device.env is absent.
+disable_gpu() {
+  rm -f -- "$device_file"
+  printf '%s\nHyprvoice transcribes on the CPU until this succeeds.\n' "$1" >&2
+  exit 1
+}
+
+# Whisper falls back to the CPU, or to software Vulkan, without failing, so
+# check the log for this vendor's device as well as the transcript.
+verify_build() {
+  local cli=$1 lib=$2 log=$work/verify.log out=$work/verify.out device_line
+  if ! env VK_DRIVER_FILES="$icd" GGML_VK_VISIBLE_DEVICES=0 LD_LIBRARY_PATH="$lib" \
+    "$cli" -m "$model" -f "$sample" -nt >"$out" 2>"$log"; then
+    printf 'The sample transcription failed:\n' >&2
+    cat "$log" >&2
+    return 1
+  fi
+  device_line=$(grep -E "^ggml_vulkan: 0 = .*($device_regex)" "$log" | head -n1 || true)
+  if ! grep -Eq '^whisper_backend_init_gpu: using Vulkan0 backend$' "$log" || [[ -z $device_line ]]; then
+    printf 'Whisper did not run on the %s GPU through Vulkan:\n' "$vendor" >&2
+    cat "$log" >&2
+    return 1
+  fi
+  if ! grep -Fqi -- "$expect" "$out"; then
+    printf 'The transcript does not contain "%s":\n' "$expect" >&2
+    cat "$out" >&2
+    return 1
+  fi
+  printf 'Verified: %s\n' "$device_line"
+}
+
+printf 'Detected GPU vendor ids: %s\n' "${detected_ids[*]:-none}"
+printf 'Whisper source: %s\nInstall prefix: %s\nTest model: %s\nTest audio: %s\nDevice file: %s\n' \
+  "$source_dir" "$prefix" "$model" "$sample" "$device_file"
+
+if [[ -z $vendor ]]; then
+  message='No supported GPU (AMD or Intel) was found'
+  [[ -z $want_vendor ]] || message="No $want_vendor GPU was found"
+  [[ $mode == --dry-run ]] && { printf '%s.\n' "$message"; exit 1; }
+  disable_gpu "$message."
+fi
+printf 'Chosen vendor: %s\n' "$vendor"
+if [[ -z $icd ]]; then
+  message="No $vendor Vulkan driver file was found in $icd_dir"
+  [[ $mode == --dry-run ]] && { printf '%s.\n' "$message"; exit 1; }
+  disable_gpu "$message."
+fi
+printf 'Vulkan driver: %s\n' "$icd"
+
+if [[ $mode == --dry-run ]]; then
+  stale=$(stale_dropins)
+  if [[ -n $stale ]]; then
+    printf 'Would disable these old GPU drop-ins:\n%s\n' "$stale"
+  else
+    printf 'No old GPU drop-ins to disable.\n'
+  fi
+  exit 0
+fi
+
+if [[ $mode == --enable ]]; then
+  [[ -x $prefix/bin/whisper-cli ]] ||
+    disable_gpu "No GPU build at $prefix. Run hyprvoice-gpu-install --install."
+  [[ -f $model && -f $sample ]] ||
+    disable_gpu 'The test model or test audio is missing, so the build cannot be verified.'
+  verify_build "$prefix/bin/whisper-cli" "$prefix/lib" || disable_gpu 'The installed build failed verification.'
+  write_device_file
+  printf 'Enabled %s GPU transcription (%s)\n' "$vendor" "$device_file"
+  migrate_dropins
+  exit 0
+fi
 
 for required in git cmake c++ glslc; do
   command -v "$required" >/dev/null || { printf 'Missing build tool: %s\n' "$required" >&2; exit 1; }
 done
-[[ -f $source_dir/CMakeLists.txt && -f $model && -f $sample && -f $icd ]] || {
-  printf 'Whisper source, test files, or RADV driver are missing\n' >&2
+[[ -f $source_dir/CMakeLists.txt && -f $model && -f $sample ]] || {
+  printf 'The Whisper source, test model, or test audio is missing\n' >&2
   exit 1
 }
-
-work=$(mktemp -d)
-trap 'rm -rf -- "$work"' EXIT
 
 # whisper.cpp writes package.json into its source tree while configuring, so
 # build from a temporary copy and leave the user-local upstream checkout alone.
@@ -49,20 +234,11 @@ install -d "$work/stage/bin" "$work/stage/lib"
 install -m 0755 "$work/build/bin/whisper-cli" "$work/stage/bin/whisper-cli"
 cp -a -- "$work/build/bin"/lib*.so* "$work/stage/lib/"
 
-if ! env VK_DRIVER_FILES="$icd" GGML_VK_VISIBLE_DEVICES=0 \
-  LD_LIBRARY_PATH="$work/stage/lib" "$work/stage/bin/whisper-cli" \
-  -m "$model" -f "$sample" -nt >"$work/transcript" 2>"$work/log"; then
-  cat "$work/log" >&2
-  exit 1
-fi
-if ! grep -Eq '^whisper_backend_init_gpu: using Vulkan[0-9]+ backend$' "$work/log" ||
-  [[ ! -s $work/transcript ]]; then
-  printf 'Vulkan transcription test did not use the GPU or produced no text\n' >&2
-  cat "$work/log" >&2
-  exit 1
-fi
+verify_build "$work/stage/bin/whisper-cli" "$work/stage/lib" || exit 1
 
 install -d "$prefix/bin" "$prefix/lib"
 install -m 0755 "$work/stage/bin/whisper-cli" "$prefix/bin/whisper-cli"
 cp -a -- "$work/stage/lib"/lib*.so* "$prefix/lib/"
-printf 'Installed and verified AMD Vulkan Whisper in %s\n' "$prefix"
+write_device_file
+printf 'Installed and verified %s Vulkan Whisper in %s\n' "$vendor" "$prefix"
+migrate_dropins

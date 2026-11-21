@@ -110,8 +110,25 @@ else
   exit 2
 fi
 SH
+cat >"$test_root/bin/journalctl" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$JOURNAL_CALLS"
+reads=$(wc -l <"$JOURNAL_CALLS")
+(( reads > ${JOURNAL_LAG:-0} )) || exit 0
+if [[ -n ${JOURNAL_LATER:-} ]] && (( reads > 2 )); then
+  cat "$JOURNAL_LATER"
+elif [[ -n ${JOURNAL_FIXTURE:-} ]]; then
+  cat "$JOURNAL_FIXTURE"
+else
+  printf '2026/11/20 10:00:05 Pipeline: Final transcription text: default\n'
+  printf '2026/11/20 10:00:06 Config reloaded, restarting pipeline\n'
+  [[ -n ${HYPRVOICE_RELOAD_PENDING:-} ]] ||
+    printf '2026/11/20 10:00:06 Config manager: configuration successfully reloaded\n'
+fi
+SH
 chmod +x "$test_root/bin/wpctl" "$test_root/bin/pw-dump" "$test_root/bin/hyprvoice" \
-  "$test_root/bin/notify-send" "$test_root/bin/hyprctl" "$test_root/bin/playerctl"
+  "$test_root/bin/notify-send" "$test_root/bin/hyprctl" "$test_root/bin/playerctl" \
+  "$test_root/bin/journalctl"
 
 config="$test_root/voice-dictation.json"
 hyprvoice_config="$test_root/hyprvoice/config.toml"
@@ -129,26 +146,83 @@ export VOICE_DICTATION_NOTIFICATIONS="$notifications"
 export HYPRVOICE_STATE="$test_root/hyprvoice-state" VOICE_DICTATION_TARGET="$test_root/target"
 export HYPRVOICE_SEQUENCE="$test_root/sequence"
 export MEDIA_STATE_DIR="$test_root/media"
+export JOURNAL_CALLS="$test_root/journal-calls" VOICE_DICTATION_LAST="$test_root/state/voice-dictation/last.txt"
 mkdir -p "$MEDIA_STATE_DIR"
 
 "$script" use-default-output
 [[ $("$script" resolve-source) == bluez_input.airpods ]] || fail 'default output does not resolve to its matching source'
+: >"$JOURNAL_CALLS"
 "$script" toggle
+grep -Fq 'hyprvoice --since' "$JOURNAL_CALLS" || fail 'recording started before Hyprvoice reloaded the changed config'
 [[ $(<"$calls") == toggle ]] || fail 'toggle did not invoke hyprvoice'
 grep -Fq 'device = "bluez_input.airpods"' "$hyprvoice_config" || fail 'resolved source was not written to Hyprvoice recording config'
 [[ $(grep -c '^[[:space:]]*device[[:space:]]*=' "$hyprvoice_config") == 1 ]] || fail 'Hyprvoice config has duplicate device keys'
 [[ ! -e $notifications ]] || fail 'paired microphone selection produced a fallback notification'
-python3 - "$hyprvoice_config" <<'PY' || fail 'Hyprvoice config is not valid TOML'
+python3 - "$hyprvoice_config" <<'PY' || fail 'Hyprvoice config is invalid or keeps the clipboard backend'
 import sys
 import tomllib
 
 with open(sys.argv[1], 'rb') as config:
-    assert tomllib.load(config)['recording']['device'] == 'bluez_input.airpods'
+    loaded = tomllib.load(config)
+    assert loaded['recording']['device'] == 'bluez_input.airpods'
+    assert loaded['recording']['sample_rate'] == 16000
+    assert loaded['injection']['backends'] == ['ydotool', 'wtype']
 PY
+
+for backends in '["ydotool","wtype","clipboard"]' $'[\n  "clipboard",\n  "wtype",\n]  # fallback order'; do
+  cat >"$hyprvoice_config" <<TOML
+[recording]
+device = "bluez_input.airpods"
+
+[injection]
+ydotool_timeout = "5s"
+backends = $backends
+wtype_timeout = "5s"
+
+[transcription]
+provider = "openai"
+TOML
+  printf idle >"$HYPRVOICE_STATE"
+  "$script" use-default-output
+  "$script" toggle
+  python3 - "$hyprvoice_config" <<'PY' || fail 'clipboard backend was not removed cleanly'
+import sys
+import tomllib
+
+with open(sys.argv[1], 'rb') as config:
+    loaded = tomllib.load(config)
+assert loaded['injection'] == {
+    'ydotool_timeout': '5s', 'backends': ['ydotool', 'wtype'], 'wtype_timeout': '5s'}, loaded
+assert loaded['transcription'] == {'provider': 'openai'}, loaded
+assert loaded['recording'] == {'device': 'bluez_input.airpods'}, loaded
+PY
+  enforced=$(<"$hyprvoice_config")
+  config_inode=$(stat -c %i "$hyprvoice_config")
+  printf idle >"$HYPRVOICE_STATE"
+  "$script" toggle
+  [[ $(<"$hyprvoice_config") == "$enforced" && $(stat -c %i "$hyprvoice_config") == "$config_inode" ]] ||
+    fail 'enforcing typing-only backends is not idempotent'
+done
 
 config_inode=$(stat -c %i "$hyprvoice_config")
 "$script" toggle
 [[ $(stat -c %i "$hyprvoice_config") == "$config_inode" ]] || fail 'unchanged microphone rewrote the watched Hyprvoice config'
+
+# A chosen clipboard mode survives the typing-only enforcement at start.
+printf '[recording]\ndevice = "old"\n\n[injection]\nbackends = [\n  "clipboard",\n]\n' >"$hyprvoice_config"
+printf idle >"$HYPRVOICE_STATE"
+"$script" toggle
+"$script" toggle
+[[ $("$script" delivery) == clipboard ]] || fail 'starting dictation undid clipboard mode'
+python3 - "$hyprvoice_config" <<'PY' || fail 'clipboard mode was rewritten at start'
+import sys
+import tomllib
+
+with open(sys.argv[1], 'rb') as config:
+    loaded = tomllib.load(config)
+assert loaded['injection'] == {'backends': ['clipboard']}, loaded
+assert loaded['recording'] == {'device': 'bluez_input.airpods'}, loaded
+PY
 
 VOICE_DICTATION_SINK_DEVICE_ID=999 "$script" toggle
 grep -Fq 'device = "alsa_input.webcam"' "$hyprvoice_config" || fail 'missing paired microphone did not fall back to the default source'
@@ -457,6 +531,66 @@ printf idle >"$HYPRVOICE_STATE"
 HYPR_ACTIVE=0xaaa "$script" toggle
 [[ $(<"$test_root/victim") == 'keep me' && ! -L $VOICE_DICTATION_TARGET ]] || fail 'target write followed a symlink'
 
+last=$VOICE_DICTATION_LAST
+journal="$test_root/journal"
+dictate() {
+  printf '%s' "$1" >"$journal"
+  printf idle >"$HYPRVOICE_STATE"
+  : >"$JOURNAL_CALLS"
+  started=$EPOCHREALTIME
+  HYPR_ACTIVE=${2:-0xaaa} "$script" toggle
+  JOURNAL_FIXTURE="$journal" HYPR_ACTIVE=0xbbb "$script" toggle
+}
+log() { printf '2026/11/20 10:00:0%s Pipeline: %s\n' "$1" "$2"; }
+rm -f -- "$last"
+dictate "$(log 1 'Starting recording'; log 5 'Final transcription text: hello world'; log 6 'Text injection completed successfully')"
+[[ $(<"$last") == 'hello world' ]] || fail 'raw transcript was not saved'
+[[ $(stat -c %a "$last") == 600 ]] || fail 'saved transcript is not private'
+read -r -a args <"$JOURNAL_CALLS"
+[[ ${args[*]:0:4} == '--user -u hyprvoice --since' && ${args[4]} =~ ^@[0-9]+\.[0-9]{6}$ && ${args[*]:5} == '-o cat -a --no-pager' ]] ||
+  fail "journal read uses unexpected arguments: ${args[*]}"
+awk -v since="${args[4]#@}" -v started="${started/,/.}" 'BEGIN { exit !(since >= started) }' ||
+  fail 'journal read does not start at the dictation start'
+[[ ! -e $VOICE_DICTATION_TARGET.started ]] || fail 'dictation start marker outlived the dictation'
+
+dictate "$(log 5 'Final transcription text: um so hello'; log 6 'LLM post-processing enabled, processing text'; log 7 'LLM processed text: So, hello.')"
+[[ $(<"$last") == 'So, hello.' ]] || fail 'LLM result did not replace the raw transcript'
+
+printf '%s' "$(log 5 'Final transcription text: um raw'; log 6 'LLM post-processing enabled, processing text'; log 7 'LLM processed text: Cleaned.'; log 8 'Text injection completed successfully')" >"$test_root/journal-later"
+JOURNAL_LATER="$test_root/journal-later" dictate "$(log 5 'Final transcription text: um raw'; log 6 'LLM post-processing enabled, processing text')"
+[[ $(<"$last") == 'Cleaned.' ]] || fail 'raw transcript was saved before the LLM result reached the journal'
+
+dictate "$(log 1 'LLM processed text: earlier cleanup'; log 5 'Final transcription text: newer raw')"
+[[ $(<"$last") == 'newer raw' ]] || fail 'an earlier LLM result replaced a newer raw transcript'
+
+dictate "$(log 5 $'Final transcription text: first line\nsecond line\n\nthird\xe2\x80\xa8fourth\vfifth'; log 6 'Text injection completed successfully')"
+[[ $(<"$last") == 'first line second line  third fourth fifth' ]] ||
+  { cat "$last" >&2; fail 'wrapped transcript was not joined the way Hyprvoice types it'; }
+
+JOURNAL_LAG=3 dictate "$(log 5 'Final transcription text: late journal')"
+[[ $(<"$last") == 'late journal' ]] || fail 'transcript logged after idle was not retried'
+
+: >"$calls"
+dictate "$(log 5 'Final transcription text: no target')" 0xdead
+[[ $(<"$last") == 'no target' ]] || fail 'finish without a target window did not save the transcript'
+! grep -Fq dispatch "$calls" || fail 'finish without a target window changed focus'
+
+for unusable in "$(log 5 'Final transcription text: ')" "$(log 5 'Final transcription text:    ')" \
+  "$(log 1 'LLM processed text: earlier cleanup')" \
+  "$(log 1 'Starting recording'; log 2 'Recording error: no device')"; do
+  printf '%s' 'previous dictation' >"$last"
+  dictate "$unusable"
+  [[ $(<"$last") == 'previous dictation' ]] || fail "unusable journal replaced the saved transcript: $unusable"
+done
+[[ $(wc -l <"$JOURNAL_CALLS") == 10 ]] || fail 'missing transcript was not retried a bounded number of times'
+
+sed -i 's/^\([[:space:]]*device = \).*/\1"stale-device"/' "$hyprvoice_config"
+printf idle >"$HYPRVOICE_STATE"
+: >"$calls"
+status=0
+HYPRVOICE_RELOAD_PENDING=1 HYPR_ACTIVE=0xaaa "$script" toggle 2>/dev/null || status=$?
+[[ $status != 0 ]] && ! grep -Fxq toggle "$calls" || fail 'recording started while Hyprvoice was still reloading'
+
 # Without a session runtime directory, use private per-user cache storage.
 jq '.pause_media = true' "$config" >"$config.tmp" && mv "$config.tmp" "$config"
 printf idle >"$HYPRVOICE_STATE"
@@ -470,6 +604,146 @@ env -u VOICE_DICTATION_TARGET -u XDG_RUNTIME_DIR XDG_CACHE_HOME="$test_root/cach
 if "$script" use-source 'bad;source' >/dev/null 2>&1; then
   fail 'unsafe source name was accepted'
 fi
+
+# Delivery: clipboard or typing. Only the edited lines may change.
+delivery_config="$test_root/hyprvoice/delivery.toml"
+cat >"$delivery_config" <<'TOML'
+[recording]
+  device = "mic"
+  sample_rate = 16000
+
+[transcription]
+provider = "whisper-cpp"
+model = "small.en"
+threads = 6
+
+[injection]
+  backends = ["ydotool", "wtype", "clipboard"]
+clipboard_timeout = "3s"
+backends = ["wtype"]
+
+[notifications]
+enabled = true
+type = "desktop"
+TOML
+chmod 600 "$delivery_config"
+export HYPRVOICE_CONFIG=$delivery_config
+[[ $("$script" delivery) == typing ]] || fail 'the default delivery is not typing'
+[[ $(HYPRVOICE_CONFIG="$test_root/hyprvoice/missing.toml" "$script" delivery) == typing ]] || fail 'a missing config is not typing'
+"$script" use-clipboard
+[[ $("$script" delivery) == clipboard ]] || fail 'use-clipboard did not select clipboard delivery'
+cat >"$test_root/expected.toml" <<'TOML'
+[recording]
+  device = "mic"
+  sample_rate = 16000
+
+[transcription]
+provider = "whisper-cpp"
+model = "small.en"
+threads = 6
+
+[injection]
+  backends = ["clipboard"]
+clipboard_timeout = "3s"
+
+[notifications]
+enabled = true
+type = "desktop"
+
+[notifications.messages.transcribing]
+body = "Transcribing…"
+TOML
+cmp -s "$test_root/expected.toml" "$delivery_config" || {
+  diff "$test_root/expected.toml" "$delivery_config" >&2
+  fail 'use-clipboard changed more than the backend list and the transcribing label'
+}
+[[ $(stat -c %a "$delivery_config") == 600 ]] || fail 'editing the config changed its permissions'
+python3 - "$delivery_config" <<'PY' || fail 'clipboard config does not read back'
+import sys
+import tomllib
+
+with open(sys.argv[1], 'rb') as config:
+    data = tomllib.load(config)
+assert data['injection']['backends'] == ['clipboard']
+assert data['notifications']['messages']['transcribing']['body'] == 'Transcribing…'
+assert data['recording']['device'] == 'mic' and data['transcription']['threads'] == 6
+assert data['transcription']['model'] == 'small.en' and data['injection']['clipboard_timeout'] == '3s'
+PY
+
+config_inode=$(stat -c %i "$delivery_config")
+"$script" use-clipboard
+[[ $(stat -c %i "$delivery_config") == "$config_inode" ]] || fail 'repeating use-clipboard rewrote the watched config'
+
+"$script" use-typing
+[[ $("$script" delivery) == typing ]] || fail 'use-typing did not select typing delivery'
+grep -Fxq '  backends = ["ydotool", "wtype"]' "$delivery_config" || fail 'use-typing did not select typing-only backends'
+grep -Fq 'body = "Transcribing…"' "$delivery_config" || fail 'use-typing dropped the transcribing label'
+[[ $(grep -c 'backends' "$delivery_config") == 1 ]] || fail 'duplicate backends keys were not collapsed'
+"$script" use-clipboard
+[[ $("$script" delivery) == clipboard ]] || fail 'clipboard delivery did not return after typing'
+
+# Other spellings of clipboard-only still count; mixed lists do not.
+for value in "['clipboard']" '["clipboard"] # only' '[ "clipboard" ]'; do
+  printf '[injection]\nbackends = %s\n' "$value" >"$test_root/hyprvoice/spelling.toml"
+  [[ $(HYPRVOICE_CONFIG="$test_root/hyprvoice/spelling.toml" "$script" delivery) == clipboard ]] || fail "delivery missed $value"
+done
+printf '[injection]\nbackends = ["wtype", "clipboard"]\n[other]\nbackends = ["clipboard"]\n' >"$test_root/hyprvoice/spelling.toml"
+[[ $(HYPRVOICE_CONFIG="$test_root/hyprvoice/spelling.toml" "$script" delivery) == typing ]] || fail 'delivery read another section'
+
+# A config that is already broken is refused and left alone.
+printf '[injection]\nbackends = ["wtype"]\n\n[transcription]\nmodel =\n' >"$test_root/hyprvoice/broken.toml"
+cp "$test_root/hyprvoice/broken.toml" "$test_root/hyprvoice/broken.before"
+status=0
+HYPRVOICE_CONFIG="$test_root/hyprvoice/broken.toml" "$script" use-clipboard >/dev/null 2>"$test_root/err" || status=$?
+[[ $status != 0 ]] || fail 'an unparseable result was written'
+grep -Fq 'voice-dictation:' "$test_root/err" || fail 'the refusal was not explained'
+cmp -s "$test_root/hyprvoice/broken.before" "$test_root/hyprvoice/broken.toml" || fail 'the refused edit changed the file'
+[[ ! -e $test_root/hyprvoice/broken.toml.tmp ]] || fail 'the refused edit left a temporary file'
+
+if HYPRVOICE_CONFIG="$test_root/hyprvoice/missing.toml" "$script" use-clipboard 2>"$test_root/err"; then
+  fail 'use-clipboard worked without a Hyprvoice config'
+fi
+grep -Fq 'Hyprvoice is not configured' "$test_root/err" || fail 'a missing config was not explained'
+for bad in 'use-clipboard x' 'use-typing x' 'delivery x'; do
+  status=0
+  # shellcheck disable=SC2086
+  "$script" $bad >/dev/null 2>&1 || status=$?
+  [[ $status == 2 ]] || fail "'$bad' did not exit 2"
+done
+
+# The menu entries tick from the real guard.
+mkdir -p "$test_root/home/.config/hypr/scripts" "$test_root/home/menu"
+ln -s "$script" "$test_root/home/.config/hypr/scripts/voice-dictation"
+python3 - "$repo_root/menu/.config/lmenu" "$test_root/home/menu/menu.jsonc" <<'PY'
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+directory = Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location('lmenu_parse', directory / 'lmenu-parse.py')
+parser = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(parser)
+ids = {'setup', 'setup.voice-dictation', 'setup.voice-dictation.clipboard', 'setup.voice-dictation.typing'}
+entries = [entry for entry in parser.load_jsonc(directory / 'menu.jsonc') if entry['id'] in ids]
+assert {entry['id'] for entry in entries} == ids, 'the voice dictation menu entries are missing'
+Path(sys.argv[2]).write_text(json.dumps(entries))
+PY
+ticked() {
+  HOME="$test_root/home" LMENU_MENU="$test_root/home/menu/menu.jsonc" LMENU_EXTENSIONS=/nonexistent \
+    python3 "$repo_root/menu/.config/lmenu/lmenu-parse.py" dump |
+    jq -r '.entries[] | select(.id | endswith(".clipboard") or endswith(".typing")) | "\(.id | split(".")[-1])=\(.checked)"' | sort | paste -sd' '
+}
+"$script" use-clipboard
+[[ $(ticked) == 'clipboard=true typing=false' ]] || fail "menu ticks are wrong in clipboard mode: $(ticked)"
+"$script" use-typing
+[[ $(ticked) == 'clipboard=false typing=true' ]] || fail "menu ticks are wrong in typing mode: $(ticked)"
+HOME="$test_root/home" LMENU_MENU="$test_root/home/menu/menu.jsonc" LMENU_EXTENSIONS=/nonexistent \
+  python3 "$repo_root/menu/.config/lmenu/lmenu-parse.py" dump |
+  jq -e '[.entries[] | select(.id | endswith(".clipboard") or endswith(".typing")) | .payload] == [
+    "~/.config/hypr/scripts/voice-dictation use-clipboard", "~/.config/hypr/scripts/voice-dictation use-typing"]' >/dev/null ||
+  fail 'the menu entries call the wrong subcommands'
+export HYPRVOICE_CONFIG=$hyprvoice_config
 
 grep -Fq 'cfg.scripts_dir .. "/voice-dictation toggle"' "$lua" || fail 'Lua binding bypasses microphone resolution'
 grep -Fq "exec, \$scriptsDir/voice-dictation toggle" "$legacy" || fail 'legacy binding bypasses microphone resolution'

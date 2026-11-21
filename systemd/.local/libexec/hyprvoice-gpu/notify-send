@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Hyprvoice raises a separate notification for each step of a dictation. Send
+# them all through one replaceable slot, so a dictation shows as a single
+# notice that changes from Recording Started to Transcribing to its outcome,
+# and say plainly when it failed.
+set -euo pipefail
+
+real=${HYPRVOICE_NOTIFY_SEND:-/usr/bin/notify-send}
+slot=${HYPRVOICE_NOTIFY_ID:-9932}
+
+[[ ${1:-} == -a && ${2:-} == Hyprvoice ]] || exec "$real" "$@"
+shift 2
+
+if [[ $# == 4 && $1 == -u && $2 == critical && $3 == 'Hyprvoice Error' ]]; then
+  body=$4
+  [[ $body != *'cannot inject empty text'* ]] || body='No speech was recognized.'
+  exec "$real" -a Hyprvoice -r "$slot" -u critical 'Dictation failed' \
+    "$body"$'\n''Nothing new was typed or copied.'
+fi
+exec "$real" -a Hyprvoice -r "$slot" "$@"

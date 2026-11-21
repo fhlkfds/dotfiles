@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Route Hyprvoice through either the microphone paired with the default audio
-# output or an explicitly selected PipeWire source.
+# output or an explicitly selected PipeWire source, and keep the last
+# transcript in its own slot so paste-last can paste it without the clipboard
+# losing what was on it.
 set -euo pipefail
 
 config=${VOICE_DICTATION_CONFIG:-"${XDG_CONFIG_HOME:-$HOME/.config}/hypr/voice-dictation.json"}
@@ -10,8 +12,17 @@ notify_send=${NOTIFY_SEND:-notify-send}
 gdbus=${GDBUS:-gdbus}
 hyprctl_bin=${HYPRCTL:-hyprctl}
 playerctl_bin=${PLAYERCTL:-playerctl}
+journalctl_bin=${JOURNALCTL:-journalctl}
+last_file=${VOICE_DICTATION_LAST:-"${XDG_STATE_HOME:-$HOME/.local/state}/voice-dictation/last.txt"}
+wl_copy=${WL_COPY:-wl-copy}
+wl_paste=${WL_PASTE:-wl-paste}
+scripts_dir=${BASH_SOURCE[0]%/*}
+[[ $scripts_dir != "${BASH_SOURCE[0]}" ]] || scripts_dir=.
+paste_action=${VOICE_DICTATION_PASTE:-"$scripts_dir/universal-clipboard.sh"}
+restore_delay=${VOICE_DICTATION_RESTORE_DELAY:-0.3}
 target_file=${VOICE_DICTATION_TARGET:-"${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/voice-dictation-target"}
 paused_media_file="$target_file.media"
+started_file="$target_file.started"
 
 resolved_source=
 resolved_label=
@@ -106,9 +117,8 @@ resolve_source() {
   resolved_label=$(source_label "$source")
 }
 
-notify_fallback() {
-  local label=$1 title='Voice dictation' body
-  body="Using $label microphone"
+notify() {
+  local body=$1 title='Voice dictation'
   "$notify_send" -a 'Voice dictation' -r 9931 -t 2500 "$title" "$body" >/dev/null 2>&1 && return
   "$gdbus" call --session \
     --dest org.freedesktop.Notifications \
@@ -117,49 +127,160 @@ notify_fallback() {
     'Voice dictation' 9931 '' "$title" "$body" '[]' '{}' 2500 >/dev/null 2>&1 || true
 }
 
-sync_hyprvoice_config() {
-  local source=$1
+# Apply {"section.name": {key: value}} to the Hyprvoice config in one write,
+# keeping every other byte. Values are strings or lists of strings. Hyprvoice
+# notifies on each reload, so an unchanged config is not rewritten. Prints
+# "changed" after a write. With keep-clipboard, a clipboard-only backend list
+# (the clipboard mode that delivery reports) is left as it is.
+edit_hyprvoice_config() {
   [[ -f $hyprvoice_config ]] || die 'Hyprvoice is not configured; run hyprvoice onboarding first'
-  python3 - "$hyprvoice_config" "$source" <<'PY'
+  python3 - "$hyprvoice_config" "$@" <<'PY'
 from pathlib import Path
+import json
+import os
 import re
 import sys
+import tomllib
 
 path = Path(sys.argv[1])
-device = sys.argv[2]
-text = path.read_text()
-original = text
-section = re.compile(r"(?ms)^\[recording\]\s*$\n(.*?)(?=^\[|\Z)")
-match = section.search(text)
-if match:
-    body = match.group(1)
-    lines = body.splitlines(keepends=True)
-    device_lines = [index for index, line in enumerate(lines)
-                    if re.match(r"^(?P<indent>\s*)device\s*=.*(?:\n|$)", line)]
-    if device_lines:
-        first = device_lines[0]
-        indent = re.match(r"^(?P<indent>\s*)", lines[first]).group("indent")
-        lines[first] = f'{indent}device = "{device}"\n'
-        # Older runs could have appended another device key.  TOML forbids
-        # duplicate keys, so remove every remaining one in this section.
-        for index in reversed(device_lines[1:]):
-            del lines[index]
-        body = "".join(lines)
+edits = json.loads(sys.argv[2])
+text = original = path.read_text(encoding="utf-8")
+if sys.argv[3:] == ["keep-clipboard"]:
+    try:
+        current = tomllib.loads(original).get("injection", {}).get("backends")
+    except tomllib.TOMLDecodeError:
+        current = None
+    if current == ["clipboard"]:
+        edits.get("injection", {}).pop("backends", None)
+
+
+def die(message):
+    sys.exit(f"voice-dictation: {message}")
+
+
+def value_end(lines, start):
+    """Index after the line that closes a value, which an array can span."""
+    depth = 0
+    for i in range(start, len(lines)):
+        code = re.sub(r'"(?:[^"\\]|\\.)*"|\'[^\']*\'|#.*', "", lines[i])
+        if i == start:
+            code = code.split("=", 1)[1]
+        depth += code.count("[") - code.count("]")
+        if depth <= 0:
+            return i + 1
+    return len(lines)
+
+
+def apply(text, name, key, value):
+    header = re.compile(rf"(?m)^[ \t]*\[[ \t]*{re.escape(name)}[ \t]*\][ \t]*(?:#.*)?\n?")
+    line_for = lambda indent: f"{indent}{key} = {json.dumps(value, ensure_ascii=False)}\n"
+    match = header.search(text)
+    if not match:
+        if text and not text.endswith("\n"):
+            text += "\n"
+        return text + f"\n[{name}]\n" + line_for("")
+    end = re.compile(r"(?m)^[ \t]*\[").search(text, match.end())
+    stop = end.start() if end else len(text)
+    lines = text[match.end():stop].splitlines(keepends=True)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    keyed = [i for i, line in enumerate(lines)
+             if re.match(rf"[ \t]*{re.escape(key)}[ \t]*=", line)]
+    if keyed:
+        indent = re.match(r"[ \t]*", lines[keyed[0]]).group()
+        # TOML forbids duplicate keys, and older runs could append another.
+        for i in reversed(keyed):
+            del lines[i:value_end(lines, i)]
+        lines.insert(keyed[0], line_for(indent))
     else:
-        line = f'device = "{device}"\n'
-        body = line + body
-    text = text[:match.start(1)] + body + text[match.end(1):]
-else:
-    line = f'device = "{device}"\n'
-    if text and not text.endswith("\n"):
-        text += "\n"
-    text += "\n[recording]\n" + line
+        lines.insert(0, line_for(""))
+    head = text[:match.end()]
+    if not head.endswith("\n"):
+        head += "\n"
+    return head + "".join(lines) + text[stop:]
+
+
+for name, keys in edits.items():
+    for key, value in keys.items():
+        text = apply(text, name, key, value)
 if text == original:
     raise SystemExit(0)
-tmp = path.with_suffix(path.suffix + ".tmp")
-tmp.write_text(text)
+
+try:
+    parsed = tomllib.loads(text)
+except tomllib.TOMLDecodeError as error:
+    die(f"the edited Hyprvoice config would not parse ({error}); left it unchanged")
+for name, keys in edits.items():
+    table = parsed
+    for part in name.split("."):
+        table = table.get(part, {}) if isinstance(table, dict) else {}
+    for key, value in keys.items():
+        if table.get(key) != value:
+            die(f"{name}.{key} would not read back as set; left the Hyprvoice config unchanged")
+
+tmp = path.with_name(path.name + ".tmp")
+tmp.write_text(text, encoding="utf-8")
+os.chmod(tmp, path.stat().st_mode & 0o7777)
 tmp.replace(path)
+print("changed")
 PY
+}
+
+# Hyprvoice reloads its config 500 ms after a change and cancels any recording
+# running at that moment. Its last reload message comes after that cancel, and
+# a rejected reload cancels nothing (internal/config/manager.go reloadConfig).
+wait_for_reload() {
+  local since=$1
+  for _ in {1..20}; do
+    "$journalctl_bin" --user -u hyprvoice --since "@$since" -o cat --no-pager 2>/dev/null |
+      grep -Eq 'Config manager: (configuration successfully reloaded|failed to reload config|config still in legacy format|invalid config after reload)' &&
+      return 0
+    sleep 0.1
+  done
+  return 1
+}
+
+# Hyprvoice falls back to its clipboard backend only after typing fails, and
+# that backend overwrites the clipboard without restoring it. So typing mode is
+# kept typing-only, and clipboard mode is left as the machine chose it.
+sync_hyprvoice_config() {
+  local device=${1//\\/\\\\} written changed
+  device=${device//\"/\\\"}
+  written=${EPOCHREALTIME/,/.}
+  # Built without jq: this runs on every start. PipeWire names have no
+  # control characters, so escaping backslashes and quotes is enough.
+  changed=$(edit_hyprvoice_config \
+    "{\"recording\":{\"device\":\"$device\"},\"injection\":{\"backends\":[\"ydotool\",\"wtype\"]}}" \
+    keep-clipboard)
+  [[ $changed != changed ]] || wait_for_reload "$written" ||
+    die 'Hyprvoice has not reloaded its settings yet; press the shortcut again'
+}
+
+# Clipboard dictation: Hyprvoice copies, and the wl-copy wrapper tells you when
+# the text can be pasted. The label covers the wait for transcription.
+use_clipboard() {
+  edit_hyprvoice_config '{"injection":{"backends":["clipboard"]},"notifications.messages.transcribing":{"body":"Transcribing…"}}' >/dev/null
+}
+
+use_typing() {
+  edit_hyprvoice_config '{"injection":{"backends":["ydotool","wtype"]}}' >/dev/null
+}
+
+# Runs on every menu render, so it reads the file without Python.
+delivery() {
+  local backends=
+  [[ -r $hyprvoice_config ]] && backends=$(awk '
+    /^[ \t]*\[/ { in_injection = ($0 ~ /^[ \t]*\[[ \t]*injection[ \t]*\][ \t]*(#.*)?$/); next }
+    in_injection && /^[ \t]*backends[ \t]*=/ { sub(/^[^=]*=/, ""); value = ""; collecting = 1 }
+    collecting {
+      sub(/#.*/, ""); gsub(/[ \t]/, ""); value = value $0
+      if (value !~ /^\[/ || value ~ /\]/) { sub(/,\]/, "]", value); print value; exit }
+    }' "$hyprvoice_config")
+  if [[ $backends == '["clipboard"]' || $backends == "['clipboard']" ]]; then
+    printf 'clipboard\n'
+  else
+    printf 'typing\n'
+  fi
 }
 
 hyprvoice_status() {
@@ -249,13 +370,15 @@ start_dictation() {
   start_interrupted=false
   start_requested=false
   rm -f -- "$paused_media_file" 2>/dev/null || true
+  # Some locales give EPOCHREALTIME a decimal comma.
+  [[ -L $started_file ]] || printf '%s\n' "${EPOCHREALTIME/,/.}" >"$started_file" || true
   tmp=$(mktemp "$target_file.XXXXXX") || exec "$hyprvoice_bin" toggle
   active_window >"$tmp" || true
   mv -fT -- "$tmp" "$target_file" || rm -f -- "$tmp"
   trap '
     if [[ $start_requested == false || $(hyprvoice_status || true) != transcribing ]]; then
       resume_media
-      rm -f -- "$target_file"
+      rm -f -- "$target_file" "$started_file"
     fi
   ' EXIT
   # Defer exit until a successful pause has been recorded for cleanup.
@@ -277,6 +400,8 @@ finish_dictation() {
   if [[ ! $target =~ ^0x[[:xdigit:]]+$ ]] || ! window_open "$target" ||
     ! follow=$(option_value input:follow_mouse) || ! warps=$(option_value cursor:no_warps); then
     stop_listening
+    wait_until_idle
+    capture_transcript
     exit
   fi
   return_to=$(active_window || true)
@@ -286,12 +411,101 @@ finish_dictation() {
   "$hyprctl_bin" -q eval 'hl.config({ input = { follow_mouse = 0 }, cursor = { no_warps = true } })'
   focus_window "$target"
   stop_listening
-  # ponytail: polls every 0.1s for at most two minutes; an LLM step slower than
-  # that gets its focus back early.
+  wait_until_idle
+  restore_focus
+  trap - EXIT
+  capture_transcript
+}
+
+wait_until_idle() {
   for _ in {1..1200}; do
-    [[ $(hyprvoice_status) =~ ^(transcribing|processing|injecting)$ ]] || break
+    [[ $(hyprvoice_status) =~ ^(transcribing|processing|injecting)$ ]] || return 0
     sleep 0.1
   done
+}
+
+# Hyprvoice has no transcript output, but it logs each result to its journal
+# (internal/pipeline/pipeline.go).
+capture_transcript() {
+  local since
+  [[ -f $started_file ]] || return 0
+  since=$(<"$started_file")
+  rm -f -- "$started_file"
+  [[ $since =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 0
+  exec 9>&-
+  python3 - "$journalctl_bin" "$since" "$last_file" <<'PY' || true
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+
+journalctl, since, destination = sys.argv[1:]
+PREFIX = re.compile(r"\d{4}/\d\d/\d\d \d\d:\d\d:\d\d ")
+FINAL = "Pipeline: Final transcription text: "
+LLM = "Pipeline: LLM processed text: "
+DONE = "Pipeline: Text injection completed successfully"
+# Hyprvoice types each of these as a space.
+BREAKS = {ord(char): " " for char in "\r\n\v\f\x85\u2028\u2029"}
+
+
+def transcript(log):
+    entries = []
+    for line in log.removesuffix("\n").split("\n"):
+        prefix = PREFIX.match(line)
+        if prefix:
+            entries.append(line[prefix.end():])
+        elif entries:
+            # Go's logger prefixes only the first line of a multi-line message.
+            entries[-1] += " " + line
+    text, done = None, False
+    for entry in entries:
+        # An empty message may reach the journal without its trailing space.
+        if entry.startswith(FINAL.rstrip()):
+            text, done = entry[len(FINAL):], False
+        elif entry.startswith(LLM.rstrip()) and text is not None:
+            text = entry[len(LLM):]
+        elif entry.startswith(DONE) and text is not None:
+            done = True
+    if text is None or not text.strip():
+        return None, False
+    return text.translate(BREAKS), done
+
+
+command = [journalctl, "--user", "-u", "hyprvoice", "--since", f"@{since}",
+           "-o", "cat", "-a", "--no-pager"]
+# journald can lag behind Hyprvoice reporting idle. A failed injection never
+# logs completion, so the latest text found is kept once retries run out.
+text = None
+for attempt in range(10):
+    if attempt:
+        time.sleep(0.1)
+    try:
+        result = subprocess.run(command, stdin=subprocess.DEVNULL,
+                                capture_output=True, timeout=2)
+    except subprocess.TimeoutExpired:
+        continue
+    except OSError as error:
+        raise SystemExit(f"voice-dictation: cannot read the Hyprvoice journal: {error}")
+    found, done = transcript(result.stdout.decode("utf-8", "replace"))
+    text = found or text
+    if done:
+        break
+if text is None:
+    raise SystemExit(0)
+
+directory = os.path.dirname(destination)
+os.makedirs(directory, mode=0o700, exist_ok=True)
+descriptor, tmp = tempfile.mkstemp(dir=directory, prefix=".last.")
+try:
+    with os.fdopen(descriptor, "w", encoding="utf-8") as out:
+        out.write(text)
+    os.replace(tmp, destination)
+except BaseException:
+    os.unlink(tmp)
+    raise
+PY
 }
 
 restore_focus() {
@@ -339,7 +553,7 @@ toggle() {
       # Stopping must still work if the selected microphone was unplugged.
       resolve_source
       sync_hyprvoice_config "$resolved_source"
-      [[ $used_fallback == false ]] || notify_fallback "$resolved_label"
+      [[ $used_fallback == false ]] || notify "Using $resolved_label microphone"
       start_dictation
       ;;
     transcribing) finish_dictation ;;
@@ -348,8 +562,70 @@ toggle() {
   esac
 }
 
+clipboard_plan() {
+  local types type status=0
+  types=$(timeout 1 "$wl_paste" --list-types 2>/dev/null) || status=$?
+  # wl-paste exits 1 for an empty clipboard; anything else is unreadable.
+  (( status == 0 || status == 1 )) || return 1
+  [[ $status == 0 && -n $types ]] || { printf 'clear\n'; return; }
+  while IFS= read -r type; do
+    [[ ! ${type,,} =~ (^|/)(x-kde-passwordmanagerhint|x-(bitwarden|keepassxc|1password))$ ]] ||
+      { printf 'keep\n'; return; }
+  done <<<"$types"
+  for type in 'text/plain;charset=utf-8' text/plain UTF8_STRING image/png "${types%%$'\n'*}"; do
+    [[ $'\n'$types$'\n' != *$'\n'"$type"$'\n'* ]] || { printf 'copy %s\n' "$type"; return; }
+  done
+}
+
+# The shortcut fires with its modifiers held, so typing the text would turn
+# letters into shortcuts. Pasting through universal-clipboard.sh's
+# send_shortcut path is immune.
+paste_last() {
+  local dry_run=$1 plan status=0
+  if [[ ! -f $last_file ]]; then
+    if [[ $dry_run == true ]]; then
+      printf 'notification=No dictation saved yet\n'
+    else
+      notify 'No dictation saved yet'
+    fi
+    return 0
+  fi
+  if [[ $dry_run == false ]]; then
+    mkdir -p -- "$(dirname -- "$target_file")"
+    # A second press would snapshot the first press's dictation as the clipboard.
+    exec 8>"$target_file.paste.lock"
+    flock -n 8 || return 0
+  fi
+  plan=$(clipboard_plan) || plan=unreadable
+  if [[ $dry_run == true ]]; then
+    printf 'copy=%s\npaste=%s paste\nwait=%s\nrestore=%s\n' \
+      "$last_file" "$paste_action" "$restore_delay" "$plan"
+    return
+  fi
+  # Global: the EXIT trap runs after Bash has unwound function-local variables.
+  snapshot=$(mktemp)
+  trap 'rm -f -- "$snapshot"' EXIT
+  trap 'exit 1' INT TERM HUP
+  if [[ $plan == unreadable ]] || { [[ $plan == copy\ * ]] &&
+    ! timeout 1 "$wl_paste" --no-newline --type "${plan#copy }" >"$snapshot" 2>/dev/null; }; then
+    notify 'The clipboard did not answer, so nothing was pasted'
+    return 1
+  fi
+  # wl-copy's background server keeps the caller's stderr open.
+  # wl-copy's server outlives this run; it must not inherit the paste lock.
+  "$wl_copy" --type 'text/plain;charset=utf-8' <"$last_file" >/dev/null 2>&1 8>&-
+  "$paste_action" paste || status=$?
+  sleep "$restore_delay"
+  case $plan in
+    copy\ *) "$wl_copy" --type "${plan#copy }" <"$snapshot" >/dev/null 2>&1 8>&- ;;
+    clear) "$wl_copy" --clear >/dev/null 2>&1 8>&- ;;
+    keep) ;;
+  esac
+  return "$status"
+}
+
 usage() {
-  printf 'usage: %s {toggle [--dry-run]|resolve-source|use-default-output|use-source NAME|choose|status}\n' "${0##*/}" >&2
+  printf 'usage: %s {toggle [--dry-run]|paste-last [--dry-run]|resolve-source|use-default-output|use-source NAME|use-clipboard|use-typing|delivery|choose|status}\n' "${0##*/}" >&2
   exit 2
 }
 
@@ -362,9 +638,20 @@ case ${1:-} in
       toggle false
     fi
     ;;
+  paste-last)
+    [[ $# -eq 1 || ( $# -eq 2 && $2 == --dry-run ) ]] || usage
+    if [[ ${2:-} == --dry-run ]]; then
+      paste_last true
+    else
+      paste_last false
+    fi
+    ;;
   resolve-source) [[ $# -eq 1 ]] || usage; resolve_source; printf '%s\n' "$resolved_source" ;;
   use-default-output) [[ $# -eq 1 ]] || usage; save_selection default-output ;;
   use-source) [[ $# -eq 2 ]] || usage; valid_name "$2" || die 'invalid microphone name'; save_selection source "$2" ;;
+  use-clipboard) [[ $# -eq 1 ]] || usage; use_clipboard ;;
+  use-typing) [[ $# -eq 1 ]] || usage; use_typing ;;
+  delivery) [[ $# -eq 1 ]] || usage; delivery ;;
   choose) [[ $# -eq 1 ]] || usage; choose ;;
   status) printf 'mode=%s\n' "$(mode)"; resolve_source; printf 'device=%s\n' "$resolved_source" ;;
   *) usage ;;

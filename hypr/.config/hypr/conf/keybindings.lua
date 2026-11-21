@@ -180,6 +180,7 @@ app_exec(mod .. " + O", "obsidian", "obsidian")
 -- A press bind, not release: Hyprland 0.57.0 passed a release bind's key press
 -- to the focused app, typing an "r" on every toggle.
 exec(mod .. " + R", "voice dictation", cfg.scripts_dir .. "/voice-dictation toggle")
+exec(mod .. " + CTRL + R", "paste last dictation", cfg.scripts_dir .. "/voice-dictation paste-last")
 bind(mod .. " + F", "toggle window floating / tiling", hl.dsp.window.float({ action = "toggle" }))
 exec(mod .. " + SHIFT + L", "cycle window layout", window_layout .. " cycle")
 app_exec(mod .. " + SHIFT + H", "hermes", "hermes")
