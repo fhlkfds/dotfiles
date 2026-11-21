@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# sandbox-probe: run by `verify doctor` inside the sandbox. Prints one word
+# per isolation property, so the doctor checks what the sandbox actually
+# allows rather than how it was configured.
+# usage: sandbox-probe REAL_HOME REPO STUB_BIN UID
+set -uo pipefail
+real_home=$1 repo=$2 stub_bin=$3 uid=$4
+
+if touch "$real_home/.verify-probe" 2>/dev/null; then rm -f "$real_home/.verify-probe"; echo home-writable; else echo home-readonly; fi
+if touch "$repo/.verify-probe" 2>/dev/null; then rm -f "$repo/.verify-probe"; echo repo-writable; else echo repo-readonly; fi
+if [[ -z $(ls -A "/run/user/$uid" 2>/dev/null) ]]; then echo runtime-empty; else echo runtime-has-files; fi
+if [[ -e /run/dbus/system_bus_socket ]]; then echo system-bus-visible; else echo system-bus-hidden; fi
+if (exec 3<>/dev/tcp/1.1.1.1/53) 2>/dev/null; then echo network-up; else echo network-down; fi
+if [[ -S /run/docker.sock ]]; then echo docker-visible; else echo docker-hidden; fi
+if [[ $(command -v hyprctl) == "$stub_bin/hyprctl" ]]; then echo hyprctl-stubbed; else echo hyprctl-real; fi
+if [[ -z ${WAYLAND_DISPLAY:-}${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then echo session-env-clear; else echo session-env-set; fi

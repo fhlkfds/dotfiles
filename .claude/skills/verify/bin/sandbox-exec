@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# sandbox-exec: runs inside the verify sandbox's own PID namespace.
+# Starts a /proc sampler, runs the command, and leaves a list of every
+# process seen (command name and argv), so a dry-run's real behaviour is on
+# record. The sampler uses bash builtins only, so it does not list itself.
+# usage: sandbox-exec PROCESS_LOG CMD [ARG...]
+set -uo pipefail
+
+log=$1; shift
+: >"$log"
+
+sample() {
+  local -A seen=()
+  local pid comm args key fd
+  local -a argv
+  exec {fd}<> <(:)
+  while :; do
+    for pid in /proc/[0-9]*; do
+      pid=${pid#/proc/}
+      ((pid == BASHPID || pid == $$)) && continue
+      # A process can exit between the glob and the read. The braces put
+      # the failed redirect itself under 2>/dev/null.
+      { read -r comm <"/proc/$pid/comm"; } 2>/dev/null || continue
+      { mapfile -d '' -t argv <"/proc/$pid/cmdline"; } 2>/dev/null || continue
+      args=${argv[*]-}
+      key=$pid:$comm
+      [[ -n ${seen[$key]:-} ]] && continue
+      seen[$key]=1
+      printf '%s\t%s\n' "$comm" "$args" >>"$log"
+    done
+    read -r -t 0.02 -u "$fd" _ 2>/dev/null || true
+  done
+}
+
+sample &
+sampler=$!
+"$@"
+status=$?
+kill "$sampler" 2>/dev/null
+wait "$sampler" 2>/dev/null
+exit "$status"

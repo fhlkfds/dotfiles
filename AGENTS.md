@@ -19,7 +19,8 @@ Panel, Package path and Fixture test are defined in `CONTEXT.md`; use them.
 Both are required. Speed is the feature: nothing you build may slow me down.
 
 - **Works:** name the test that proves it. A change without a passing test is
-  unfinished.
+  unfinished. To drive the real shell, menus, scripts and themes headless and
+  keep the proof, follow `.claude/skills/verify/SKILL.md` and its feature map.
 - **Fast to use:** the path from keypress to something on screen is the hot
   path (keybind, bar, panel, menu). Keep process spawns off it. A keybind that
   opens a panel goes through `GlobalShortcut` to the resident shell (the
