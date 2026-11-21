@@ -1,0 +1,467 @@
+#!/usr/bin/env bash
+# verify: drive this dotfiles repo's real surfaces headless and keep proof.
+#
+# Agents have no live Hyprland session to drive, and the machine they run on
+# may have one they must not touch.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+usage: verify <command> [options]
+
+  launch [--palette SLUG]      create a run: sandbox + evidence dir (default palette tokyo-night)
+  doctor                       read-only check that the current run is safe and worth driving
+  run [opts] -- CMD [ARG...]   run CMD in the sandbox and record evidence
+        --label NAME             evidence folder name (default: CMD's basename)
+        --env KEY=VALUE          extra environment, repeatable
+        --timeout SECONDS        kill CMD after this long (default 60)
+  smoke NAME [--expect LINE] [--env KEY=VALUE]... [--timeout SECONDS]
+                               run quickshell/.config/quickshell/<NAME>Smoke.qml offscreen
+  shot battery-panel           click the real BatteryIcon, save icon + panel PNGs
+  lmenu ROUTE [--display]      lmenu --dry-run (or --dry-run-display) against the repo menu
+  evidence                     print the evidence directory and its index
+  cleanup                      delete the sandbox, keep the evidence
+
+Options for every command: --run ID picks a run (default: the last launched).
+Environment: VERIFY_ROOT (default ${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles-verify).
+EOF
+}
+
+die() { printf 'verify: %s\n' "$1" >&2; exit "${2:-1}"; }
+
+self_dir=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)
+skill_dir=$(dirname -- "$self_dir")
+repo=$(git -C "$skill_dir" rev-parse --show-toplevel 2>/dev/null) \
+  || die 'cannot find the repository root from the skill directory'
+shell_src=$repo/quickshell/.config/quickshell
+verify_root=${VERIFY_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles-verify}
+uid=$(id -u)
+
+tripwires=(
+  hyprctl:1 hyprpm:1 hyprshade:1 notify-send:0 gsettings:0 systemctl:1
+  loginctl:1 stow:1 swww:1 awww:1 hyprpaper:1 pkill:1 killall:1
+  shell-reload.sh:1 qs:1 playerctl:1 brightnessctl:1 powerprofilesctl:1
+  swaync-client:1 makoctl:1 wpctl:1 pactl:1 nmcli:1 bluetoothctl:1 sudo:1
+  pkexec:1 curl:1 wget:1 xdg-open:1 notificationctl:1 wl-copy:1 wl-paste:1
+  grim:1 slurp:1 hyprlock:1 hypridle:1
+)
+
+# Show the sandbox only what programs need, read-only: system folders, the
+# repo and its git directory, and the run folder (writable). Hiding is the
+# guard, because a read-only mount still lets a program connect to a socket
+# in it. --unshare-all separates IPC, network, PID and the rest from the
+# host. Mounts apply in the order given.
+sandbox_mounts() {
+  local git_dir dir
+  git_dir=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)
+  mounts=(--unshare-all --die-with-parent)
+  for dir in /usr /etc /opt /sys /var/lib/pacman /var/cache/fontconfig /bin /lib /lib64 /sbin; do
+    if [[ -L $dir ]]; then mounts+=(--symlink "$(readlink "$dir")" "$dir")
+    elif [[ -d $dir ]]; then mounts+=(--ro-bind "$dir" "$dir"); fi
+  done
+  mounts+=(
+    --dev /dev
+    --proc /proc
+    --tmpfs /run
+    --bind "$sandbox/runtime" "/run/user/$uid"
+    --ro-bind "$repo" "$repo"
+    --ro-bind "$git_dir" "$git_dir"
+    --bind "$run_dir" "$run_dir"
+    --bind "$sandbox/tmp" /tmp
+    --remount-ro /
+  )
+}
+
+run_id=${VERIFY_RUN:-}
+args=()
+while (($#)); do
+  case $1 in
+    --run) [[ $# -ge 2 ]] || die '--run needs an id' 2; run_id=$2; shift 2 ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+set -- "${args[@]+"${args[@]}"}"
+
+resolve_run() {
+  if [[ -z $run_id ]]; then
+    [[ -f $verify_root/current ]] || die 'no run yet: start one with "verify launch"'
+    run_id=$(<"$verify_root/current")
+  fi
+  run_dir=$verify_root/$run_id
+  sandbox=$run_dir/sandbox
+  evidence=$run_dir/evidence
+  [[ -d $run_dir ]] || die "no run $run_id under $verify_root"
+}
+
+require_sandbox() {
+  [[ -d $sandbox/home ]] || die "run $run_id was cleaned up: start a new one with 'verify launch'"
+}
+
+next_slot() {
+  local count
+  count=$(find "$evidence" -mindepth 1 -maxdepth 1 -type d | wc -l)
+  printf '%02d' $((count + 1))
+}
+
+snapshot() {
+  find "$sandbox" -path "$sandbox/shell" -prune -o -path "$sandbox/bin" -prune \
+    -o -mindepth 1 -printf '%P\t%s\t%T@\n' | LC_ALL=C sort
+}
+
+# Each stand-in logs its call in one write, so lines stay whole when
+# stand-ins run in parallel.
+write_stand_in() {
+  local file=$sandbox/bin/$1
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf '# verify stand-in for %s: records the call; never reaches the real one.\n' "$1"
+    # shellcheck disable=SC2016
+    printf '%s\n' 'line=$(printf '"'"'%s\t%s'"'"' "$EPOCHREALTIME" "${0##*/}"; printf '"'"'\t%q'"'"' "$@")' \
+      'printf '"'"'%s\n'"'"' "$line" >>"${VERIFY_CALLS:-/dev/null}"'
+    printf '%s\n' "$2"
+  } >"$file"
+  chmod +x "$file"
+}
+
+cmd_launch() {
+  local palette=tokyo-night
+  while (($#)); do
+    case $1 in
+      --palette) [[ $# -ge 2 ]] || die '--palette needs a slug' 2; palette=$2; shift 2 ;;
+      *) die "launch: unknown option $1" 2 ;;
+    esac
+  done
+  [[ -f $repo/hypr/.config/hypr/themes/$palette/colors.toml ]] \
+    || die "no palette $palette in hypr/.config/hypr/themes"
+  case $(readlink -m -- "$verify_root")/ in
+    /tmp/*) die "VERIFY_ROOT must not be under /tmp ($verify_root): the sandbox replaces /tmp" 2 ;;
+  esac
+  command -v bwrap >/dev/null || die 'bwrap (bubblewrap) is required: pacman -S bubblewrap'
+
+  run_id=$(date +%Y%m%d-%H%M%S)-$$
+  run_dir=$verify_root/$run_id
+  sandbox=$run_dir/sandbox
+  evidence=$run_dir/evidence
+  mkdir -p "$sandbox"/{home/.config,home/.cache,home/.local/state,home/.local/share,tmp,bin} "$evidence"
+  mkdir -m 700 "$sandbox/runtime"
+
+  local entry name status
+  for entry in "${tripwires[@]}"; do
+    name=${entry%%:*}
+    status=${entry##*:}
+    write_stand_in "$name" "exit $status"
+  done
+  local palette_mode
+  palette_mode=$(sed -n 's/^mode *= *"\(.*\)"/\1/p' "$repo/hypr/.config/hypr/themes/$palette/colors.toml")
+  write_stand_in theme "case \${1:-} in
+  current) echo $(printf %q "$palette") ;;
+  mode) echo $(printf %q "$palette_mode") ;;
+  list|index|validate) exec $(printf %q "$repo/hypr/.local/bin/theme") \"\$@\" ;;
+  *)
+    printf 'verify: \"theme %s\" applies a theme to the live desktop; refused in the sandbox\\n' \"\${1:-}\" >&2
+    exit 1 ;;
+esac"
+
+  mkdir -p "$sandbox/home/.local/bin"
+  local bin
+  for bin in "$repo"/*/.local/bin/*; do
+    [[ -f $bin && -x $bin ]] || continue
+    name=${bin##*/}
+    if [[ -e $sandbox/bin/$name ]]; then
+      ln -sfn "$sandbox/bin/$name" "$sandbox/home/.local/bin/$name"
+    else
+      ln -sfn "$bin" "$sandbox/home/.local/bin/$name"
+    fi
+  done
+
+  mkdir -p "$sandbox/home/.config/hypr/themes/.active"
+  python3 - "$repo" "$palette" "$sandbox/home/.config/hypr/themes/.active/theme.json" <<'PY'
+import sys
+from pathlib import Path
+repo, slug, out = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
+sys.path.insert(0, str(repo / "hypr/.config/hypr/theme"))
+import themelib
+theme = themelib.load(repo / f"hypr/.config/hypr/themes/{slug}/colors.toml")
+template = (repo / "hypr/.config/hypr/theme/templates/quickshell-theme.json").read_text()
+out.write_text(themelib.render(template, theme))
+PY
+
+  {
+    printf 'repo=%s\n' "$repo"
+    printf 'rev=%s\n' "$(git -C "$repo" rev-parse --short HEAD)"
+    printf 'dirty_files=%s\n' "$(git -C "$repo" status --porcelain | wc -l)"
+    printf 'palette=%s\n' "$palette"
+    printf 'created=%s\n' "$(date -Is)"
+  } >"$run_dir/run.env"
+  printf '%s\n' "$run_id" >"$verify_root/current"
+  printf 'ready: run %s\n' "$run_id"
+  printf 'evidence: %s\n' "$evidence"
+}
+
+sandboxed() {
+  local label=$1 timeout=$2; shift 2
+  local -a extra_env=()
+  while [[ $1 != -- ]]; do extra_env+=("$1"); shift; done
+  shift
+  slot_dir=$evidence/$(next_slot)-$label
+  mkdir -p "$slot_dir"
+
+  {
+    printf 'run: %s\nrepo: %s @ %s\n' "$run_id" "$repo" "$(git -C "$repo" rev-parse --short HEAD)"
+    printf 'dirty files: %s\n' "$(git -C "$repo" status --porcelain | wc -l)"
+    printf 'env:'; printf ' %q' "${extra_env[@]+"${extra_env[@]}"}"; printf '\n'
+    printf 'command:'; printf ' %q' "$@"; printf '\n'
+  } >"$slot_dir/command.txt"
+
+  snapshot >"$slot_dir/.before"
+  : >"$slot_dir/calls.log"
+  local status=0
+  local -a dbus=() mounts
+  command -v dbus-run-session >/dev/null && dbus=(dbus-run-session --)
+  sandbox_mounts
+  bwrap "${mounts[@]}" --chdir "$repo" \
+    env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY \
+      -u DBUS_SESSION_BUS_ADDRESS -u SWAYSOCK -u XAUTHORITY \
+      HOME="$sandbox/home" \
+      XDG_CONFIG_HOME="$sandbox/home/.config" \
+      XDG_CACHE_HOME="$sandbox/home/.cache" \
+      XDG_STATE_HOME="$sandbox/home/.local/state" \
+      XDG_DATA_HOME="$sandbox/home/.local/share" \
+      XDG_RUNTIME_DIR="/run/user/$uid" \
+      TMPDIR=/tmp \
+      PATH="$sandbox/bin:$sandbox/home/.local/bin:$PATH" \
+      QT_QPA_PLATFORM=offscreen \
+      VERIFY_CALLS="$slot_dir/calls.log" \
+      VERIFY_EVIDENCE="$slot_dir" \
+      "${extra_env[@]+"${extra_env[@]}"}" \
+      "${dbus[@]+"${dbus[@]}"}" \
+      bash "$self_dir/sandbox-exec" "$slot_dir/processes.txt" \
+        timeout --kill-after=5 "$timeout" "$@" \
+    >"$slot_dir/stdout.txt" 2>"$slot_dir/stderr.txt" || status=$?
+  printf '%s\n' "$status" >"$slot_dir/exit-code"
+
+  snapshot >"$slot_dir/.after"
+  LC_ALL=C join -t $'\t' -a1 -a2 -e '' -o 0,1.2,1.3,2.2,2.3 \
+      "$slot_dir/.before" "$slot_dir/.after" \
+    | awk -F'\t' '$2=="" {print "A\t" $1; next} $4=="" {print "D\t" $1; next}
+                  $2!=$4 || $3!=$5 {print "M\t" $1}' >"$slot_dir/fs-changes.txt"
+  rm -f -- "$slot_dir/.before" "$slot_dir/.after"
+
+  grep -hE 'Read-only file system|Network is unreachable|Could not resolve|Temporary failure in name resolution|Connection refused|Permission denied' \
+    "$slot_dir/stdout.txt" "$slot_dir/stderr.txt" >"$slot_dir/blocked.txt" || true
+  return "$status"
+}
+
+summarize() {
+  local verdict=$1
+  printf '%s\n' "$verdict" >"$slot_dir/verdict.txt"
+  printf '%s  %s\n' "$verdict" "${slot_dir#"$evidence"/}" >>"$evidence/INDEX"
+  printf '%s\n' "$verdict"
+  printf '  evidence:   %s\n' "$slot_dir"
+  printf '  exit:       %s\n' "$(<"$slot_dir/exit-code")"
+  printf '  stand-ins:  %s call(s)' "$(wc -l <"$slot_dir/calls.log")"
+  if [[ -s $slot_dir/calls.log ]]; then
+    printf ' -> %s' "$(cut -f2 "$slot_dir/calls.log" | sort | uniq -c | awk '{printf "%s%s x%s", sep, $2, $1; sep=", "}')"
+  fi
+  printf '\n  processes:  %s\n' "$(cut -f1 "$slot_dir/processes.txt" 2>/dev/null | sort -u | paste -sd' ')"
+  printf '  files:      %s changed (fs-changes.txt)\n' "$(wc -l <"$slot_dir/fs-changes.txt")"
+  [[ -s $slot_dir/blocked.txt ]] && printf '  blocked:    %s line(s) (blocked.txt)\n' "$(wc -l <"$slot_dir/blocked.txt")"
+  return 0
+}
+
+cmd_run() {
+  local label='' timeout=60
+  local -a envs=()
+  while (($#)); do
+    case $1 in
+      --label) label=$2; shift 2 ;;
+      --env) [[ $2 == *=* ]] || die '--env takes KEY=VALUE' 2; envs+=("$2"); shift 2 ;;
+      --timeout) timeout=$2; shift 2 ;;
+      --) shift; break ;;
+      *) die "run: unknown option $1 (put the command after --)" 2 ;;
+    esac
+  done
+  (($#)) || die 'run: no command given after --' 2
+  [[ -n $label ]] || label=$(basename -- "$1")
+  label=${label//[^A-Za-z0-9._-]/-}
+  resolve_run; require_sandbox
+  local status=0
+  sandboxed "$label" "$timeout" "${envs[@]+"${envs[@]}"}" -- "$@" || status=$?
+  if ((status == 0)); then summarize 'PASS (exit 0)'; else summarize "FAIL (exit $status)"; fi
+  return "$status"
+}
+
+cmd_smoke() {
+  (($#)) || die 'smoke: give a smoke name, e.g. Battery for BatterySmoke.qml' 2
+  local name=${1%Smoke.qml}; name=${name%Smoke}; shift
+  local expect='' timeout=60
+  local -a envs=()
+  while (($#)); do
+    case $1 in
+      --expect) expect=$2; shift 2 ;;
+      --env) envs+=("$2"); shift 2 ;;
+      --timeout) timeout=$2; shift 2 ;;
+      *) die "smoke: unknown option $1" 2 ;;
+    esac
+  done
+  local file=$shell_src/${name}Smoke.qml
+  [[ -f $file ]] || die "no smoke at ${file#"$repo"/}"
+  resolve_run; require_sandbox
+  local status=0
+  sandboxed "smoke-$name" "$timeout" "${envs[@]+"${envs[@]}"}" -- quickshell -p "$file" || status=$?
+  local log=$slot_dir/log.txt
+  cat "$slot_dir/stdout.txt" "$slot_dir/stderr.txt" >"$log"
+  local oks fails
+  oks=$(grep -cE '(^|[^A-Za-z])ok   ' "$log" || true)
+  fails=$(grep -E '(^|[^A-Za-z])FAIL' "$log" || true)
+  local load_errors
+  load_errors=$(grep -E 'Failed to load configuration|ReferenceError|TypeError|is not a type|is not installed|Cannot assign|unavailable' "$log" || true)
+  local verdict
+  if [[ -n $fails ]]; then
+    verdict="FAIL $name smoke: $(grep -cE '(^|[^A-Za-z])FAIL' "$log") failing line(s)"
+  elif [[ -n $expect ]] && ! grep -Fq -- "$expect" "$log"; then
+    verdict="FAIL $name smoke: success line \"$expect\" never printed"
+  elif ((status != 0)) && ! [[ $status == 124 && -n $expect ]]; then
+    verdict="FAIL $name smoke: exited $status"
+  elif [[ -z $expect && -n $load_errors ]]; then
+    verdict="FAIL $name smoke: QML errors and no --expect line to prove success"
+  elif [[ -z $expect ]]; then
+    verdict="LOADED $name smoke: no FAIL, no QML errors, $oks ok line(s); pass --expect to prove more"
+  else
+    verdict="PASS $name smoke: \"$expect\" with $oks ok line(s)"
+  fi
+  summarize "$verdict"
+  [[ $verdict != FAIL* ]]
+}
+
+cmd_shot() {
+  [[ ${1:-} == battery-panel ]] || die 'shot: the only harness so far is battery-panel' 2
+  resolve_run; require_sandbox
+  # Quickshell resolves components and singletons from the directory of the
+  # file it loads, so the harness runs from a fresh copy of the shell with
+  # the harness beside it.
+  rm -rf -- "$sandbox/shell"
+  cp -a "$shell_src" "$sandbox/shell"
+  cp "$skill_dir/harness/BatteryPanelShot.qml" "$sandbox/shell/"
+  local status=0
+  # shellcheck disable=SC2016
+  sandboxed shot-battery-panel 60 -- sh -c 'VERIFY_SHOT_DIR=$VERIFY_EVIDENCE exec quickshell -p "$1"' sh \
+    "$sandbox/shell/BatteryPanelShot.qml" || status=$?
+  local log=$slot_dir/log.txt
+  cat "$slot_dir/stdout.txt" "$slot_dir/stderr.txt" >"$log"
+  grep -E '^.*(text |ok   |FAIL)' "$log" | sed -E 's/^.*qml[^:]*: //' >"$slot_dir/checks.txt" || true
+  local pngs
+  pngs=$(find "$slot_dir" -maxdepth 1 -name '*.png' | wc -l)
+  if ((status == 0)) && grep -q 'ok: battery panel shots' "$log" && ! grep -q 'FAIL' "$log" && ((pngs == 6)); then
+    summarize "PASS battery panel: clicked icon opened panel, $pngs PNGs, Escape closed it"
+  else
+    summarize "FAIL battery panel: exit $status, $pngs PNGs; see checks.txt and log.txt"
+    return 1
+  fi
+}
+
+cmd_lmenu() {
+  local route='' mode=--dry-run
+  while (($#)); do
+    case $1 in
+      --display) mode=--dry-run-display; shift ;;
+      *) route=$1; shift ;;
+    esac
+  done
+  resolve_run; require_sandbox
+  local status=0
+  sandboxed "lmenu${route:+-$route}${mode#--dry-run}" 30 \
+    LMENU_MENU="$repo/menu/.config/lmenu/menu.jsonc" \
+    LMENU_PARSER="$repo/menu/.config/lmenu/lmenu-parse.py" \
+    -- "$repo/menu/.local/bin/lmenu" "$mode" "$route" || status=$?
+  local rows
+  rows=$(grep -c . "$slot_dir/stdout.txt" || true)
+  if ((status == 0 && rows > 0)); then
+    summarize "PASS lmenu $mode ${route:-<root>}: $rows row(s)"
+  else
+    summarize "FAIL lmenu $mode ${route:-<root>}: exit $status, $rows row(s)"
+    return 1
+  fi
+}
+
+cmd_doctor() {
+  resolve_run
+  local bad=0
+  check() { local name=$1; shift; if "$@" >/dev/null 2>&1; then printf 'ok    %s\n' "$name"; else printf 'FAIL  %s\n' "$name"; bad=1; fi; }
+  note() { printf 'note  %s\n' "$1"; }
+  local launched_repo launched_rev palette created
+  launched_repo=$(sed -n 's/^repo=//p' "$run_dir/run.env")
+  launched_rev=$(sed -n 's/^rev=//p' "$run_dir/run.env")
+  palette=$(sed -n 's/^palette=//p' "$run_dir/run.env")
+  created=$(sed -n 's/^created=//p' "$run_dir/run.env")
+  printf 'run %s  (palette %s, launched %s)\n' "$run_id" "$palette" "$created"
+  check 'sandbox exists (not cleaned up)' test -d "$sandbox/home"
+  check 'sandbox runtime dir is private (700)' test "$(stat -c %a "$sandbox/runtime" 2>/dev/null)" = 700
+  check "run was launched from this checkout ($repo)" test "$launched_repo" = "$repo"
+  local head
+  head=$(git -C "$repo" rev-parse --short HEAD)
+  [[ $head == "$launched_rev" ]] \
+    || note "HEAD moved since launch ($launched_rev -> $head); each command's evidence records its own rev"
+  check 'bwrap available' command -v bwrap
+  check 'quickshell available' command -v quickshell
+  command -v dbus-run-session >/dev/null \
+    || note 'dbus-run-session missing: smokes that need a session bus will fail'
+  local tool
+  for tool in node jq lua python3; do
+    command -v "$tool" >/dev/null || note "$tool missing: tests that need it print skip, which is not a pass"
+  done
+  if [[ -n ${WAYLAND_DISPLAY:-} || -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    note 'a live Hyprland session is running on this machine; the sandbox hides it'
+  fi
+  [[ -d $sandbox/home ]] || { printf 'doctor: NOT safe to drive (run was cleaned up)\n'; return 1; }
+  local probe status=0
+  local -a mounts
+  sandbox_mounts
+  probe=$(bwrap "${mounts[@]}" \
+    env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
+      PATH="$sandbox/bin:$PATH" HOME="$sandbox/home" \
+      bash "$self_dir/sandbox-probe" "$HOME" "$repo" "$sandbox/bin" "$uid" "$run_dir" \
+        "$(readlink /proc/self/ns/ipc /proc/self/ns/net /proc/self/ns/pid | paste -sd' ')" 2>&1) || status=$?
+  local want
+  for want in mounts-readonly home-readonly home-hidden repo-readonly runtime-private namespaces-private sockets-unreachable \
+              system-bus-hidden network-down docker-hidden hyprctl-stubbed session-env-clear; do
+    check "sandbox: $want" grep -qx -- "$want" <<<"$probe"
+  done
+  check 'sandbox probe ran' test "$status" = 0
+  if ((bad)); then printf 'doctor: NOT safe to drive\n'; return 1; fi
+  printf 'doctor: ok to drive\n'
+}
+
+cmd_evidence() {
+  resolve_run
+  printf '%s\n' "$evidence"
+  [[ -f $evidence/INDEX ]] && cat "$evidence/INDEX"
+  return 0
+}
+
+cmd_cleanup() {
+  resolve_run
+  if [[ -d $sandbox ]]; then
+    rm -rf -- "$sandbox"
+    printf 'cleanup: removed %s\n' "$sandbox"
+  else
+    printf 'cleanup: %s already gone\n' "$sandbox"
+  fi
+  printf 'cleaned %s\n' "$(date -Is)" >"$run_dir/CLEANED"
+  printf 'evidence kept: %s\n' "$evidence"
+}
+
+(($#)) || { usage >&2; exit 2; }
+command=$1; shift
+case $command in
+  launch) cmd_launch "$@" ;;
+  doctor) cmd_doctor ;;
+  run) cmd_run "$@" ;;
+  smoke) cmd_smoke "$@" ;;
+  shot) cmd_shot "$@" ;;
+  lmenu) cmd_lmenu "$@" ;;
+  evidence) cmd_evidence ;;
+  cleanup) cmd_cleanup ;;
+  -h|--help|help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac

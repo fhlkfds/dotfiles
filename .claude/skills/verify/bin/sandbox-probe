@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -uo pipefail
+real_home=$1 repo=$2 stub_bin=$3 uid=$4 run_dir=$5 host_namespaces=$6
+git_dir=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+
+writable=$(awk -v keep="^(/proc|/dev|/run|/run/user/$uid|/tmp|$run_dir)(/|\$)" \
+  '$6 ~ /(^|,)rw(,|$)/ && $5 !~ keep { print $5; exit }' /proc/self/mountinfo)
+if [[ -z $writable ]]; then echo mounts-readonly; else echo "mount-writable:$writable"; fi
+if touch "$real_home/.verify-probe" 2>/dev/null; then rm -f "$real_home/.verify-probe"; echo home-writable; else echo home-readonly; fi
+hidden=home-hidden
+for entry in "$real_home"/* "$real_home"/.[!.]*; do
+  [[ -e $entry ]] || continue
+  leads_to_mount=0
+  for kept in "$repo" "$run_dir" "$git_dir"; do
+    [[ $kept/ == "$entry"/* ]] && leads_to_mount=1
+  done
+  ((leads_to_mount)) || hidden="home-visible:${entry#"$real_home"/}"
+done
+echo "$hidden"
+if touch "$repo/.verify-probe" 2>/dev/null; then rm -f "$repo/.verify-probe"; echo repo-writable; else echo repo-readonly; fi
+if [[ $(stat -c %d:%i "/run/user/$uid") == $(stat -c %d:%i "$run_dir/sandbox/runtime") ]]
+then echo runtime-private; else echo runtime-not-private; fi
+shared=''
+for ns in $host_namespaces; do
+  [[ " $(readlink /proc/self/ns/ipc /proc/self/ns/net /proc/self/ns/pid | paste -sd' ') " == *" $ns "* ]] && shared+=" $ns"
+done
+if [[ -z $shared ]]; then echo namespaces-private; else echo "namespaces-shared:$shared"; fi
+find / \( -path /proc -o -path /sys -o -path "$run_dir" -o -path /tmp \) -prune -o -type s -print0 \
+  >/tmp/.verify-sockets 2>/tmp/.verify-find-errors
+find_status=$?
+reachable=$(python3 -c '
+import socket, sys
+paths = [p for p in open(sys.argv[1], "rb").read().split(b"\0") if p]
+for path in paths:
+    for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM, socket.SOCK_SEQPACKET):
+        s = socket.socket(socket.AF_UNIX, kind)
+        try:
+            s.connect(path)
+        except OSError:
+            continue
+        finally:
+            s.close()
+        print(path.decode(errors="replace"))
+        break
+print(f"checked {len(paths)}")
+' /tmp/.verify-sockets)
+check_status=$?
+unexpected_errors=$(grep -v 'Permission denied$' /tmp/.verify-find-errors)
+rm -f /tmp/.verify-sockets /tmp/.verify-find-errors
+if ((check_status != 0)) || [[ ${reachable##*$'\n'} != "checked "* ]] \
+   || ((find_status > 1)) || [[ -n $unexpected_errors ]]; then
+  echo "socket-scan-failed:find=$find_status,check=$check_status"
+elif [[ $reachable == "checked "* ]]; then echo sockets-unreachable
+else echo "socket-reachable:${reachable%%$'\n'*}"; fi
+if [[ -e /run/dbus/system_bus_socket ]]; then echo system-bus-visible; else echo system-bus-hidden; fi
+if (exec 3<>/dev/tcp/1.1.1.1/53) 2>/dev/null; then echo network-up; else echo network-down; fi
+if [[ -S /run/docker.sock ]]; then echo docker-visible; else echo docker-hidden; fi
+if [[ $(command -v hyprctl) == "$stub_bin/hyprctl" ]]; then echo hyprctl-stubbed; else echo hyprctl-real; fi
+if [[ -z ${WAYLAND_DISPLAY:-}${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then echo session-env-clear; else echo session-env-set; fi

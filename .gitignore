@@ -70,9 +70,11 @@ herdr/.config/herdr/session-snapshots/
 # ~/.codex, so they are host state; the other hosts here stay tracked.
 browser/.config/**/NativeMessagingHosts/com.openai.codexextension.json
 
-# Agent tooling: Claude Code worktrees, and the backup T3 Code leaves beside
-# hyprland.lua when it adds its capture-window bind.
-/.claude/
+# Agent tooling: Claude Code worktrees and local settings, and the backup T3
+# Code leaves beside hyprland.lua when it adds its capture-window bind. Project
+# skills under .claude/skills/ are shared, so they stay tracked.
+/.claude/*
+!/.claude/skills/
 *.t3-capture-backup-*
 
 # Chromium-family browsers write crash-report state (settings.dat, minidumps)
