@@ -46,35 +46,30 @@ tripwires=(
   grim:1 slurp:1 hyprlock:1 hypridle:1
 )
 
-# Start from nothing writable and no host sockets: a read-only root, a
-# private /dev and /run, and an empty home with only the repo and its git
-# directory (read-only) and the run directory added back. A read-only mount
-# still lets a program connect to a socket in it, so hiding is the only
-# guard. Bind order matters: bwrap applies mounts in the order given.
+# Show the sandbox only what programs need, read-only: system folders, the
+# repo and its git directory, and the run folder (writable). Hiding is the
+# guard, because a read-only mount still lets a program connect to a socket
+# in it. --unshare-all separates IPC, network, PID and the rest from the
+# host. Mounts apply in the order given.
 sandbox_mounts() {
-  local git_dir
+  local git_dir dir
   git_dir=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)
-  mounts=(
-    --ro-bind / /
+  mounts=(--unshare-all --die-with-parent)
+  for dir in /usr /etc /opt /sys /var/lib/pacman /var/cache/fontconfig /bin /lib /lib64 /sbin; do
+    if [[ -L $dir ]]; then mounts+=(--symlink "$(readlink "$dir")" "$dir")
+    elif [[ -d $dir ]]; then mounts+=(--ro-bind "$dir" "$dir"); fi
+  done
+  mounts+=(
     --dev /dev
     --proc /proc
     --tmpfs /run
     --bind "$sandbox/runtime" "/run/user/$uid"
-    --tmpfs "$HOME"
     --ro-bind "$repo" "$repo"
     --ro-bind "$git_dir" "$git_dir"
     --bind "$run_dir" "$run_dir"
-    --remount-ro "$HOME"
     --bind "$sandbox/tmp" /tmp
+    --remount-ro /
   )
-  # An automount or network filesystem reaches the network through the
-  # kernel, and a mount it triggers propagates into the sandbox writable.
-  local mount_point
-  while read -r mount_point; do
-    mounts+=(--tmpfs "$mount_point" --remount-ro "$mount_point")
-  done < <(awk '{ for (i = 7; $i != "-"; i++); if ($(i + 1) ~ /^(autofs|cifs|smb3|nfs4?|9p|fuse\..*)$/) print $5 }' \
-             /proc/self/mountinfo | grep -vE "^(/proc|/sys|/dev|/run|/tmp|$HOME)(/|$)" | sort -u)
-  mounts+=(--unshare-net --unshare-pid --die-with-parent)
 }
 
 run_id=${VERIFY_RUN:-}
@@ -425,9 +420,10 @@ cmd_doctor() {
   probe=$(bwrap "${mounts[@]}" \
     env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
       PATH="$sandbox/bin:$PATH" HOME="$sandbox/home" \
-      bash "$self_dir/sandbox-probe" "$HOME" "$repo" "$sandbox/bin" "$uid" "$run_dir" 2>&1) || status=$?
+      bash "$self_dir/sandbox-probe" "$HOME" "$repo" "$sandbox/bin" "$uid" "$run_dir" \
+        "$(readlink /proc/self/ns/ipc /proc/self/ns/net /proc/self/ns/pid | paste -sd' ')" 2>&1) || status=$?
   local want
-  for want in mounts-readonly home-readonly home-hidden repo-readonly runtime-private host-sockets-hidden \
+  for want in mounts-readonly home-readonly home-hidden repo-readonly runtime-private namespaces-private sockets-unreachable \
               system-bus-hidden network-down docker-hidden hyprctl-stubbed session-env-clear; do
     check "sandbox: $want" grep -qx -- "$want" <<<"$probe"
   done

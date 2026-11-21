@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
-real_home=$1 repo=$2 stub_bin=$3 uid=$4 run_dir=$5
+real_home=$1 repo=$2 stub_bin=$3 uid=$4 run_dir=$5 host_namespaces=$6
 git_dir=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
 
 writable=$(awk -v keep="^(/proc|/dev|/run|/run/user/$uid|/tmp|$run_dir)(/|\$)" \
@@ -20,8 +20,29 @@ echo "$hidden"
 if touch "$repo/.verify-probe" 2>/dev/null; then rm -f "$repo/.verify-probe"; echo repo-writable; else echo repo-readonly; fi
 if [[ $(stat -c %d:%i "/run/user/$uid") == $(stat -c %d:%i "$run_dir/sandbox/runtime") ]]
 then echo runtime-private; else echo runtime-not-private; fi
-socket=$(find "$real_home" /run /dev \( -path "$run_dir" -o -path "/run/user/$uid" \) -prune -o -type s -print -quit 2>/dev/null)
-if [[ -z $socket ]]; then echo host-sockets-hidden; else echo "host-socket-visible:$socket"; fi
+shared=''
+for ns in $host_namespaces; do
+  [[ " $(readlink /proc/self/ns/ipc /proc/self/ns/net /proc/self/ns/pid | paste -sd' ') " == *" $ns "* ]] && shared+=" $ns"
+done
+if [[ -z $shared ]]; then echo namespaces-private; else echo "namespaces-shared:$shared"; fi
+reachable=$(find / \( -path /proc -o -path /sys -o -path "$run_dir" -o -path /tmp \) -prune -o -type s -print0 2>/dev/null \
+  | python3 -c '
+import socket, sys
+for path in sys.stdin.buffer.read().split(b"\0"):
+    if not path:
+        continue
+    for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM, socket.SOCK_SEQPACKET):
+        s = socket.socket(socket.AF_UNIX, kind)
+        try:
+            s.connect(path)
+        except OSError:
+            continue
+        finally:
+            s.close()
+        print(path.decode(errors="replace"))
+        break
+')
+if [[ -z $reachable ]]; then echo sockets-unreachable; else echo "socket-reachable:${reachable%%$'\n'*}"; fi
 if [[ -e /run/dbus/system_bus_socket ]]; then echo system-bus-visible; else echo system-bus-hidden; fi
 if (exec 3<>/dev/tcp/1.1.1.1/53) 2>/dev/null; then echo network-up; else echo network-down; fi
 if [[ -S /run/docker.sock ]]; then echo docker-visible; else echo docker-hidden; fi

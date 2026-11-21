@@ -17,14 +17,15 @@ one helper:
 
 Each command runs inside bubblewrap (a lightweight sandbox). Inside it:
 
-- Every host mount is read-only. Automount and network filesystems such as
-  `/Share` are covered with an empty folder.
-- The real home is hidden. Only the repo and its git directory (both
-  read-only) and the run's own folder show through. A read-only mount still
-  lets a program connect to a socket in it, so hiding is what keeps out
-  the sockets other apps keep under the home.
+- Only what programs need shows through, read-only: `/usr`, `/etc`, `/opt`,
+  `/sys`, the pacman database, the font cache, the repo and its git
+  directory. The run's own folder is the one writable place. The rest of
+  the host, the real home included, is hidden. A read-only mount still lets
+  a program connect to a socket in it, so hiding is the guard.
 - `/dev` and `/run` are private. `/run/user/$UID` is the run's own folder:
   no Wayland, Hyprland, PipeWire or session D-Bus socket.
+- IPC (shared memory, message queues), network and process IDs are separate
+  from the host.
 - The system bus, the docker socket and the network are gone.
 - `HOME` and `XDG_*` point into a throwaway tree.
 - The user's real environment variables `WAYLAND_DISPLAY`,
@@ -80,7 +81,8 @@ and which optional tools are missing.
 
 Then it **proves the isolation from inside the sandbox**: `mounts-readonly`,
 `home-readonly`, `home-hidden`, `repo-readonly`, `runtime-private`,
-`host-sockets-hidden`, `system-bus-hidden`, `network-down`, `docker-hidden`,
+`namespaces-private`, `sockets-unreachable` (it tries to connect to every
+socket it can see), `system-bus-hidden`, `network-down`, `docker-hidden`,
 `hyprctl-stubbed` and `session-env-clear`. Drive only after
 `doctor: ok to drive`. A line `note a live Hyprland session is running`
 is expected on the user's machine. The sandbox hides that session.
@@ -200,6 +202,11 @@ directory, and the repo is read-only. To add a shot, write
 
 ## Gotchas
 
+- **Tools must come from the system.** A tool installed under the real home
+  (`~/.npm-global`, `~/.local/bin`, pnpm) is hidden. The sandbox's own
+  `~/.local/bin` links this checkout's package commands instead. If a test
+  needs a tool that only lives in the home, report that, and don't widen
+  the sandbox to reach it.
 - `quickshell` warns that it was built against an older Qt (6.11.2 against
   6.12.0 when this skill was written). It is a packaging warning, not a test
   failure. Mention it if a smoke crashes.

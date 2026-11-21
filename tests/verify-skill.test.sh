@@ -101,23 +101,37 @@ run_id=$(<"$runs/current")
 evidence="$runs/$run_id/evidence"
 run_verify doctor >"$test_root/doctor.out" || { cat "$test_root/doctor.out" >&2; fail 'doctor said not safe'; }
 for want in mounts-readonly home-readonly home-hidden repo-readonly runtime-private \
-            host-sockets-hidden system-bus-hidden network-down docker-hidden hyprctl-stubbed \
+            namespaces-private sockets-unreachable system-bus-hidden network-down docker-hidden hyprctl-stubbed \
             session-env-clear; do
   grep -qx "ok    sandbox: $want" "$test_root/doctor.out" || fail "doctor did not prove $want"
 done
 
-socket_dir=$(mktemp -d -p "$cache_home" verify-skill-socket.XXXXXX)
-trap 'rm -rf -- "$test_root" "$runs" "$socket_dir"' EXIT
-python3 -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$socket_dir/live.sock"
+home_sockets=$(mktemp -d -p "$cache_home" verify-skill-socket.XXXXXX)
+root_sockets=$(mktemp -d -p /var/tmp verify-skill-socket.XXXXXX)
+shm_id=''
+cleanup_host() {
+  rm -rf -- "$test_root" "$runs" "$home_sockets" "$root_sockets"
+  [[ -z $shm_id ]] || ipcrm -m "$shm_id"
+}
+trap cleanup_host EXIT
+for socket in "$home_sockets/live.sock" "$root_sockets/live.sock"; do
+  python3 -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$socket"
+done
+if command -v ipcmk >/dev/null; then shm_id=$(ipcmk -M 64 | grep -o '[0-9]*$'); fi
 status=0
 # shellcheck disable=SC2016
-run_verify run --label probe --env REAL_HOME="$HOME" --env SOCKET="$socket_dir/live.sock" -- bash -c \
-  'hyprctl binds -j; [[ -S $SOCKET ]] && echo host-socket-visible; touch "$HOME/made"; touch "$REAL_HOME/.verify-skill-test"' \
+run_verify run --label probe --env REAL_HOME="$HOME" --env SHM="$shm_id" \
+  --env SOCKETS="$home_sockets/live.sock $root_sockets/live.sock" -- bash -c \
+  'hyprctl binds -j
+   for s in $SOCKETS; do [[ -S $s ]] && echo "host-socket-visible $s"; done
+   [[ -n $SHM ]] && ipcs -m | grep -qw "$SHM" && echo host-shm-visible
+   touch "$HOME/made"; touch "$REAL_HOME/.verify-skill-test"' \
   >/dev/null || status=$?
 [[ $status == 1 ]] || fail "the probe exited $status, not 1"
 [[ ! -e $HOME/.verify-skill-test ]] || { rm -f -- "$HOME/.verify-skill-test"; fail 'the sandbox wrote to the real home'; }
 probe="$evidence/01-probe"
-grep -q host-socket-visible "$probe/stdout.txt" && fail 'the sandbox could see a socket under the real home'
+grep -q host-socket-visible "$probe/stdout.txt" && fail "the sandbox could see a host socket: $(<"$probe/stdout.txt")"
+grep -q host-shm-visible "$probe/stdout.txt" && fail 'the sandbox could see host shared memory'
 grep -q $'\thyprctl\tbinds\t-j$' "$probe/calls.log" || fail 'calls.log missed hyprctl'
 grep -qx $'A\thome/made' "$probe/fs-changes.txt" || fail 'fs-changes.txt missed the sandbox write'
 grep -Fq 'Read-only file system' "$probe/blocked.txt" || fail 'blocked.txt missed the real-home write'
