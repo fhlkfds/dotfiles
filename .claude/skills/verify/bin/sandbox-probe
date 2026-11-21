@@ -1,10 +1,27 @@
 #!/usr/bin/env bash
 set -uo pipefail
-real_home=$1 repo=$2 stub_bin=$3 uid=$4
+real_home=$1 repo=$2 stub_bin=$3 uid=$4 run_dir=$5
+git_dir=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
 
+writable=$(awk -v keep="^(/proc|/dev|/run|/run/user/$uid|/tmp|$run_dir)(/|\$)" \
+  '$6 ~ /(^|,)rw(,|$)/ && $5 !~ keep { print $5; exit }' /proc/self/mountinfo)
+if [[ -z $writable ]]; then echo mounts-readonly; else echo "mount-writable:$writable"; fi
 if touch "$real_home/.verify-probe" 2>/dev/null; then rm -f "$real_home/.verify-probe"; echo home-writable; else echo home-readonly; fi
+hidden=home-hidden
+for entry in "$real_home"/* "$real_home"/.[!.]*; do
+  [[ -e $entry ]] || continue
+  leads_to_mount=0
+  for kept in "$repo" "$run_dir" "$git_dir"; do
+    [[ $kept/ == "$entry"/* ]] && leads_to_mount=1
+  done
+  ((leads_to_mount)) || hidden="home-visible:${entry#"$real_home"/}"
+done
+echo "$hidden"
 if touch "$repo/.verify-probe" 2>/dev/null; then rm -f "$repo/.verify-probe"; echo repo-writable; else echo repo-readonly; fi
-if [[ -z $(ls -A "/run/user/$uid" 2>/dev/null) ]]; then echo runtime-empty; else echo runtime-has-files; fi
+if [[ $(stat -c %d:%i "/run/user/$uid") == $(stat -c %d:%i "$run_dir/sandbox/runtime") ]]
+then echo runtime-private; else echo runtime-not-private; fi
+socket=$(find "$real_home" /run /dev \( -path "$run_dir" -o -path "/run/user/$uid" \) -prune -o -type s -print -quit 2>/dev/null)
+if [[ -z $socket ]]; then echo host-sockets-hidden; else echo "host-socket-visible:$socket"; fi
 if [[ -e /run/dbus/system_bus_socket ]]; then echo system-bus-visible; else echo system-bus-hidden; fi
 if (exec 3<>/dev/tcp/1.1.1.1/53) 2>/dev/null; then echo network-up; else echo network-down; fi
 if [[ -S /run/docker.sock ]]; then echo docker-visible; else echo docker-hidden; fi

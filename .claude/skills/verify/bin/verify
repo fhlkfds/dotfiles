@@ -46,21 +46,35 @@ tripwires=(
   grim:1 slurp:1 hyprlock:1 hypridle:1
 )
 
-# Bind order matters: the real home goes read-only first, then the run
-# directory (which lives under it) is bound back writable on top.
+# Start from nothing writable and no host sockets: a read-only root, a
+# private /dev and /run, and an empty home with only the repo and its git
+# directory (read-only) and the run directory added back. A read-only mount
+# still lets a program connect to a socket in it, so hiding is the only
+# guard. Bind order matters: bwrap applies mounts in the order given.
 sandbox_mounts() {
+  local git_dir
+  git_dir=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)
   mounts=(
-    --dev-bind / /
-    --ro-bind "$HOME" "$HOME"
-    --bind "$run_dir" "$run_dir"
-    --tmpfs "/run/user/$uid"
+    --ro-bind / /
+    --dev /dev
+    --proc /proc
+    --tmpfs /run
     --bind "$sandbox/runtime" "/run/user/$uid"
-    --tmpfs /run/dbus
+    --tmpfs "$HOME"
+    --ro-bind "$repo" "$repo"
+    --ro-bind "$git_dir" "$git_dir"
+    --bind "$run_dir" "$run_dir"
+    --remount-ro "$HOME"
     --bind "$sandbox/tmp" /tmp
   )
-  # Docker answers over a socket, not the network, so hide it too.
-  if [[ -S /run/docker.sock ]]; then mounts+=(--ro-bind /dev/null /run/docker.sock); fi
-  mounts+=(--unshare-net --unshare-pid --proc /proc --die-with-parent)
+  # An automount or network filesystem reaches the network through the
+  # kernel, and a mount it triggers propagates into the sandbox writable.
+  local mount_point
+  while read -r mount_point; do
+    mounts+=(--tmpfs "$mount_point" --remount-ro "$mount_point")
+  done < <(awk '{ for (i = 7; $i != "-"; i++); if ($(i + 1) ~ /^(autofs|cifs|smb3|nfs4?|9p|fuse\..*)$/) print $5 }' \
+             /proc/self/mountinfo | grep -vE "^(/proc|/sys|/dev|/run|/tmp|$HOME)(/|$)" | sort -u)
+  mounts+=(--unshare-net --unshare-pid --die-with-parent)
 }
 
 run_id=${VERIFY_RUN:-}
@@ -124,10 +138,10 @@ cmd_launch() {
   done
   [[ -f $repo/hypr/.config/hypr/themes/$palette/colors.toml ]] \
     || die "no palette $palette in hypr/.config/hypr/themes"
-  command -v bwrap >/dev/null || die 'bwrap (bubblewrap) is required: pacman -S bubblewrap'
   case $(readlink -m -- "$verify_root")/ in
     /tmp/*) die "VERIFY_ROOT must not be under /tmp ($verify_root): the sandbox replaces /tmp" 2 ;;
   esac
+  command -v bwrap >/dev/null || die 'bwrap (bubblewrap) is required: pacman -S bubblewrap'
 
   run_id=$(date +%Y%m%d-%H%M%S)-$$
   run_dir=$verify_root/$run_id
@@ -298,7 +312,8 @@ cmd_smoke() {
   local file=$shell_src/${name}Smoke.qml
   [[ -f $file ]] || die "no smoke at ${file#"$repo"/}"
   resolve_run; require_sandbox
-  sandboxed "smoke-$name" "$timeout" "${envs[@]+"${envs[@]}"}" -- quickshell -p "$file" || true
+  local status=0
+  sandboxed "smoke-$name" "$timeout" "${envs[@]+"${envs[@]}"}" -- quickshell -p "$file" || status=$?
   local log=$slot_dir/log.txt
   cat "$slot_dir/stdout.txt" "$slot_dir/stderr.txt" >"$log"
   local oks fails
@@ -311,6 +326,8 @@ cmd_smoke() {
     verdict="FAIL $name smoke: $(grep -cE '(^|[^A-Za-z])FAIL' "$log") failing line(s)"
   elif [[ -n $expect ]] && ! grep -Fq -- "$expect" "$log"; then
     verdict="FAIL $name smoke: success line \"$expect\" never printed"
+  elif ((status != 0)) && ! [[ $status == 124 && -n $expect ]]; then
+    verdict="FAIL $name smoke: exited $status"
   elif [[ -z $expect && -n $load_errors ]]; then
     verdict="FAIL $name smoke: QML errors and no --expect line to prove success"
   elif [[ -z $expect ]]; then
@@ -340,10 +357,10 @@ cmd_shot() {
   grep -E '^.*(text |ok   |FAIL)' "$log" | sed -E 's/^.*qml[^:]*: //' >"$slot_dir/checks.txt" || true
   local pngs
   pngs=$(find "$slot_dir" -maxdepth 1 -name '*.png' | wc -l)
-  if grep -q 'ok: battery panel shots' "$log" && ! grep -q 'FAIL' "$log" && ((pngs == 6)); then
+  if ((status == 0)) && grep -q 'ok: battery panel shots' "$log" && ! grep -q 'FAIL' "$log" && ((pngs == 6)); then
     summarize "PASS battery panel: clicked icon opened panel, $pngs PNGs, Escape closed it"
   else
-    summarize "FAIL battery panel: see checks.txt and log.txt ($pngs PNGs)"
+    summarize "FAIL battery panel: exit $status, $pngs PNGs; see checks.txt and log.txt"
     return 1
   fi
 }
@@ -408,10 +425,10 @@ cmd_doctor() {
   probe=$(bwrap "${mounts[@]}" \
     env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
       PATH="$sandbox/bin:$PATH" HOME="$sandbox/home" \
-      bash "$self_dir/sandbox-probe" "$HOME" "$repo" "$sandbox/bin" "$uid" 2>&1) || status=$?
+      bash "$self_dir/sandbox-probe" "$HOME" "$repo" "$sandbox/bin" "$uid" "$run_dir" 2>&1) || status=$?
   local want
-  for want in home-readonly repo-readonly runtime-empty system-bus-hidden network-down docker-hidden \
-              hyprctl-stubbed session-env-clear; do
+  for want in mounts-readonly home-readonly home-hidden repo-readonly runtime-private host-sockets-hidden \
+              system-bus-hidden network-down docker-hidden hyprctl-stubbed session-env-clear; do
     check "sandbox: $want" grep -qx -- "$want" <<<"$probe"
   done
   check 'sandbox probe ran' test "$status" = 0

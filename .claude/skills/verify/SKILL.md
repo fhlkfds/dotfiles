@@ -17,8 +17,14 @@ one helper:
 
 Each command runs inside bubblewrap (a lightweight sandbox). Inside it:
 
-- The real home is read-only. That includes the repo, which lives under it.
-- `/run/user/$UID` is empty: no Wayland, Hyprland, PipeWire or session D-Bus socket.
+- Every host mount is read-only. Automount and network filesystems such as
+  `/Share` are covered with an empty folder.
+- The real home is hidden. Only the repo and its git directory (both
+  read-only) and the run's own folder show through. A read-only mount still
+  lets a program connect to a socket in it, so hiding is what keeps out
+  the sockets other apps keep under the home.
+- `/dev` and `/run` are private. `/run/user/$UID` is the run's own folder:
+  no Wayland, Hyprland, PipeWire or session D-Bus socket.
 - The system bus, the docker socket and the network are gone.
 - `HOME` and `XDG_*` point into a throwaway tree.
 - The user's real environment variables `WAYLAND_DISPLAY`,
@@ -72,9 +78,10 @@ checks the run: it exists and isn't cleaned up, it came from this checkout,
 and `bwrap` and `quickshell` are installed. It also notes when HEAD has moved
 and which optional tools are missing.
 
-Then it **proves the isolation from inside the sandbox**: `home-readonly`,
-`repo-readonly`, `runtime-empty`, `system-bus-hidden`, `network-down`,
-`docker-hidden`, `hyprctl-stubbed` and `session-env-clear`. Drive only after
+Then it **proves the isolation from inside the sandbox**: `mounts-readonly`,
+`home-readonly`, `home-hidden`, `repo-readonly`, `runtime-private`,
+`host-sockets-hidden`, `system-bus-hidden`, `network-down`, `docker-hidden`,
+`hyprctl-stubbed` and `session-env-clear`. Drive only after
 `doctor: ok to drive`. A line `note a live Hyprland session is running`
 is expected on the user's machine. The sandbox hides that session.
 
@@ -97,9 +104,10 @@ stand-ins called, the processes seen, and the file count changed.
 
 Smoke verdicts:
 
-- **PASS** needs the `--expect` line and no `FAIL`.
-- **LOADED** means there was no `--expect` line, no `FAIL` and no QML load
-  error. The file compiled, which proves nothing about behaviour.
+- **PASS** needs the `--expect` line, no `FAIL`, and exit 0. Exit 124 (the
+  `--timeout` ran out) also passes when the `--expect` line printed.
+- **LOADED** means there was no `--expect` line, no `FAIL`, no QML load
+  error, and exit 0. The file compiled, which proves nothing about behaviour.
 - **FAIL** is anything else.
 
 Get the expected line from the smoke's own `console.log("ok: ...")` or from

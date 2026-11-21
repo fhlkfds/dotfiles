@@ -100,19 +100,24 @@ run_verify launch >/dev/null || fail 'second launch failed'
 run_id=$(<"$runs/current")
 evidence="$runs/$run_id/evidence"
 run_verify doctor >"$test_root/doctor.out" || { cat "$test_root/doctor.out" >&2; fail 'doctor said not safe'; }
-for want in home-readonly repo-readonly runtime-empty system-bus-hidden network-down \
-            docker-hidden hyprctl-stubbed session-env-clear; do
+for want in mounts-readonly home-readonly home-hidden repo-readonly runtime-private \
+            host-sockets-hidden system-bus-hidden network-down docker-hidden hyprctl-stubbed \
+            session-env-clear; do
   grep -qx "ok    sandbox: $want" "$test_root/doctor.out" || fail "doctor did not prove $want"
 done
 
+socket_dir=$(mktemp -d -p "$cache_home" verify-skill-socket.XXXXXX)
+trap 'rm -rf -- "$test_root" "$runs" "$socket_dir"' EXIT
+python3 -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$socket_dir/live.sock"
 status=0
 # shellcheck disable=SC2016
-run_verify run --label probe --env REAL_HOME="$HOME" -- bash -c \
-  'hyprctl binds -j; touch "$HOME/made"; touch "$REAL_HOME/.verify-skill-test"' \
+run_verify run --label probe --env REAL_HOME="$HOME" --env SOCKET="$socket_dir/live.sock" -- bash -c \
+  'hyprctl binds -j; [[ -S $SOCKET ]] && echo host-socket-visible; touch "$HOME/made"; touch "$REAL_HOME/.verify-skill-test"' \
   >/dev/null || status=$?
 [[ $status == 1 ]] || fail "the probe exited $status, not 1"
 [[ ! -e $HOME/.verify-skill-test ]] || { rm -f -- "$HOME/.verify-skill-test"; fail 'the sandbox wrote to the real home'; }
 probe="$evidence/01-probe"
+grep -q host-socket-visible "$probe/stdout.txt" && fail 'the sandbox could see a socket under the real home'
 grep -q $'\thyprctl\tbinds\t-j$' "$probe/calls.log" || fail 'calls.log missed hyprctl'
 grep -qx $'A\thome/made' "$probe/fs-changes.txt" || fail 'fs-changes.txt missed the sandbox write'
 grep -Fq 'Read-only file system' "$probe/blocked.txt" || fail 'blocked.txt missed the real-home write'
