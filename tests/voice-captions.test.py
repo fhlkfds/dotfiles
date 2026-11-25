@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Pure tests for voice-captions: the session reducer, transcript folding,
-the control-line parser, event snapshots, subscribers and the decoder."""
+"""Pure tests for voice-captions: the session reducer with its live typist,
+transcript folding, the control-line parser, event snapshots, subscribers and
+the decoder."""
 
 import importlib.machinery
 import importlib.util
@@ -38,6 +39,7 @@ def check(name, condition, detail=""):
 State, Transcript, Commit, Revise = vc.State, vc.Transcript, vc.Commit, vc.Revise
 Report, Updates, Tick = vc.Report, vc.Updates, vc.Tick
 StartRecorder, StopRecorder, Publish = vc.StartRecorder, vc.StopRecorder, vc.Publish
+Typed, TypeFailed, Erased, Type, Erase, Ack = vc.Typed, vc.TypeFailed, vc.Erased, vc.Type, vc.Erase, vc.Ack
 URGENT, LATER = Publish(urgent=True), Publish(urgent=False)
 
 INF = float("inf")
@@ -45,8 +47,15 @@ text = Transcript("hello ", "wor")
 idle = State()
 armed = State(phase="armed", id="10", deadline=5)
 listening = State(phase="listening", id="10", source="mic", transcript=text, engine="ready", deadline=600)
-typing = replace(listening, phase="typing", deadline=60)
+typing = replace(listening, phase="typing", deadline=60, stop="acked")
 idle10 = State(id="10", engine="ready")
+BOX = "0x55d0aaa"
+quiet = replace(listening, target=BOX, transcript=Transcript())
+# "hello " is with a wtype; "hello " then "world " have settled.
+busy = replace(listening, target=BOX, transcript=Transcript("hello world ", ""), inflight=6)
+done = replace(listening, target=BOX, typed=6)
+draining = replace(busy, phase="typing", deadline=63, stop="draining")
+erasing = replace(done, phase="typing", deadline=63, stop="erasing")
 
 # (name, state, input, now, expected state, expected effects)
 transitions = [
@@ -57,15 +66,60 @@ transitions = [
      replace(listening, transcript=Transcript("hello world ", "")), [LATER]),
     ("an update that changes nothing publishes nothing", listening, Updates("10", (Revise("wor"),)), 2,
      listening, []),
-    ("typing stops the recorder", listening, Report("10", "typing"), 3,
-     replace(listening, phase="typing", deadline=63), [StopRecorder(), URGENT]),
+    ("typing with nothing typed stops the recorder and answers at once", listening, Report("10", "typing"), 3,
+     replace(listening, phase="typing", deadline=63, stop="acked"), [StopRecorder(), Ack("10"), URGENT]),
     ("words decoded late still land while typing", typing, Updates("10", (Commit("wor"), Revise(""))), 4,
      replace(typing, transcript=Transcript("hello wor", "")), [LATER]),
+    ("listening remembers the window being dictated into", armed, Report("10", "listening", "mic", BOX), 1,
+     replace(armed, phase="listening", source="mic", target=BOX, deadline=601),
+     [StartRecorder("10", "mic"), URGENT]),
+    ("settled words are typed into the window", quiet, Updates("10", (Commit("héllo ☕ "), Revise("wor"))), 2,
+     replace(quiet, transcript=Transcript("héllo ☕ ", "wor"), inflight=8), [LATER, Type("10", BOX, "héllo ☕ ")]),
+    ("tentative words are never typed", quiet, Updates("10", (Revise("hel"),)), 2,
+     replace(quiet, transcript=Transcript("", "hel")), [LATER]),
+    ("a line break is typed as a space", quiet, Updates("10", (Commit("a\nb"),)), 2,
+     replace(quiet, transcript=Transcript("a\nb", ""), inflight=3), [LATER, Type("10", BOX, "a b")]),
+    ("words that settle while a wtype runs wait for it", replace(busy, transcript=Transcript("hello ", "")),
+     Updates("10", (Commit("world "),)), 2, busy, [LATER]),
+    ("a finished wtype types what settled meanwhile", busy, Typed("10", 6), 2,
+     replace(busy, typed=6), [Type("10", BOX, "world ")]),
+    ("a finished wtype with nothing new rests", replace(busy, transcript=Transcript("hello ", "")), Typed("10", 6), 2,
+     replace(done, transcript=Transcript("hello ", "")), []),
+    ("an unfocused window gets nothing and is not retried in a loop", busy, Typed("10", 0), 2,
+     replace(busy, inflight=0), []),
+    ("the next words catch up once the window has focus again",
+     replace(busy, inflight=0, transcript=Transcript("hello ", "")), Updates("10", (Commit("world "),)), 2,
+     replace(busy, inflight=12), [LATER, Type("10", BOX, "hello world ")]),
+    ("a failed wtype ends live typing for the dictation", busy, TypeFailed("10"), 2,
+     replace(busy, target="", inflight=0), []),
+    ("another dictation's wtype result is ignored", busy, Typed("9", 6), 2, busy, []),
+    ("a wtype result with none running is ignored", done, Typed("10", 6), 2, done, []),
+    ("stopping erases the typed words", done, Report("10", "typing"), 3, erasing,
+     [StopRecorder(), Erase("10", BOX, 6), URGENT]),
+    ("stopping waits for the wtype that still runs", busy, Report("10", "typing"), 3, draining,
+     [StopRecorder(), URGENT]),
+    ("once that wtype ends its words are erased too", draining, Typed("10", 6), 3,
+     replace(draining, typed=6, inflight=0, stop="erasing"), [Erase("10", BOX, 6)]),
+    ("a last wtype that typed nothing leaves nothing to erase", draining, Typed("10", 0), 3,
+     replace(draining, inflight=0, stop="acked"), [Ack("10")]),
+    ("a last wtype that failed is answered too", draining, TypeFailed("10"), 3,
+     replace(draining, target="", inflight=0, stop="acked"), [Ack("10")]),
+    ("the erase is answered when it ends", erasing, Erased("10"), 4,
+     replace(erasing, typed=0, stop="acked"), [Ack("10")]),
+    ("another dictation's erase is ignored", erasing, Erased("9"), 4, erasing, []),
+    ("words decoded late are not typed after the stop", replace(erasing, transcript=Transcript()),
+     Updates("10", (Commit("late "),)), 4, replace(erasing, transcript=Transcript("late ", "")), [LATER]),
+    ("a repeated typing report is answered again", typing, Report("10", "typing"), 4, typing, [Ack("10")]),
+    ("a repeated typing report waits for the erase on its way", erasing, Report("10", "typing"), 4, erasing, []),
+    ("a repeated typing report waits for the wtype on its way", draining, Report("10", "typing"), 4, draining, []),
+    ("idle leaves the typed words in the box", done, Report("10", "idle"), 5, idle10, [StopRecorder(), URGENT]),
+    ("the listening deadline leaves the typed words in the box", done, Tick(), 600, idle10,
+     [StopRecorder(), URGENT]),
     ("idle ends the session and forgets its text", typing, Report("10", "idle"), 5, idle10, [URGENT]),
     ("listening straight to idle stops the recorder", listening, Report("10", "idle"), 5, idle10,
      [StopRecorder(), URGENT]),
     ("armed to typing has no recorder to stop", armed, Report("10", "typing"), 1,
-     replace(armed, phase="typing", deadline=61), [URGENT]),
+     replace(armed, phase="typing", deadline=61, stop="acked"), [Ack("10"), URGENT]),
     ("a dead recorder notes no-audio and keeps listening", listening, vc.RecorderExited("10"), 6,
      replace(listening, no_audio=True), [URGENT]),
     ("a second recorder exit is a no-op", replace(listening, no_audio=True), vc.RecorderExited("10"), 6,
@@ -82,13 +136,16 @@ transitions = [
      [StartRecorder("11", "usb"), URGENT]),
     ("ids compare as numbers, not strings", replace(armed, id="99.9"), Report("100", "armed"), 1,
      replace(armed, id="100", deadline=6), [URGENT]),
-    ("an older id is ignored", listening, Report("9.999999", "typing"), 8, listening, []),
+    ("an older id changes nothing; its typing report is answered", listening, Report("9.999999", "typing"), 8,
+     listening, [Ack("9.999999")]),
+    ("an older id's idle report is ignored", listening, Report("9.999999", "idle"), 8, listening, []),
     ("an older id by string order is still older", replace(armed, id="100"), Report("99.9", "listening", "mic"), 1,
      replace(armed, id="100"), []),
     ("a repeated report is ignored", listening, Report("10", "listening", "other"), 8, listening, []),
     ("an out-of-order earlier phase is ignored", typing, Report("10", "listening", "mic"), 8, typing, []),
     ("armed after listening is ignored", listening, Report("10", "armed"), 8, listening, []),
-    ("a late report for a finished session is ignored", idle10, Report("10", "typing"), 8, idle10, []),
+    ("a late typing report for a finished session is answered", idle10, Report("10", "typing"), 8, idle10,
+     [Ack("10")]),
     ("an old session's words are ignored", listening, Updates("9", (Commit("stale"),)), 8, listening, []),
     ("words before listening are ignored", armed, Updates("10", (Commit("early"),)), 1, armed, []),
     ("before the armed deadline nothing happens", armed, Tick(), 4.99, armed, []),
@@ -101,6 +158,23 @@ for name, state, inp, now, want_state, want_effects in transitions:
     got_state, got_effects = vc.step(state, inp, now)
     check(f"step: {name}", (got_state, got_effects) == (want_state, want_effects),
           f"\n  got  {got_state} {got_effects}\n  want {want_state} {want_effects}")
+
+state, typed_text, erased = replace(armed, engine="ready"), "", None
+script = [Report("10", "listening", "mic", BOX), Updates("10", (Commit("naïve "), Revise("ca"))),
+          Updates("10", (Commit("café ☕ "),)), Report("10", "typing")]
+for inp in script:
+    pending = [inp]
+    while pending:
+        state, effects = vc.step(state, pending.pop(0), 1)
+        for effect in effects:
+            if isinstance(effect, Type):
+                typed_text += effect.text
+                pending.append(Typed("10", len(effect.text)))
+            elif isinstance(effect, Erase):
+                erased = effect.count
+check("typist: a dictation types exactly its settled words", typed_text == "naïve café ☕ ", repr(typed_text))
+check("typist: the erase counts codepoints, not bytes",
+      erased == 13 and erased == len(typed_text) < len(typed_text.encode()), str(erased))
 
 custom = {"armed": 1.0, "listening": 2.0, "typing": 3.0}
 state, _ = vc.step(State(), Report("1", "armed"), 0, custom)
@@ -147,10 +221,10 @@ for _ in range(7):
     for update in engine.feed(b"\0" * (vc.FAKE_WORD_BYTES // 2)):
         transcript = transcript.apply(update)
     committed_seen.append(transcript.committed)
-check("fake engine: half a word is tentative", transcript == Transcript("word1 word2 word3 ", "word4"), str(transcript))
+check("fake engine: half a word is tentative", transcript == Transcript("wörd1 wörd2 wörd3 ", "wörd4"), str(transcript))
 for update in engine.flush():
     transcript = transcript.apply(update)
-check("fake engine: flush commits the tentative tail", transcript == Transcript("word1 word2 word3 word4", ""),
+check("fake engine: flush commits the tentative tail", transcript == Transcript("wörd1 wörd2 wörd3 wörd4", ""),
       str(transcript))
 check("fake engine: committed only grows",
       all(b.startswith(a) for a, b in zip(committed_seen, committed_seen[1:])))
@@ -178,12 +252,14 @@ valid = {
     "5.1 typing": Report("5.1", "typing"),
     "5.1 listening alsa_input.usb-Foo_Bar-00.analog-stereo":
         Report("5.1", "listening", "alsa_input.usb-Foo_Bar-00.analog-stereo"),
+    "5.1 listening mic 0x55D0c0ffee": Report("5.1", "listening", "mic", "0x55D0c0ffee"),
 }
 for line, report in valid.items():
     check(f"parse: accepts {line!r}", vc.parse_report(line) == report, str(vc.parse_report(line)))
 junk = ["", "armed", "abc armed", "1 armed extra", "1 listening", "1 listening bad;src", "1 typing ",
         " 1 typing", "1  armed", "-1 armed", "1.2.3 armed", "1. armed", "1 sleeping", "1 ARMED",
-        "１ armed", "1 armed\r", "1 listening mic other", "1 listening " + "a" * 300,
+        "１ armed", "1 armed\r", "1 listening mic other", "1 listening " + "a" * 300, "1 listening mic 0x",
+        "1 listening mic 0xzz", "1 listening mic 55d0", "1 listening mic 0xabc 0xdef", "1 typing 0xabc",
         "1" * 21 + " armed", "{\"phase\":\"armed\"}"]
 for line in junk:
     check(f"parse: rejects {line[:40]!r}", vc.parse_report(line) is None)
@@ -259,7 +335,7 @@ for inp in posted:
         for update in inp.updates:
             folded = folded.apply(update)
 check("decoder: audio queued while loading is decoded after ready",
-      isinstance(posted[0], vc.EngineReady) and folded == Transcript("word1 ", "word2"), f"{posted} {folded}")
+      isinstance(posted[0], vc.EngineReady) and folded == Transcript("wörd1 ", "wörd2"), f"{posted} {folded}")
 
 
 def broken():

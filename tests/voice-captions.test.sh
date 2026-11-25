@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Drives voice-captions serve end to end with the fake engine and a stub
-# recorder in a private runtime dir. Opt-in real-engine case: set
+# Drives voice-captions serve end to end with the fake engine, a stub recorder
+# and stand-ins for hyprctl and wtype in a private runtime dir. Opt-in
+# real-engine case: set
 # VOICE_CAPTIONS_REAL_MODEL_DIR and VOICE_CAPTIONS_PYTHON (a Python with sherpa_onnx).
 set -euo pipefail
 
@@ -9,7 +10,7 @@ vc=$repo_root/systemd/.local/bin/voice-captions
 unit=$repo_root/systemd/.config/systemd/user/voice-captions.service
 real_model=${VOICE_CAPTIONS_REAL_MODEL_DIR:-}
 real_python=${VOICE_CAPTIONS_PYTHON:-}
-unset VOICE_CAPTIONS_CONTROL VOICE_CAPTIONS_EVENTS VOICE_CAPTIONS_PYTHON VOICE_CAPTIONS_PIP \
+unset VOICE_CAPTIONS_CONTROL VOICE_CAPTIONS_REPLY VOICE_CAPTIONS_EVENTS VOICE_CAPTIONS_PYTHON VOICE_CAPTIONS_PIP \
   VOICE_CAPTIONS_CURL VOICE_CAPTIONS_MODEL_DIR VOICE_CAPTIONS_REAL_MODEL_DIR
 test_root=$(mktemp -d -t voice-captions-test.XXXXXX)
 daemon_pid=
@@ -37,10 +38,37 @@ export HOME=$test_root/home XDG_RUNTIME_DIR=$test_root/run
 export XDG_DATA_HOME=$HOME/decoy-data PYTHONDONTWRITEBYTECODE=1
 export VOICE_CAPTIONS_ENGINE=fake VOICE_CAPTIONS_RECORDER=$test_root/bin/recorder
 export RECORDER_LOG=$test_root/recorder.log
+export VOICE_CAPTIONS_HYPRCTL=$test_root/bin/hyprctl VOICE_CAPTIONS_WTYPE=$test_root/bin/wtype
+export ACTIVE_FILE=$test_root/active WTYPE_LOG=$test_root/wtype.log
 mkdir -p "$HOME" "$XDG_RUNTIME_DIR" "$test_root/bin"
 chmod 700 "$XDG_RUNTIME_DIR"
 fifo=$XDG_RUNTIME_DIR/voice-captions/control
+reply=$XDG_RUNTIME_DIR/voice-captions/reply
 events=$XDG_RUNTIME_DIR/voice-captions/events.sock
+: >"$WTYPE_LOG"
+
+# The compositor: hyprctl names the focused window from a file the test
+# rewrites, and wtype logs the text it was given or how many keys it pressed.
+cat >"$test_root/bin/hyprctl" <<'SH'
+#!/usr/bin/env bash
+[[ $* == '-j activewindow' ]] || exit 1
+printf '{"address":"%s"}\n' "$(<"$ACTIVE_FILE")"
+SH
+cat >"$test_root/bin/wtype" <<'SH'
+#!/usr/bin/env bash
+if [[ $* == - ]]; then
+  text=$(cat; printf .)
+  printf 'type [%s]\n' "${text%.}" >>"$WTYPE_LOG"
+  exit
+fi
+keys=0
+while [[ ${1:-} == -k && ${2:-} == BackSpace ]]; do
+  keys=$((keys + 1))
+  shift 2
+done
+if (($# == 0 && keys > 0)); then printf 'erase %s\n' "$keys"; else printf 'unexpected %s\n' "$*"; fi >>"$WTYPE_LOG"
+SH
+chmod +x "$test_root/bin/hyprctl" "$test_root/bin/wtype"
 
 # Half a fake word per write, so the tentative tail is exercised too, at a
 # steady -18 dBFS. It outlives a closed pipe, so only the daemon's signals can stop it.
@@ -59,6 +87,16 @@ while True:
 '
 SH
 chmod +x "$test_root/bin/recorder"
+focus() { printf '%s' "$1" >"$ACTIVE_FILE"; }
+wtype_calls() { wc -l <"$WTYPE_LOG"; }
+# first_words N: wait until N dictations have typed their first word.
+first_words() {
+  for _ in {1..200}; do
+    [[ $(grep -c 'type \[wörd1 ' "$WTYPE_LOG") == "$1" ]] && return 0
+    sleep 0.025
+  done
+  fail "dictation $1 with a target window typed nothing"
+}
 
 # Ready once it logs; a killed daemon's socket and FIFO may still be there.
 start_daemon() {
@@ -94,6 +132,16 @@ wait_for() {
   done
   fail "never saw $2 in ${1##*/}"
 }
+# Report typing the way voice-dictation does and time the daemon's answer.
+stop_and_time() {
+  local id=$1 line='' start=${EPOCHREALTIME/[.,]/}
+  report "$id" typing
+  while [[ $line != "$id erased" ]]; do
+    IFS= read -r -t 3 -u 8 line || fail "no answer to $id typing"
+  done
+  handshake_ms=$(((${EPOCHREALTIME/[.,]/} - start) / 1000))
+  ((handshake_ms < 1000)) || fail "the answer to $id typing took $handshake_ms ms"
+}
 gone() {
   for _ in {1..120}; do
     kill -0 "$1" 2>/dev/null || return 0
@@ -110,14 +158,15 @@ recorder_pid() {
 }
 
 start_daemon
-[[ $(stat -c %a "${fifo%/*}") == 700 && $(stat -c %a "$fifo") == 600 && $(stat -c %a "$events") == 600 ]] ||
-  fail 'the runtime dir, FIFO or socket is not private'
+[[ $(stat -c %a "${fifo%/*}") == 700 && $(stat -c %a "$fifo") == 600 && $(stat -c %a "$events") == 600 &&
+  $(stat -c %a "$reply") == 600 ]] || fail 'the runtime dir, a FIFO or the socket is not private'
+exec 8<>"$reply"
 
 watcher "$test_root/session"
 report 100.1 armed
 wait_for "$test_root/session" '"phase":"armed"'
 report 100.1 'listening alsa_input.test'
-wait_for "$test_root/session" '"committed":"word1 word2 word3 '
+wait_for "$test_root/session" '"committed":"wörd1 wörd2 wörd3 '
 first=$(recorder_pid 1)
 [[ $(sed -n '1s/^[0-9]* //p' "$RECORDER_LOG") == '--target alsa_input.test --rate 16000 --channels 1 --format s16 -' ]] ||
   fail "recorder arguments: $(<"$RECORDER_LOG")"
@@ -145,14 +194,72 @@ assert all(b.startswith(a) for a, b in zip(committed, committed[1:])), committed
 assert len(set(committed)) >= 3, committed
 assert any(e["tentative"] for e in spoken), "no tentative text was ever shown"
 last = [e for e in events if e["phase"] == "typing"][-1]
-assert last["committed"].startswith("word1 word2 word3 "), last
+assert last["committed"].startswith("wörd1 wörd2 wörd3 "), last
 assert events[-1] == {"type": "state", "v": 1, "seq": seqs[-1], "id": "100.1", "phase": "idle",
                       "committed": "", "tentative": "", "note": ""}, events[-1]
 PY
 
+[[ ! -s $WTYPE_LOG ]] || fail "a dictation with no target window typed: $(<"$WTYPE_LOG")"
+
+# Live words go into the dictation's window, and only while it has focus.
+focus 0xaaa
+watcher "$test_root/live"
+report 150 armed
+report '150 listening alsa_input.test 0xaaa'
+wait_for "$WTYPE_LOG" 'wörd3 '
+focus 0xbbb
+sleep 0.2
+elsewhere=$(wtype_calls)
+wait_for "$test_root/live" 'wörd9 '
+[[ $(wtype_calls) == "$elsewhere" ]] || fail 'words were typed while another window had focus'
+focus 0xaaa
+for _ in {1..200}; do
+  (($(wtype_calls) > elsewhere)) && break
+  sleep 0.025
+done
+(($(wtype_calls) > elsewhere)) || fail 'typing did not resume when the window got focus back'
+stop_and_time 150
+python3 - "$WTYPE_LOG" <<'PY' || fail "live typing went wrong: $(<"$WTYPE_LOG")"
+import re, sys
+*typed, erase = open(sys.argv[1], encoding="utf-8").read().splitlines()
+assert all(line.startswith("type [") and line.endswith("]") for line in typed), typed
+text = "".join(line[6:-1] for line in typed)
+# Whole settled words in order with no gap or repeat: nothing tentative was
+# typed, and the words missed while unfocused were caught up.
+numbers = [int(n) for n in re.fullmatch(r"(?:wörd(\d+) )+", text) and re.findall(r"\d+", text)]
+assert numbers == list(range(1, len(numbers) + 1)) and len(numbers) >= 9, text
+assert erase == f"erase {len(text)}" and len(text) < len(text.encode()), (erase, len(text))
+PY
+typed_chars=$(sed -n '$s/^erase //p' "$WTYPE_LOG")
+printf 'stop handshake, %s characters erased: %s ms\n' "$typed_chars" "$handshake_ms"
+stop_and_time 150
+report 150 idle
+
+report 160 armed
+stop_and_time 160
+printf 'stop handshake, nothing typed: %s ms\n' "$handshake_ms"
+report 160 idle
+[[ $(grep -c '^erase ' "$WTYPE_LOG") == 1 ]] || fail 'a repeated stop or a dictation with no words pressed BackSpace'
+
+# A dictation that ends without typing keeps its live words, and BackSpace
+# never goes to another window.
+report '170 listening alsa_input.test 0xaaa'
+first_words 2
+report 170 idle
+report '180 listening alsa_input.test 0xaaa'
+first_words 3
+focus 0xbbb
+sleep 0.2
+stop_and_time 180
+report 180 idle
+[[ $(grep -c '^erase ' "$WTYPE_LOG") == 1 ]] || fail 'BackSpace was pressed after idle or in another window'
+! grep -q '^unexpected' "$WTYPE_LOG" || fail "wtype got unexpected arguments: $(grep '^unexpected' "$WTYPE_LOG")"
+focus 0xaaa
+quiet=$(wtype_calls)
+
 report 200 armed
 report '200 listening alsa_input.test'
-second=$(recorder_pid 2)
+second=$(recorder_pid 5)
 kill -KILL "$second"
 python3 "$vc" watch --until-note no-audio --timeout 5 >/dev/null || fail 'a killed recorder did not show no-audio'
 kill -0 "$daemon_pid" || fail 'the daemon died with its recorder'
@@ -164,7 +271,7 @@ awk -v a="${started/,/.}" -v b="${EPOCHREALTIME/,/.}" 'BEGIN { exit !(b - a < 1)
   fail "late snapshot: $(<"$test_root/late")"
 
 report '250 listening alsa_input.test'
-third=$(recorder_pid 3)
+third=$(recorder_pid 6)
 report 300 armed
 python3 "$vc" watch --until-phase armed --timeout 2 | grep -Fq '"id":"300"' || fail 'a newer id did not pre-empt'
 gone "$third" || fail 'the pre-empted recorder still runs'
@@ -184,16 +291,17 @@ background+=($!)
 watcher "$test_root/busy"
 report 400 armed
 report '400 listening alsa_input.test'
-wait_for "$test_root/busy" '"committed":"word1 word2 word3 word4 word5 '
+wait_for "$test_root/busy" '"committed":"wörd1 wörd2 wörd3 wörd4 wörd5 '
 report 400 typing
 report 400 idle
 wait_for "$test_root/busy" '"id":"400","phase":"idle"'
 
 report '500 listening alsa_input.test'
-fifth=$(recorder_pid 5)
+eighth=$(recorder_pid 8)
 stop_daemon
-gone "$fifth" || fail 'the recorder outlived the daemon'
-[[ ! -e $fifo && ! -e $events ]] || fail 'the daemon left its FIFO or socket behind'
+gone "$eighth" || fail 'the recorder outlived the daemon'
+[[ ! -e $fifo && ! -e $reply && ! -e $events ]] || fail 'the daemon left a FIFO or its socket behind'
+[[ $(wtype_calls) == "$quiet" ]] || fail 'a dictation with no target window typed'
 
 start_daemon
 timeout 5 python3 "$vc" serve 2>"$test_root/second.log" &&
@@ -208,7 +316,7 @@ VOICE_CAPTIONS_FAKE_LOAD=0.8 start_daemon
 watcher "$test_root/loading"
 report 600 armed
 report '600 listening alsa_input.test'
-wait_for "$test_root/loading" '"committed":"word1 word2 word3 word4 word5 word6 word7 word8 '
+wait_for "$test_root/loading" '"committed":"wörd1 wörd2 wörd3 wörd4 wörd5 wörd6 wörd7 wörd8 '
 report 600 idle
 python3 - "$test_root/loading" <<'PY' || fail 'a stale socket was not replaced, or audio recorded while loading was lost'
 import json, sys
