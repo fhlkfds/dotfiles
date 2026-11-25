@@ -555,6 +555,94 @@ active thread. Change or remove that binding in
 `hypr/.config/hypr/conf/keybindings.lua` to alter or disable it. It is not active
 until the relevant packages are stowed and Hyprland is reloaded by the user.
 
+### Answer permission prompts from a notification
+
+`agent-permission-hook` shows an agent's permission request as a notification
+with **Deny** and **Allow once** buttons. **Deny** is the filled button, so the
+prominent choice is the safe one. A click answers the agent. The card
+shows the whole command exactly as the agent sent it.
+
+A bar along the bottom of the card counts down the time left. If you don't
+click before the time limit, the hook closes the card and gives no answer. The agent then waits at its own prompt. A timeout, a dismissed card
+or any error never counts as approval.
+
+The two agents treat their own prompt differently while the card is up:
+
+- **Claude Code** shows its terminal prompt at the same time as the card. If
+  you answer in the terminal first, Claude Code stops the hook and the card
+  closes.
+- **Codex** shows its terminal prompt only after the hook ends. To answer in
+  the terminal instead, dismiss the card (its close button or `Super+,`). The
+  Codex prompt then appears at once. Codex uses a 60-second limit for this
+  reason.
+
+| Agent | Supported | Hook event |
+|---|---|---|
+| Claude Code | Yes | `PermissionRequest` |
+| Codex | Yes | `PermissionRequest` |
+| Grok CLI | No | Its hooks can block a call but can't approve one |
+
+Add the hook to Claude Code in `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "agent-permission-hook claude", "timeout": 130 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Add the hook to Codex in `~/.codex/hooks.json`, then trust it in Codex's hook
+review:
+
+```json
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "agent-permission-hook --timeout 60 codex", "timeout": 70 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Keep each agent's `timeout` above the hook's own limit. If the agent kills the
+hook first, the card still closes, but the hook gives no answer. Set the limit
+with `--timeout SECONDS` or `AGENT_PERMISSION_TIMEOUT`. The default is 120
+seconds.
+
+A wrong argument in the hook command makes the hook exit with code 2, and
+both agents read exit code 2 as **Deny**. If every request is denied at
+once, check the hook command.
+
+A request longer than 8000 bytes shows no card, because the card can't show
+all of it. Answer that request in the terminal.
+
+Preview a card without showing it:
+
+```bash
+echo '{"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"ls"}}' |
+  agent-permission-hook --dry-run claude
+```
+
+The card is a critical notification with the `desktop-verbatim` hint (see
+[Notifications](#notifications)). It also shows while Do Not Disturb is on:
+`Claude Code` and `Codex` are on the `dndBypassApps` list in
+`quickshell/.config/quickshell/notifications/config.json`, and the hook sends
+the `desktop-bypass-dnd` hint. Remove both names from the list to let DND hold
+these cards.
+
 ---
 
 ## Windows VM
@@ -869,8 +957,9 @@ newest running full shell by pid; smoke-test instances are never picked.
 Left click invokes the live default action, then falls back to matching
 `desktop-entry`, app name, and icon against Hyprland window classes. Right click
 or the hover close button dismisses. Hover pauses the deadline. Critical cards
-remain until acted on; low and normal cards last at least 5 and 8 seconds, with
-ordinary requests clamped to 30 seconds.
+remain until acted on, unless the sender sets an expire time; then they count
+down and expire at that time, and hover does not pause them. Low and normal cards last at least 5 and 8
+seconds, with ordinary requests clamped to 30 seconds.
 
 ### State and configuration
 
@@ -903,6 +992,15 @@ actions on a raised surface. Corner radius is the generated Hyprland rounding
 plus four scaled pixels. The old `borderWidths`, `singleLinePadding`, and
 `glyphGap` options are accepted but ignored; cards use `multiLinePadding` and
 `iconGap`.
+
+A notification with the boolean hint `desktop-verbatim` set to true shows its
+body exactly as sent. Markup is not stripped and entities are not decoded. The
+body uses a monospace font, has no line limit, and scrolls past 14 lines.
+`agent-permission-hook` uses this hint so a card shows the whole command:
+
+```bash
+notify-send -h boolean:desktop-verbatim:true "Command" 'sort < in > out'
+```
 
 ### Debugging and validation
 
