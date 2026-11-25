@@ -4,7 +4,10 @@ const logic = require("../NotificationLogic.js");
 assert.equal(logic.durationFor(0, 0, 5000, 8000, 30000), 5000);
 assert.equal(logic.durationFor(1, 12000, 5000, 8000, 30000), 12000);
 assert.equal(logic.durationFor(1, 90000, 5000, 8000, 30000), 30000);
-assert.equal(logic.durationFor(2, 90000, 5000, 8000, 30000), 0);
+assert.equal(logic.durationFor(2, 0, 5000, 8000, 30000), 0);
+assert.equal(logic.durationFor(2, -1, 5000, 8000, 30000), 0);
+assert.equal(logic.durationFor(2, 120000, 5000, 8000, 30000), 120000);
+assert.equal(logic.durationFor(2, 1000, 5000, 8000, 30000), 8000);
 
 assert.equal(logic.sanitizeBody("<b>Hello</b><br>world<img src=x>"), "Hello\nworld");
 assert.equal(logic.sanitizeBody("A &amp; B"), "A & B");
@@ -62,6 +65,9 @@ assert.equal(logic.replacementSnapshot({id: 1, body: "a < b", hints: {"desktop-v
 
 assert.equal(logic.shouldBypassDnd({appName: "Slack", hints: {"swaync-bypass-dnd": true}}, ["Capture"]), false);
 assert.equal(logic.shouldBypassDnd({appName: "Capture", hints: {"swaync-bypass-dnd": true}}, ["Capture"]), true);
+const shipped = require("../config.json").dndBypassApps;
+for (const app of ["Claude Code", "Codex"])
+  assert.equal(logic.shouldBypassDnd({appName: app, hints: {"desktop-bypass-dnd": true}}, shipped), true);
 assert.equal(logic.shouldBypassDnd({appName: "Capture", hints: {}}, ["Capture"]), false);
 
 assert.equal(logic.localImagePath("file:///tmp/a%20b.png"), "/tmp/a b.png");

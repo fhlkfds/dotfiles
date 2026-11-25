@@ -128,9 +128,11 @@ i=$(argv_index)
 [[ ${argv[i + 2]} == "$command"$'\n\nin /tmp/p' ]] || fail 'verbatim: body differs'
 [[ ${argv[i + 1]} == 'Claude Code wants to run a command' ]] || fail 'verbatim: summary'
 joined=$(printf '%s\n' "${argv[@]:0:i}")
-for want in allow='Allow once' deny=Deny boolean:desktop-verbatim:true; do
+for want in allow='Allow once' deny=Deny boolean:desktop-verbatim:true boolean:desktop-bypass-dnd:true 120000; do
   grep -qxF -- "$want" <<<"$joined" || fail "verbatim: missing $want"
 done
+first_action=$(grep -m1 -E '^(allow|deny)=' <<<"$joined")
+[[ $first_action == deny=Deny ]] || fail "verbatim: Deny must be the first (filled) button, got $first_action"
 pass 'body reaches notify-send verbatim after --'
 
 payload=$(payload_for exec_command '{"command":["git","commit","-m","a b"]}')

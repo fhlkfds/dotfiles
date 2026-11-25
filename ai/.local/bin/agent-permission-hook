@@ -100,9 +100,10 @@ if (($(printf %s "$body" | wc -c) > max_body)); then
 fi
 
 argv=(env -u LD_LIBRARY_PATH "$notify_send"
-  --app-name "$label" --urgency critical --print-id
-  --action allow='Allow once' --action deny=Deny
-  --hint boolean:desktop-verbatim:true -- "$summary" "$body")
+  --app-name "$label" --urgency critical --expire-time "$((timeout * 1000))"
+  --print-id --action deny=Deny --action allow='Allow once'
+  --hint boolean:desktop-verbatim:true --hint boolean:desktop-bypass-dnd:true
+  -- "$summary" "$body")
 
 if ((dry_run)); then
   printf '%s\n%s\n' "$summary" "$body"

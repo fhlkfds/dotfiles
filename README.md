@@ -558,11 +558,12 @@ until the relevant packages are stowed and Hyprland is reloaded by the user.
 ### Answer permission prompts from a notification
 
 `agent-permission-hook` shows an agent's permission request as a notification
-with **Allow once** and **Deny** buttons. A click answers the agent. The card
+with **Deny** and **Allow once** buttons. **Deny** is the filled button, so the
+prominent choice is the safe one. A click answers the agent. The card
 shows the whole command exactly as the agent sent it.
 
-If you don't click before the time limit, the hook closes the card and gives
-no answer. The agent then waits at its own prompt. A timeout, a dismissed card
+A bar along the bottom of the card counts down the time left. If you don't
+click before the time limit, the hook closes the card and gives no answer. The agent then waits at its own prompt. A timeout, a dismissed card
 or any error never counts as approval.
 
 The two agents treat their own prompt differently while the card is up:
@@ -636,8 +637,11 @@ echo '{"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"c
 ```
 
 The card is a critical notification with the `desktop-verbatim` hint (see
-[Notifications](#notifications)). Do Not Disturb holds it like any other card,
-so with DND on the agent waits at its own prompt.
+[Notifications](#notifications)). It also shows while Do Not Disturb is on:
+`Claude Code` and `Codex` are on the `dndBypassApps` list in
+`quickshell/.config/quickshell/notifications/config.json`, and the hook sends
+the `desktop-bypass-dnd` hint. Remove both names from the list to let DND hold
+these cards.
 
 ---
 
@@ -953,8 +957,9 @@ newest running full shell by pid; smoke-test instances are never picked.
 Left click invokes the live default action, then falls back to matching
 `desktop-entry`, app name, and icon against Hyprland window classes. Right click
 or the hover close button dismisses. Hover pauses the deadline. Critical cards
-remain until acted on; low and normal cards last at least 5 and 8 seconds, with
-ordinary requests clamped to 30 seconds.
+remain until acted on, unless the sender sets an expire time; then they count
+down and expire at that time. Low and normal cards last at least 5 and 8
+seconds, with ordinary requests clamped to 30 seconds.
 
 ### State and configuration
 
