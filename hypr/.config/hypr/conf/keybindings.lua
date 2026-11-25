@@ -85,6 +85,7 @@ bind(mod .. " + CTRL + N", "night light", function()
     hl.dispatch(hl.dsp.exec_cmd(cfg.scripts_dir .. "/night-light.sh toggle"))
 end)
 shell(mod .. " + SHIFT + N", "night light schedule", "nightlight")
+shell(mod .. " + ALT + Z", "timer", "timer")
 
 exec(mod .. " + comma", "dismiss newest notification", "$HOME/.local/bin/notificationctl dismiss-one")
 exec(mod .. " + SHIFT + comma", "dismiss all notifications", "$HOME/.local/bin/notificationctl dismiss-all")
