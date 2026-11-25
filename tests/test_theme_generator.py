@@ -29,8 +29,6 @@ import themelib as tl  # noqa: E402
 
 
 KEY_OUTPUTS = (
-    "swaync-style.css",
-    "wofi-style.css",
     "quickshell-theme.json",
     "kitty-theme.conf",
     "rofi-theme.rasi",
@@ -115,14 +113,6 @@ class ThemeGeneratorTest(unittest.TestCase):
                     rendered = output.read_text()
                     self.assertTrue(rendered, f"{name} is empty")
                     self.assertNotIn("{{", rendered, f"{name} has unresolved markers")
-
-                for css_name in ("swaync-style.css", "wofi-style.css"):
-                    css = (self.root / slug / "stage" / css_name).read_text()
-                    if css_name == "wofi-style.css":
-                        red, green, blue = tl._rgb(accent)
-                        self.assertIn(f"rgba({red}, {green}, {blue}", css)
-                    else:
-                        self.assertIn(accent[1:], css)
 
                 quickshell = json.loads(
                     (self.root / slug / "stage" / "quickshell-theme.json").read_text()

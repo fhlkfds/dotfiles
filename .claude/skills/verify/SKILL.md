@@ -76,8 +76,12 @@ commands. There is no server, so there is nothing to tear down except files.
 
 This is read-only. Run it first, and again whenever a result looks wrong. It
 checks the run: it exists and isn't cleaned up, it came from this checkout,
-and `bwrap` and `quickshell` are installed. It also notes when HEAD has moved
-and which optional tools are missing.
+and `bwrap` is installed. It also notes when HEAD has moved and which
+optional tools are missing. A missing `quickshell` is a note, not a failure:
+`smoke` and `shot` then refuse with `quickshell is not installed`, while
+lmenu, script and theme journeys still drive. Report every Quickshell
+journey as unverified on such a machine. `VERIFY_QUICKSHELL` overrides the
+binary.
 
 Then it **proves the isolation from inside the sandbox**: `mounts-readonly`,
 `home-readonly`, `home-hidden`, `repo-readonly`, `runtime-private`,

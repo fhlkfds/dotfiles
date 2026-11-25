@@ -60,6 +60,11 @@ Preconditions:
   that call `hyprctl` or `nmcli` get the stand-in's exit 1, so rows they
   guard can show differently than on the live desktop. Compare against
   `calls.log` before you call a missing row a bug.
+- Row and call counts depend on the host's installed tools, because guards
+  check `command -v` first. On a Debian server without `qrencode` or
+  Quickshell, the root listed 203 rows and called no `nmcli`, and
+  `lmenu-quickshell.test.sh` printed `skip: quickshell is not installed`.
+  Compare against the desktop's counts only on the desktop.
 - Outside the sandbox, `lmenu` reads `~/.config/lmenu/` (the deployed main
   checkout), not this worktree. `$V lmenu` sets `LMENU_MENU` and
   `LMENU_PARSER` to the repo copies.

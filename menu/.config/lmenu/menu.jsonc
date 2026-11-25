@@ -572,15 +572,15 @@
     "id": "setup.keybindings",
     "icon": "󰌌",
     "label": "Keybindings",
-    "when": "[[ -f ~/.config/hypr/conf/keybinding.conf ]]",
-    "action": "kitty -e ${EDITOR:-nvim} ~/.config/hypr/conf/keybinding.conf"
+    "when": "[[ -f ~/.config/hypr/conf/keybindings.lua ]]",
+    "action": "kitty -e ${EDITOR:-nvim} ~/.config/hypr/conf/keybindings.lua"
   },
   {
     "id": "setup.input",
     "icon": "󰌌",
     "label": "Input",
-    "when": "[[ -f ~/.config/hypr/hyprland.conf ]]",
-    "action": "kitty -e ${EDITOR:-nvim} ~/.config/hypr/hyprland.conf"
+    "when": "[[ -f ~/.config/hypr/hyprland.lua ]]",
+    "action": "kitty -e ${EDITOR:-nvim} ~/.config/hypr/hyprland.lua"
   },
   {
     "id": "setup.voice-dictation",
@@ -750,14 +750,6 @@
     "title": "Default terminal",
     "provider": "default-terminal",
     "aliases": ["default terminal"]
-  },
-  {
-    "id": "setup.defaults.file-manager",
-    "icon": "󰉋",
-    "label": "File manager",
-    "title": "Default file manager",
-    "provider": "default-file-manager",
-    "aliases": ["default file manager"]
   },
   {
     "id": "setup.defaults.agent",

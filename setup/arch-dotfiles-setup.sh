@@ -29,7 +29,7 @@ for g in "${groups[@]}"; do [[ -f "$ROOT/setup/manifests/$g.txt" ]] || { say "ER
 backup(){ local f=$1; [[ -e $f || -L $f ]] || return 0; local b="${f}.bak.${STAMP}"; run cp -a -- "$f" "$b"; say "Backup: $b"; }
 pkgs=(); for g in "${groups[@]}"; do while read -r p; do [[ -z $p || $p == \#* ]] || pkgs+=("$p"); done < "$ROOT/setup/manifests/$g.txt"; done
 run pacman -Syu --needed "${pkgs[@]}"
-stow_packages=(hypr hyprlock kitty quickshell menu modes screensaver cliphist dots systemd rofi wofi swaync fastfetch zsh xdg)
+stow_packages=(hypr hyprlock kitty quickshell menu modes screensaver cliphist dots systemd rofi fastfetch zsh xdg)
 if command -v stow >/dev/null; then
   # Stow must create directories as the user: run as root, --no-folding left
   # root-owned directories such as ~/.config/hypr/scripts in the home.

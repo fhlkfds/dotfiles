@@ -16,10 +16,8 @@ jq
 python
 curl
 imagemagick
-wofi
 rofi-wayland
 kitty
-swaync
 xdg-desktop-portal-hyprland
 hyprpolkitagent
 pipewire

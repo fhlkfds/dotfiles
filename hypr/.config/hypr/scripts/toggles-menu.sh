@@ -117,12 +117,10 @@ pick() {
       -theme-str 'element { orientation: horizontal; padding: 12px 18px; }' \
       -theme-str 'element-text { expand: true; horizontal-align: 0; }' \
       -theme-str 'textbox-prompt-colon { str: "Toggles"; }'
-  elif command -v wofi >/dev/null 2>&1; then
-    printf '%s\n' "$options" | wofi --dmenu --prompt 'Toggles'
   elif command -v bemenu >/dev/null 2>&1; then
     printf '%s\n' "$options" | bemenu -p 'Toggles'
   else
-    printf 'No launcher found. Install fuzzel, rofi, wofi, or bemenu.\n' >&2
+    printf 'No launcher found. Install fuzzel, rofi or bemenu.\n' >&2
     return 1
   fi
 }

@@ -14,15 +14,13 @@ import sys
 
 root = Path(sys.argv[1])
 lua = (root / "hypr/.config/hypr/conf/keybindings.lua").read_text()
-conf = (root / "hypr/.config/hypr/conf/keybinding.conf").read_text()
 bar = (root / "quickshell/.config/quickshell/Bar.qml").read_text()
 shortcut = (root / "quickshell/.config/quickshell/CloseWindowShortcut.qml").read_text()
 assert 'shell(mod .. " + Q", "close window", "close-window")' in lua, \
     "Super+Q bypasses the shell and can close the underlying window"
-assert 'bindd = $mainMod, Q, close window, global, quickshell:close-window' in conf
 assert 'CloseWindowShortcut {}' in bar
 assert 'name: "close-window"' in shortcut and 'onPressed: closeWindow()' in shortcut
-print("ok: Lua and compatibility bindings route Super+Q to the resident shell")
+print("ok: the Lua binding routes Super+Q to the resident shell")
 PY
 
 if ! command -v quickshell >/dev/null 2>&1; then

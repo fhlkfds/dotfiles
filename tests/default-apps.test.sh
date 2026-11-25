@@ -21,7 +21,7 @@ config="$test_root/config"
 repo="$test_root/repo"
 mkdir -p "$bin" "$apps" "$config/ai-agent" "$repo"
 
-for program in brave firefox kitty thunar yazi nvim code-oss teamclaude codex; do
+for program in brave firefox kitty nvim code-oss teamclaude codex; do
   printf '#!/bin/sh\n' >"$bin/$program"
   chmod +x "$bin/$program"
 done
@@ -29,9 +29,6 @@ done
 ln -s code-oss "$bin/code"
 # lmenu-parse.py runs the helper through its #!/usr/bin/env python3 line.
 ln -s "$python" "$bin/python3"
-# Records reloads instead of touching a compositor.
-printf '#!/bin/sh\necho "$*" >>"%s/hyprctl.log"\n' "$test_root" >"$bin/hyprctl"
-chmod +x "$bin/hyprctl"
 
 desktop() {
   local name=$1
@@ -51,11 +48,6 @@ desktop helium.desktop Name=Helium Exec='helium-browser %U' 'Categories=Network;
 desktop kitty.desktop Name=kitty Exec=kitty 'Categories=System;TerminalEmulator;'
 desktop kitty-open.desktop 'Name=kitty URL Launcher' Exec='kitty +open %U' NoDisplay=true \
   'Categories=System;TerminalEmulator;'
-desktop thunar.desktop Name=Thunar Exec='thunar %U' 'Categories=System;FileManager;' \
-  'MimeType=inode/directory;'
-desktop yazi.desktop Name=Yazi Exec='yazi %u' Terminal=true 'Categories=System;FileManager;'
-desktop org.gnome.Nautilus.desktop Name=Files Exec='nautilus --new-window %U' \
-  'Categories=GNOME;FileManager;'
 
 # mimeapps.list and the agent config are Stow symlinks into the repository.
 cat >"$repo/mimeapps.list" <<'EOF'
@@ -90,8 +82,6 @@ helper() {
   fail "browser list is wrong: $(helper list browser)"
 [[ $(helper list terminal) == $'kitty.desktop\tkitty\t0' ]] ||
   fail 'terminal list should hold kitty alone'
-[[ $(helper list file-manager) == $'thunar.desktop\tThunar\t0' ]] ||
-  fail 'file-manager list should skip uninstalled and Terminal=true entries'
 [[ $(helper list editor) == $'nvim\tNeovim\t0\ncode\tVisual Studio Code\t0' ]] ||
   fail "editor list is wrong: $(helper list editor)"
 [[ $(helper list agent) == $'claude\tClaude Code\t0\ncodex\tCodex\t0' ]] ||
@@ -106,15 +96,12 @@ run DEFAULT_APPS_DRY_RUN=1 "$python" "$helper" set agent codex >/dev/null
 run DEFAULT_APPS_DRY_RUN=1 "$python" "$helper" set editor nvim >/dev/null
 [[ $(sha256sum "$repo/mimeapps.list" "$repo/ai-config") == "$before" ]] || fail 'dry run changed a file'
 [[ ! -e $config/default-apps ]] || fail 'dry run created the editor file'
-grep -Fxq 'dry-run: would run hyprctl reload' <<<"$out" || fail 'dry run did not report the reload'
-[[ ! -e $test_root/hyprctl.log ]] || fail 'dry run reloaded Hyprland'
 
 # Something not installed is refused.
 if helper set browser helium.desktop 2>"$test_root/err"; then
   fail 'an uninstalled browser was accepted'
 fi
 grep -Fq 'not an installed browser' "$test_root/err" || fail 'refusal did not explain itself'
-[[ ! -e $test_root/hyprctl.log ]] || fail 'a refused change reloaded Hyprland'
 
 # Browser: every handler in [Default Applications], duplicates folded, the rest kept.
 helper set browser firefox.desktop
@@ -135,33 +122,12 @@ text/html=brave-browser.desktop;
 EOF
 diff -u "$test_root/expected" "$repo/mimeapps.list" || fail 'browser rewrite of mimeapps.list is wrong'
 helper list browser | grep -Fxq $'firefox.desktop\tFirefox\t1' || fail 'firefox is not ticked'
-[[ $(<"$test_root/hyprctl.log") == reload ]] || fail 'a change did not reload Hyprland once'
-run DEFAULT_APPS_NO_RELOAD=1 "$python" "$helper" set browser firefox.desktop
-[[ $(wc -l <"$test_root/hyprctl.log") == 1 ]] || fail 'DEFAULT_APPS_NO_RELOAD still reloaded'
-
-# File manager replaces inode/directory in place.
-helper set file-manager thunar.desktop
-grep -Fxq 'inode/directory=thunar.desktop' "$repo/mimeapps.list" || fail 'inode/directory not set'
-grep -Fq 'Nautilus' "$repo/mimeapps.list" && fail 'the old file manager is still listed'
-grep -Fxq '# --- File manager ---' "$repo/mimeapps.list" || fail 'a comment was lost'
-
-# SUPER+E launches the folder handler variables.lua reads from mimeapps.list.
-file_manager() {
-  XDG_CONFIG_HOME=$1 lua -e "package.path = '$repo_root/hypr/.config/hypr/?.lua'
-    io.write(require('conf/variables').file_manager)"
-}
-if command -v lua >/dev/null; then
-  [[ $(file_manager "$config") == 'gtk-launch thunar' ]] ||
-    fail "SUPER+E does not follow the file manager: $(file_manager "$config")"
-  [[ $(file_manager "$test_root/none") == nautilus ]] ||
-    fail 'SUPER+E has no fallback without mimeapps.list'
-fi
 
 # A missing mimeapps.list is created with the section.
 rm "$config/mimeapps.list"
-helper set file-manager thunar.desktop
-[[ $(<"$config/mimeapps.list") == $'[Default Applications]\ninode/directory=thunar.desktop' ]] ||
-  fail 'a new mimeapps.list is wrong'
+helper set browser firefox.desktop
+[[ $(head -n 2 "$config/mimeapps.list") == $'[Default Applications]\nx-scheme-handler/https=firefox.desktop' ]] ||
+  fail "a new mimeapps.list is wrong: $(<"$config/mimeapps.list")"
 
 # Terminal: the chosen entry goes first, the others stay as fallbacks, and a
 # desktop-specific list wins over the generic one.
@@ -253,12 +219,6 @@ sys.path.insert(0, sys.argv[1])
 import weblib
 assert weblib.default_browser()[0] == "brave-browser.desktop"
 PY
-printf 'inode/directory=stale.desktop\n' >>"$config/hyprland-mimeapps.list"
-helper set file-manager thunar.desktop
-if command -v lua >/dev/null; then
-  [[ $(XDG_CURRENT_DESKTOP=Hyprland file_manager "$config") == 'gtk-launch thunar' ]] ||
-    fail 'SUPER+E ignored the selected desktop-specific file manager'
-fi
 
 # Evaluate only the editor source line, avoiding the rest of the live shell setup.
 editor_source=$(grep 'source .*default-apps/editor.zsh' "$repo_root/zsh/.zshrc")

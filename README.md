@@ -42,8 +42,7 @@ contents into `~`.
 
 ```bash
 stow ai browser cliphist fastfetch greeter hypr hyprlock kitty modes \
-     menu quickshell rofi screensaver security ssh swaync systemd tmux windows \
-     wofi xdg zsh
+     menu quickshell rofi screensaver security ssh systemd windows xdg zsh
 ```
 
 **Or deploy packages individually:**
@@ -56,14 +55,11 @@ stow security    # ~/.local/bin/yubikey-auth, safe YubiKey PAM setup/addition;
                  # ~/.local/bin/fingerprint-auth, laptop fingerprint sign-in;
                  # ~/.config/gnupg-conf gpg/gpg-agent examples
 stow ssh         # ~/.local/bin/sshpersist, SSH keepalive config fragment
-stow tmux        # ~/.config/tmux/tmux.conf for local tmux behavior
 stow browser     # Chromium extensions, flags, and native messaging hosts
 stow hypr        # ~/.config/hypr
 stow hyprlock    # ~/.config/hyprlock
 stow kitty       # ~/.config/kitty
 stow rofi        # ~/.config/rofi
-stow wofi        # ~/.config/wofi
-stow swaync      # ~/.config/swaync
 stow fastfetch   # ~/.config/fastfetch
 stow menu        # ~/.config/lmenu, ~/.local/bin/lmenu
 stow quickshell  # ~/.config/quickshell
@@ -76,8 +72,7 @@ stow zsh         # ~/.zshrc, ~/.p10k.zsh (see Shell setup below)
 ## Persistent SSH sessions
 
 The `sshpersist` launcher provides reconnecting SSH sessions through autossh and
-tmux on the remote host. The local `tmux` package only configures local tmux
-behavior.
+tmux on the remote host.
 Install the required Arch packages without changing any configuration:
 
 ```bash
@@ -564,8 +559,8 @@ Selection priority is `--agent`, then `AI_AGENT_DEFAULT`, then the config file.
 Setup > Defaults > Coding agent in lmenu rewrites that file, offering only the
 agents that are installed, plus every installed [web app](#web-apps). A web app
 is stored as `default_agent=webapp:<id>` (for example `webapp:chatgpt`) and
-opens in its own window through `webapp-launch`; it takes no agent arguments. The same menu sets the default browser, editor,
-terminal, and file manager.
+opens in its own window through `webapp-launch`; it takes no agent arguments. The same menu sets the default browser, editor
+and terminal.
 Invalid names and unavailable executables fail clearly; the launcher never
 silently switches to another agent.
 
@@ -593,6 +588,94 @@ by its `t3code` window class. `CTRL + SHIFT + 2` triggers T3 Code's
 active thread. Change or remove that binding in
 `hypr/.config/hypr/conf/keybindings.lua` to alter or disable it. It is not active
 until the relevant packages are stowed and Hyprland is reloaded by the user.
+
+### Answer permission prompts from a notification
+
+`agent-permission-hook` shows an agent's permission request as a notification
+with **Deny** and **Allow once** buttons. **Deny** is the filled button, so the
+prominent choice is the safe one. A click answers the agent. The card
+shows the whole command exactly as the agent sent it.
+
+A bar along the bottom of the card counts down the time left. If you don't
+click before the time limit, the hook closes the card and gives no answer. The agent then waits at its own prompt. A timeout, a dismissed card
+or any error never counts as approval.
+
+The two agents treat their own prompt differently while the card is up:
+
+- **Claude Code** shows its terminal prompt at the same time as the card. If
+  you answer in the terminal first, Claude Code stops the hook and the card
+  closes.
+- **Codex** shows its terminal prompt only after the hook ends. To answer in
+  the terminal instead, dismiss the card (its close button or `Super+,`). The
+  Codex prompt then appears at once. Codex uses a 60-second limit for this
+  reason.
+
+| Agent | Supported | Hook event |
+|---|---|---|
+| Claude Code | Yes | `PermissionRequest` |
+| Codex | Yes | `PermissionRequest` |
+| Grok CLI | No | Its hooks can block a call but can't approve one |
+
+Add the hook to Claude Code in `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "agent-permission-hook claude", "timeout": 130 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Add the hook to Codex in `~/.codex/hooks.json`, then trust it in Codex's hook
+review:
+
+```json
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "agent-permission-hook --timeout 60 codex", "timeout": 70 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Keep each agent's `timeout` above the hook's own limit. If the agent kills the
+hook first, the card still closes, but the hook gives no answer. Set the limit
+with `--timeout SECONDS` or `AGENT_PERMISSION_TIMEOUT`. The default is 120
+seconds.
+
+A wrong argument in the hook command makes the hook exit with code 2, and
+both agents read exit code 2 as **Deny**. If every request is denied at
+once, check the hook command.
+
+A request longer than 8000 bytes shows no card, because the card can't show
+all of it. Answer that request in the terminal.
+
+Preview a card without showing it:
+
+```bash
+echo '{"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"ls"}}' |
+  agent-permission-hook --dry-run claude
+```
+
+The card is a critical notification with the `desktop-verbatim` hint (see
+[Notifications](#notifications)). It also shows while Do Not Disturb is on:
+`Claude Code` and `Codex` are on the `dndBypassApps` list in
+`quickshell/.config/quickshell/notifications/config.json`, and the hook sends
+the `desktop-bypass-dnd` hint. Remove both names from the list to let DND hold
+these cards.
 
 ---
 
@@ -780,8 +863,6 @@ Each theme consistently updates:
 - **Zsh / Powerlevel10k** — prompt colours via generated `current-theme.zsh`
 - **Hyprlock** — lock screen colours
 - **Quickshell notifications** — cards, gradients, borders, countdown and radius
-- **SwayNC** — rollback notification CSS (not the active backend)
-- **Wofi** — launcher CSS
 - **Noctalia** — shell colour scheme
 - **Fastfetch** — section key colours
 - **Neovim** — generated colorscheme, with a stable `current` alias
@@ -798,7 +879,7 @@ The theme system requires:
 - `python3` (3.11+, for `tomllib`)
 - `rofi` — theme selection menu
 
-Optional (for live reload or rollback):
+Optional (for live reload):
 
 - `hyprctl` — reloads Hyprland decorations
 - `kitty` — live-applies colours to running terminals
@@ -807,7 +888,6 @@ Optional (for live reload or rollback):
   system-aware applications
 - `t3` — selects the generated `dotfiles-desktop` environment theme in T3 Code;
   without the CLI, select that theme once under Settings > Appearance
-- `swaync` / `swaync-client` — only needed when using the rollback backend
 
 ### Switching Manually
 
@@ -881,7 +961,7 @@ focused monitor.
 |---|---|
 | `Super+,` | dismiss newest visible card |
 | `Super+Shift+,` | dismiss all visible cards |
-| `Super+Ctrl+,` | toggle persistent DND |
+| `Super+D` | toggle persistent DND |
 | `Super+Alt+,` | invoke/focus newest card |
 | `Super+Shift+Alt+,` | replay the newest 10 history entries |
 
@@ -908,8 +988,9 @@ newest running full shell by pid; smoke-test instances are never picked.
 Left click invokes the live default action, then falls back to matching
 `desktop-entry`, app name, and icon against Hyprland window classes. Right click
 or the hover close button dismisses. Hover pauses the deadline. Critical cards
-remain until acted on; low and normal cards last at least 5 and 8 seconds, with
-ordinary requests clamped to 30 seconds.
+remain until acted on, unless the sender sets an expire time; then they count
+down and expire at that time, and hover does not pause them. Low and normal cards last at least 5 and 8
+seconds, with ordinary requests clamped to 30 seconds.
 
 ### State and configuration
 
@@ -943,6 +1024,15 @@ plus four scaled pixels. The old `borderWidths`, `singleLinePadding`, and
 `glyphGap` options are accepted but ignored; cards use `multiLinePadding` and
 `iconGap`.
 
+A notification with the boolean hint `desktop-verbatim` set to true shows its
+body exactly as sent. Markup is not stripped and entities are not decoded. The
+body uses a monospace font, has no line limit, and scrolls past 14 lines.
+`agent-permission-hook` uses this hint so a card shows the whole command:
+
+```bash
+notify-send -h boolean:desktop-verbatim:true "Command" 'sort < in > out'
+```
+
 ### Debugging and validation
 
 ```bash
@@ -964,14 +1054,6 @@ python3 -m unittest discover -s quickshell/.config/quickshell/notifications/test
 node quickshell/.config/quickshell/notifications/tests/notification_logic.test.js
 theme validate --all
 ```
-
-The `systemd` package masks `swaync.service` so D-Bus cannot start SwayNC at
-login and take the notification service before Quickshell registers. For
-rollback, remove that mask (`rm ~/.config/systemd/user/swaync.service`, then
-`systemctl --user daemon-reload`), stop Quickshell, start `swaync.service`, and
-restore the two former comma bindings to `~/.config/hypr/scripts/dnd.sh`. The
-SwayNC package and theme template remain in the repository; no notification
-data is shared between the two backends.
 
 ---
 
@@ -1114,12 +1196,9 @@ top-right stack. Validate with `bash tests/bar-center.test.sh`.
 | `hyprlock` | [Hyprlock](https://github.com/hyprwm/hyprlock) | Lock screen with music widget, weather, and multiple layouts |
 | `kitty` | [Kitty](https://sw.kovidgoyal.net/kitty/) | Terminal emulator with generated theme palette |
 | `rofi` | [Rofi](https://github.com/davatorium/rofi) | App launcher with generated colour theme on comet-glass layout |
-| `wofi` | [Wofi](https://hg.sr.ht/~scoopta/wofi) | Wayland-native app launcher with themed colors |
-| `swaync` | [SwayNC](https://github.com/ErikReider/SwayNotificationCenter) | Optional rollback notification backend |
 | `fastfetch` | [Fastfetch](https://github.com/fastfetch-cli/fastfetch) | System info with themed key colors |
 | `zsh` | Zsh | Shell config — `.zshrc` and `.p10k.zsh`; Oh My Zsh itself is installed separately |
 | `ssh` | autossh | Reconnecting SSH launcher and opt-in client keepalive fragment |
-| `tmux` | tmux | Persistent remote-session defaults |
 
 ---
 
@@ -1128,9 +1207,8 @@ top-right stack. Validate with `bash tests/bar-center.test.sh`.
 **Core:**
 - `hyprland`, `hyprlock`, `hypridle`
 - `kitty`
-- `rofi`, `wofi`
+- `rofi`
 - `quickshell`
-- `swaync` (optional rollback backend)
 - `fastfetch`
 
 **Scripts:** the packages in `setup/manifests/scripts.txt`, which `dots deploy`

@@ -125,14 +125,11 @@ grep -Eq '^max-items[[:space:]]+200$' "$repo_root/cliphist/.config/cliphist/conf
   fail 'cliphist history is not capped at 200 items'
 
 
-for autostart in \
-  "$repo_root/hypr/.config/hypr/conf/autostart.lua" \
-  "$repo_root/hypr/.config/hypr/conf/autostart.conf"; do
-  [[ $(grep -c 'wl-paste .*--watch .*clipboard-store.sh' "$autostart") == 2 ]] ||
-    fail "clipboard watchers bypass the filter in ${autostart#$repo_root/}"
-  grep -Fq -- '--type text' "$autostart" || fail 'text clipboard watcher is missing'
-  grep -Fq -- '--type image' "$autostart" || fail 'image clipboard watcher is missing'
-done
+autostart="$repo_root/hypr/.config/hypr/conf/autostart.lua"
+[[ $(grep -c 'wl-paste .*--watch .*clipboard-store.sh' "$autostart") == 2 ]] ||
+  fail 'clipboard watchers bypass the filter in autostart.lua'
+grep -Fq -- '--type text' "$autostart" || fail 'text clipboard watcher is missing'
+grep -Fq -- '--type image' "$autostart" || fail 'image clipboard watcher is missing'
 
 for command_name in pkill pidwait quickshell; do
   cat >"$test_root/bin/$command_name" <<'SH'

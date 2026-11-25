@@ -138,7 +138,7 @@ Item {
   function resizeCard(width, scale) { NotificationConfig.cardWidth = width; Theme.fontScale = scale }
   function addEntry(key, screen) {
     NotificationService.popupModel.append({key: key, app: "Fixture", desktopEntry: "", appIcon: "",
-      summary: "Fixture", body: "", image: "", actionsJson: "[]", glyph: "", urgency: 2,
+      summary: "Fixture", body: "", verbatim: false, image: "", actionsJson: "[]", glyph: "", urgency: 2,
       expireTimeout: 0, timestamp: Date.now(), screenName: screen, deadline: 0, replay: false,
       restored: false, closing: false, closeReason: ""})
   }
@@ -241,6 +241,20 @@ Item {
         self.assertTrue(any(i.isVisible() and i.property("text") == "Track title" for i in self.items()))
         self.assertTrue(any(i.isVisible() and i.property("text") == "NOW PLAYING" for i in self.items()))
         self.assertFalse(any(i.isVisible() and i.property("text") == "SPOTIFY" for i in self.items()))
+
+    def test_verbatim_body_is_complete(self):
+        command = "\n".join(f"step {i} sort < in > out" for i in range(30))
+        self.card.setProperty("body", command)
+        self.card.setProperty("verbatim", True)
+        QTest.qWait(30)
+        text = next(i for i in self.items() if i.objectName() == "notificationBodyVerbatim")
+        view = next(i for i in self.items() if i.objectName() == "notificationBodyVerbatimView")
+        self.assertEqual(text.property("text"), command)
+        self.assertFalse(text.property("truncated"))
+        self.assertLess(view.height(), text.height())
+        self.assertTrue(view.property("interactive"))
+        plain = next(i for i in self.items() if i.objectName() == "notificationBody")
+        self.assertFalse(plain.isVisible())
 
     def test_card_sits_in_elevated_shell(self):
         shadow = next(i for i in self.items() if i.metaObject().className().startswith("QQuickMultiEffect"))
