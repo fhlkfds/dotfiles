@@ -23,7 +23,8 @@ usage: verify <command> [options]
   cleanup                      delete the sandbox, keep the evidence
 
 Options for every command: --run ID picks a run (default: the last launched).
-Environment: VERIFY_ROOT (default ${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles-verify).
+Environment: VERIFY_ROOT (default ${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles-verify),
+             VERIFY_QUICKSHELL (default quickshell).
 EOF
 }
 
@@ -34,6 +35,7 @@ skill_dir=$(dirname -- "$self_dir")
 repo=$(git -C "$skill_dir" rev-parse --show-toplevel 2>/dev/null) \
   || die 'cannot find the repository root from the skill directory'
 shell_src=$repo/quickshell/.config/quickshell
+quickshell=${VERIFY_QUICKSHELL:-quickshell}
 verify_root=${VERIFY_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles-verify}
 uid=$(id -u)
 
@@ -95,6 +97,11 @@ resolve_run() {
 
 require_sandbox() {
   [[ -d $sandbox/home ]] || die "run $run_id was cleaned up: start a new one with 'verify launch'"
+}
+
+require_quickshell() {
+  command -v "$quickshell" >/dev/null \
+    || die "quickshell is not installed: smokes and shots cannot run on this machine; report them as unverified"
 }
 
 next_slot() {
@@ -306,9 +313,9 @@ cmd_smoke() {
   done
   local file=$shell_src/${name}Smoke.qml
   [[ -f $file ]] || die "no smoke at ${file#"$repo"/}"
-  resolve_run; require_sandbox
+  resolve_run; require_sandbox; require_quickshell
   local status=0
-  sandboxed "smoke-$name" "$timeout" "${envs[@]+"${envs[@]}"}" -- quickshell -p "$file" || status=$?
+  sandboxed "smoke-$name" "$timeout" "${envs[@]+"${envs[@]}"}" -- "$quickshell" -p "$file" || status=$?
   local log=$slot_dir/log.txt
   cat "$slot_dir/stdout.txt" "$slot_dir/stderr.txt" >"$log"
   local oks fails
@@ -336,7 +343,7 @@ cmd_smoke() {
 
 cmd_shot() {
   [[ ${1:-} == battery-panel ]] || die 'shot: the only harness so far is battery-panel' 2
-  resolve_run; require_sandbox
+  resolve_run; require_sandbox; require_quickshell
   # Quickshell resolves components and singletons from the directory of the
   # file it loads, so the harness runs from a fresh copy of the shell with
   # the harness beside it.
@@ -345,8 +352,8 @@ cmd_shot() {
   cp "$skill_dir/harness/BatteryPanelShot.qml" "$sandbox/shell/"
   local status=0
   # shellcheck disable=SC2016
-  sandboxed shot-battery-panel 60 -- sh -c 'VERIFY_SHOT_DIR=$VERIFY_EVIDENCE exec quickshell -p "$1"' sh \
-    "$sandbox/shell/BatteryPanelShot.qml" || status=$?
+  sandboxed shot-battery-panel 60 -- sh -c 'VERIFY_SHOT_DIR=$VERIFY_EVIDENCE exec "$1" -p "$2"' sh \
+    "$quickshell" "$sandbox/shell/BatteryPanelShot.qml" || status=$?
   local log=$slot_dir/log.txt
   cat "$slot_dir/stdout.txt" "$slot_dir/stderr.txt" >"$log"
   grep -E '^.*(text |ok   |FAIL)' "$log" | sed -E 's/^.*qml[^:]*: //' >"$slot_dir/checks.txt" || true
@@ -403,7 +410,8 @@ cmd_doctor() {
   [[ $head == "$launched_rev" ]] \
     || note "HEAD moved since launch ($launched_rev -> $head); each command's evidence records its own rev"
   check 'bwrap available' command -v bwrap
-  check 'quickshell available' command -v quickshell
+  command -v "$quickshell" >/dev/null \
+    || note 'quickshell missing: smoke and shot refuse to run; lmenu, scripts and themes still drive'
   command -v dbus-run-session >/dev/null \
     || note 'dbus-run-session missing: smokes that need a session bus will fail'
   local tool
