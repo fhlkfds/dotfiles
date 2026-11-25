@@ -85,6 +85,11 @@ case "$*" in
   'getoption cursor:no_warps -j')
     if [[ -n ${HYPR_WARPS_JSON:-} ]]; then printf '%s\n' "$HYPR_WARPS_JSON";
     else printf '{"bool":false}\n'; fi ;;
+  --batch\ *)
+    # The caption daemon's keys: Hyprland answers ok for each command.
+    printf '%s\n' "$*" >>"$VOICE_DICTATION_CALLS"
+    IFS=';' read -ra commands <<<"$2"
+    printf 'ok\n\n\n%.0s' "${commands[@]}" ;;
   -q\ *)
     shift
     printf '%s\n' "$*" >>"$VOICE_DICTATION_CALLS"
@@ -870,9 +875,10 @@ VOICE_CAPTIONS_CONTROL=$captions HYPR_ACTIVE=0xaaa timeout 5 "$script" toggle >"
 cmp -s "$test_root/full.out" "$test_root/with.start.out" || fail 'a full captions FIFO changed what dictation prints'
 exec 7>&-
 
-# Live words, with the real daemon: typed into the window dictation started
-# in, erased there once the script has focused it again, and only then does
-# Hyprvoice get the toggle that makes it type.
+# Live words, with the real daemon: sent as keys to the window dictation
+# started in, erased there once the script has focused it again, and only then
+# does Hyprvoice get the toggle that makes it type. The daemon never runs
+# wtype, whose keys Hyprland would run as keybinds while SUPER is held.
 live=$test_root/live
 mkdir -p "$live"
 cat >"$test_root/bin/live-recorder" <<'SH'
@@ -885,25 +891,16 @@ while True:
     time.sleep(0.05)
 '
 SH
-cat >"$test_root/bin/live-wtype" <<'SH'
+cat >"$test_root/bin/wtype" <<'SH'
 #!/usr/bin/env bash
-if [[ $* == - ]]; then
-  printf 'wtype type %s\n' "$(cat)" >>"$VOICE_DICTATION_CALLS"
-  exit
-fi
-keys=0
-while [[ ${1:-} == -k && ${2:-} == BackSpace ]]; do
-  keys=$((keys + 1))
-  shift 2
-done
-printf 'wtype erase %s%s\n' "$keys" "${*:+ and $*}" >>"$VOICE_DICTATION_CALLS"
+printf 'wtype %s\n' "$*" >>"$VOICE_DICTATION_CALLS"
 SH
-chmod +x "$test_root/bin/live-recorder" "$test_root/bin/live-wtype"
+chmod +x "$test_root/bin/live-recorder" "$test_root/bin/wtype"
 export HYPR_ACTIVE_FILE=$test_root/active
 printf 0xaaa >"$HYPR_ACTIVE_FILE"
 VOICE_CAPTIONS_CONTROL=$live/control VOICE_CAPTIONS_EVENTS=$live/events.sock VOICE_CAPTIONS_ENGINE=fake \
   VOICE_CAPTIONS_RECORDER=$test_root/bin/live-recorder VOICE_CAPTIONS_HYPRCTL=$test_root/bin/hyprctl \
-  VOICE_CAPTIONS_WTYPE=$test_root/bin/live-wtype PYTHONDONTWRITEBYTECODE=1 python3 "$daemon" serve 2>"$live/log" &
+  PYTHONDONTWRITEBYTECODE=1 python3 "$daemon" serve 2>"$live/log" &
 daemon_pid=$!
 for _ in {1..400}; do
   grep -q 'listening on' "$live/log" && break
@@ -916,23 +913,29 @@ printf idle >"$HYPRVOICE_STATE"
 "$script" use-source alsa_input.webcam
 : >"$calls"
 VOICE_CAPTIONS_CONTROL=$captions "$script" toggle >/dev/null 2>&1
+# The fake engine says "wörd3 "; the US key table has no ö.
+third_word='key = "d", window = "address:0xaaa" }) ; dispatch hl.dsp.send_shortcut({ mods = "", key = "3", '
 for _ in {1..400}; do
-  grep -q '^wtype type .*wörd3 ' "$calls" && break
+  grep -Fq -- "$third_word" "$calls" && break
   sleep 0.025
 done
-grep -q '^wtype type .*wörd3 ' "$calls" || fail "live words were not typed into the window: $(<"$calls")"
+grep -Fq -- "$third_word" "$calls" || fail "live words were not sent to the window: $(<"$calls")"
 printf 0xbbb >"$HYPR_ACTIVE_FILE"
 VOICE_CAPTIONS_CONTROL=$captions JOURNAL_FIXTURE=$journal_done "$script" toggle >/dev/null 2>&1
 python3 - "$calls" <<'PY' || fail "the live words were not erased before Hyprvoice typed: $(<"$calls")"
-import sys
+import re, sys
 calls = open(sys.argv[1], encoding="utf-8").read().splitlines()
+assert not any(call.startswith("wtype") for call in calls), "wtype ran"
 start, stop = (i for i, call in enumerate(calls) if call == "toggle")
 focus = calls.index('dispatch hl.dsp.focus({ window = "address:0xaaa" })')
-erase = next(i for i, call in enumerate(calls) if call.startswith("wtype erase "))
+command = re.compile(r'dispatch hl\.dsp\.send_shortcut\(\{ mods = "", key = "(\w+)", window = "address:0xaaa" \}\)')
+batches = {i: call.removeprefix("--batch ").split(" ; ") for i, call in enumerate(calls) if call.startswith("--batch ")}
+*typing, erase = batches
 assert start < focus < erase < stop, "the order is not focus, erase, toggle"
-assert not any(call.startswith("wtype ") for call in calls[erase + 1:]), "wtype ran after the erase"
-typed = "".join(call.removeprefix("wtype type ") for call in calls if call.startswith("wtype type "))
-assert calls[erase] == f"wtype erase {len(typed)}" and len(typed) < len(typed.encode()), (calls[erase], typed)
+keys = [command.fullmatch(key)[1] for i in typing for key in batches[i]]
+text = "".join(" " if key == "space" else key for key in keys)
+assert re.fullmatch(r"(wrd\d+ )+", text), text
+assert [command.fullmatch(key)[1] for key in batches[erase]] == ["BackSpace"] * len(keys), (batches[erase], text)
 PY
 unset HYPR_ACTIVE_FILE
 kill -TERM "$daemon_pid"

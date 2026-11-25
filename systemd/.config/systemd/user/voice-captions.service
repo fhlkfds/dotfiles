@@ -1,6 +1,6 @@
 # Live captions for voice dictation (voice-captions serve). Install the engine
 # and model first with voice-captions install. AF_UNIX only: the kernel keeps
-# it offline, and PipeWire, the shell and the compositor (wtype, hyprctl) are
+# it offline, and PipeWire, the shell and the compositor (hyprctl) are
 # all reached over unix sockets.
 [Unit]
 Description=Live captions for voice dictation

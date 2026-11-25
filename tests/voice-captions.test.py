@@ -3,6 +3,7 @@
 transcript folding, the control-line parser, event snapshots, subscribers and
 the decoder."""
 
+import asyncio
 import importlib.machinery
 import importlib.util
 import json
@@ -10,9 +11,11 @@ import math
 from array import array
 import socket
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.dont_write_bytecode = True
 SCRIPT = Path(__file__).resolve().parent.parent / "systemd/.local/bin/voice-captions"
@@ -51,9 +54,11 @@ typing = replace(listening, phase="typing", deadline=60, stop="acked")
 idle10 = State(id="10", engine="ready")
 BOX = "0x55d0aaa"
 quiet = replace(listening, target=BOX, transcript=Transcript())
-# "hello " is with a wtype; "hello " then "world " have settled.
-busy = replace(listening, target=BOX, transcript=Transcript("hello world ", ""), inflight=6)
-done = replace(listening, target=BOX, typed=6)
+K = vc.keys_for
+# "hello " is with a batch; "hello " then "world " have settled.
+busy = replace(listening, target=BOX, transcript=Transcript("hello world ", ""), cursor=6, inflight=6)
+done = replace(listening, target=BOX, cursor=6, typed=6)
+refused = replace(busy, typed=2, inflight=0, refused=True)
 draining = replace(busy, phase="typing", deadline=63, stop="draining")
 erasing = replace(done, phase="typing", deadline=63, stop="erasing")
 
@@ -73,45 +78,50 @@ transitions = [
     ("listening remembers the window being dictated into", armed, Report("10", "listening", "mic", BOX), 1,
      replace(armed, phase="listening", source="mic", target=BOX, deadline=601),
      [StartRecorder("10", "mic"), URGENT]),
-    ("settled words are typed into the window", quiet, Updates("10", (Commit("héllo ☕ "), Revise("wor"))), 2,
-     replace(quiet, transcript=Transcript("héllo ☕ ", "wor"), inflight=8), [LATER, Type("10", BOX, "héllo ☕ ")]),
+    ("settled words are typed into the window as keys", quiet, Updates("10", (Commit("Hi? "), Revise("wor"))), 2,
+     replace(quiet, transcript=Transcript("Hi? ", "wor"), cursor=4, inflight=4),
+     [LATER, Type("10", BOX, (("SHIFT", "h"), ("", "i"), ("SHIFT", "slash"), ("", "space")))]),
+    ("a character with no key is left out and not counted", quiet, Updates("10", (Commit("héllo ☕ "),)), 2,
+     replace(quiet, transcript=Transcript("héllo ☕ ", ""), cursor=8, inflight=6), [LATER, Type("10", BOX, K("hllo  "))]),
+    ("words with no key at all send nothing", quiet, Updates("10", (Commit("☕é"),)), 2,
+     replace(quiet, transcript=Transcript("☕é", ""), cursor=2), [LATER]),
     ("tentative words are never typed", quiet, Updates("10", (Revise("hel"),)), 2,
      replace(quiet, transcript=Transcript("", "hel")), [LATER]),
     ("a line break is typed as a space", quiet, Updates("10", (Commit("a\nb"),)), 2,
-     replace(quiet, transcript=Transcript("a\nb", ""), inflight=3), [LATER, Type("10", BOX, "a b")]),
-    ("words that settle while a wtype runs wait for it", replace(busy, transcript=Transcript("hello ", "")),
+     replace(quiet, transcript=Transcript("a\nb", ""), cursor=3, inflight=3), [LATER, Type("10", BOX, K("a b"))]),
+    ("words that settle while a batch runs wait for it", replace(busy, transcript=Transcript("hello ", "")),
      Updates("10", (Commit("world "),)), 2, busy, [LATER]),
-    ("a finished wtype types what settled meanwhile", busy, Typed("10", 6), 2,
-     replace(busy, typed=6), [Type("10", BOX, "world ")]),
-    ("a finished wtype with nothing new rests", replace(busy, transcript=Transcript("hello ", "")), Typed("10", 6), 2,
+    ("a finished batch types what settled meanwhile", busy, Typed("10", 6), 2,
+     replace(busy, cursor=12, typed=6), [Type("10", BOX, K("world "))]),
+    ("a finished batch with nothing new rests", replace(busy, transcript=Transcript("hello ", "")), Typed("10", 6), 2,
      replace(done, transcript=Transcript("hello ", "")), []),
-    ("an unfocused window gets nothing and is not retried in a loop", busy, Typed("10", 0), 2,
-     replace(busy, inflight=0), []),
-    ("the next words catch up once the window has focus again",
-     replace(busy, inflight=0, transcript=Transcript("hello ", "")), Updates("10", (Commit("world "),)), 2,
-     replace(busy, inflight=12), [LATER, Type("10", BOX, "hello world ")]),
-    ("a failed wtype ends live typing for the dictation", busy, TypeFailed("10"), 2,
-     replace(busy, target="", inflight=0), []),
-    ("another dictation's wtype result is ignored", busy, Typed("9", 6), 2, busy, []),
-    ("a wtype result with none running is ignored", done, Typed("10", 6), 2, done, []),
+    ("a refused key ends live typing and the keys that landed count", busy, TypeFailed("10", 2), 2, refused, []),
+    ("later words are not typed after a refusal", refused, Updates("10", (Commit("again "),)), 2,
+     replace(refused, transcript=Transcript("hello world again ", "")), [LATER]),
+    ("another dictation's batch result is ignored", busy, Typed("9", 6), 2, busy, []),
+    ("a batch result with none running is ignored", done, Typed("10", 6), 2, done, []),
     ("stopping erases the typed words", done, Report("10", "typing"), 3, erasing,
      [StopRecorder(), Erase("10", BOX, 6), URGENT]),
-    ("stopping waits for the wtype that still runs", busy, Report("10", "typing"), 3, draining,
+    ("stopping after a refusal erases the keys that landed", refused, Report("10", "typing"), 3,
+     replace(refused, phase="typing", deadline=63, stop="erasing"), [StopRecorder(), Erase("10", BOX, 2), URGENT]),
+    ("stopping waits for the batch that still runs", busy, Report("10", "typing"), 3, draining,
      [StopRecorder(), URGENT]),
-    ("once that wtype ends its words are erased too", draining, Typed("10", 6), 3,
+    ("once that batch ends its words are erased too", draining, Typed("10", 6), 3,
      replace(draining, typed=6, inflight=0, stop="erasing"), [Erase("10", BOX, 6)]),
-    ("a last wtype that typed nothing leaves nothing to erase", draining, Typed("10", 0), 3,
-     replace(draining, inflight=0, stop="acked"), [Ack("10")]),
-    ("a last wtype that failed is answered too", draining, TypeFailed("10"), 3,
-     replace(draining, target="", inflight=0, stop="acked"), [Ack("10")]),
-    ("the erase is answered when it ends", erasing, Erased("10"), 4,
+    ("a last batch that was refused has its landed keys erased", draining, TypeFailed("10", 2), 3,
+     replace(draining, typed=2, inflight=0, refused=True, stop="erasing"), [Erase("10", BOX, 2)]),
+    ("a last batch that landed nothing leaves nothing to erase", draining, TypeFailed("10", 0), 3,
+     replace(draining, inflight=0, refused=True, stop="acked"), [Ack("10")]),
+    ("the erase is answered when it ends", erasing, Erased("10", 6), 4,
      replace(erasing, typed=0, stop="acked"), [Ack("10")]),
-    ("another dictation's erase is ignored", erasing, Erased("9"), 4, erasing, []),
+    ("an erase cut short is answered and what is left stays counted", erasing, Erased("10", 4), 4,
+     replace(erasing, typed=2, stop="acked"), [Ack("10")]),
+    ("another dictation's erase is ignored", erasing, Erased("9", 6), 4, erasing, []),
     ("words decoded late are not typed after the stop", replace(erasing, transcript=Transcript()),
      Updates("10", (Commit("late "),)), 4, replace(erasing, transcript=Transcript("late ", "")), [LATER]),
     ("a repeated typing report is answered again", typing, Report("10", "typing"), 4, typing, [Ack("10")]),
     ("a repeated typing report waits for the erase on its way", erasing, Report("10", "typing"), 4, erasing, []),
-    ("a repeated typing report waits for the wtype on its way", draining, Report("10", "typing"), 4, draining, []),
+    ("a repeated typing report waits for the batch on its way", draining, Report("10", "typing"), 4, draining, []),
     ("idle leaves the typed words in the box", done, Report("10", "idle"), 5, idle10, [StopRecorder(), URGENT]),
     ("the listening deadline leaves the typed words in the box", done, Tick(), 600, idle10,
      [StopRecorder(), URGENT]),
@@ -159,22 +169,65 @@ for name, state, inp, now, want_state, want_effects in transitions:
     check(f"step: {name}", (got_state, got_effects) == (want_state, want_effects),
           f"\n  got  {got_state} {got_effects}\n  want {want_state} {want_effects}")
 
-state, typed_text, erased = replace(armed, engine="ready"), "", None
-script = [Report("10", "listening", "mic", BOX), Updates("10", (Commit("naïve "), Revise("ca"))),
-          Updates("10", (Commit("café ☕ "),)), Report("10", "typing")]
+state, sent, erased = replace(armed, engine="ready"), (), None
+script = [Report("10", "listening", "mic", BOX), Updates("10", (Commit("Naïve "), Revise("ca"))),
+          Updates("10", (Commit("café ☕? "),)), Report("10", "typing")]
 for inp in script:
     pending = [inp]
     while pending:
         state, effects = vc.step(state, pending.pop(0), 1)
         for effect in effects:
             if isinstance(effect, Type):
-                typed_text += effect.text
-                pending.append(Typed("10", len(effect.text)))
+                sent += effect.keys
+                pending.append(Typed("10", len(effect.keys)))
             elif isinstance(effect, Erase):
                 erased = effect.count
-check("typist: a dictation types exactly its settled words", typed_text == "naïve café ☕ ", repr(typed_text))
-check("typist: the erase counts codepoints, not bytes",
-      erased == 13 and erased == len(typed_text) < len(typed_text.encode()), str(erased))
+check("typist: a dictation sends its settled words as the keys the table has", sent == K("Nave caf ? "), repr(sent))
+check("typist: the erase counts the keys sent, not the characters said",
+      erased == len(sent) == 11 < len("Naïve café ☕? "), str(erased))
+
+check("keys: a capital is SHIFT with the lowercase letter", K("aZ") == (("", "a"), ("SHIFT", "z")), repr(K("aZ")))
+check("keys: a shifted sign is SHIFT with the key it shares", K('?"|~') == (
+    ("SHIFT", "slash"), ("SHIFT", "apostrophe"), ("SHIFT", "backslash"), ("SHIFT", "grave")), repr(K('?"|~')))
+check("keys: every printable ASCII character has a key", all(chr(code) in vc.KEYS for code in range(0x20, 0x7f)))
+check("keys: every key name is plain letters and digits",
+      all(mods in ("", "SHIFT") and name.isascii() and name.isalnum() for mods, name in vc.KEYS.values()))
+hostile = 'a";\\]] é\n;b'
+request = vc.batch(BOX, K(hostile))
+commands = request.split(" ; ")
+command = vc.re.compile(r'dispatch hl\.dsp\.send_shortcut\(\{ mods = "(SHIFT|)", key = "([a-z0-9]+)", '
+                        r'window = "address:0x55d0aaa" \}\)')
+check("batch: one dispatch per key and nothing else", all(command.fullmatch(c) for c in commands), request)
+check("batch: dictated text never reaches the request",
+      [command.fullmatch(c).groups() for c in commands] == list(K(hostile)) and len(commands) == 10
+      and request.count(";") == len(commands) - 1 and request.isascii(), request)
+check("batch: the erase is that many BackSpaces with no modifier",
+      vc.batch(BOX, (vc.BACKSPACE,) * 3).split(" ; ") ==
+      ['dispatch hl.dsp.send_shortcut({ mods = "", key = "BackSpace", window = "address:0x55d0aaa" })'] * 3)
+check("batch: the longest batch fits one socket write",
+      len(vc.batch("0x" + "f" * 16, (("SHIFT", "bracketright"),) * vc.BATCH_KEYS)) < 32 * 1024)
+
+
+
+def press(count, script):
+    """Run Daemon.press against a stand-in hyprctl; returns (keys taken, batch sizes)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        stub = Path(tmp) / "hyprctl"
+        stub.write_text("#!/usr/bin/env bash\nIFS=';' read -ra commands <<<\"$2\"\n"
+                        f"echo ${{#commands[@]}} >>{tmp}/sizes\n{script}\n")
+        stub.chmod(0o700)
+        daemon = object.__new__(vc.Daemon)
+        daemon.cfg, daemon.keyboard = SimpleNamespace(hyprctl=str(stub)), asyncio.Lock()
+        taken = asyncio.run(daemon.press(BOX, (vc.BACKSPACE,) * count))
+        return taken, [int(size) for size in (Path(tmp) / "sizes").read_text().split()]
+
+
+ok_each = "printf 'ok\\n\\n\\n%.0s' \"${commands[@]}\""
+check("press: a long erase goes out in batches Hyprland reads whole", press(600, ok_each) == (600, [256, 256, 88]),
+      str(press(600, ok_each)))
+check("press: only the keys Hyprland took count, and a refusal ends the run",
+      press(600, "printf 'ok\\n\\n\\nok\\n\\n\\nerror: key not found'") == (2, [256]))
+check("press: a hyprctl that fails outright sent nothing", press(3, "exit 1") == (0, [3]))
 
 custom = {"armed": 1.0, "listening": 2.0, "typing": 3.0}
 state, _ = vc.step(State(), Report("1", "armed"), 0, custom)

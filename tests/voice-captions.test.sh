@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drives voice-captions serve end to end with the fake engine, a stub recorder
-# and stand-ins for hyprctl and wtype in a private runtime dir. Opt-in
+# and a stand-in for hyprctl in a private runtime dir. Opt-in
 # real-engine case: set
 # VOICE_CAPTIONS_REAL_MODEL_DIR and VOICE_CAPTIONS_PYTHON (a Python with sherpa_onnx).
 set -euo pipefail
@@ -38,37 +38,70 @@ export HOME=$test_root/home XDG_RUNTIME_DIR=$test_root/run
 export XDG_DATA_HOME=$HOME/decoy-data PYTHONDONTWRITEBYTECODE=1
 export VOICE_CAPTIONS_ENGINE=fake VOICE_CAPTIONS_RECORDER=$test_root/bin/recorder
 export RECORDER_LOG=$test_root/recorder.log
-export VOICE_CAPTIONS_HYPRCTL=$test_root/bin/hyprctl VOICE_CAPTIONS_WTYPE=$test_root/bin/wtype
-export ACTIVE_FILE=$test_root/active WTYPE_LOG=$test_root/wtype.log
+export VOICE_CAPTIONS_HYPRCTL=$test_root/bin/hyprctl
+export HYPRCTL_LOG=$test_root/hyprctl.log REFUSE_AFTER=$test_root/refuse-after WTYPE_RAN=$test_root/wtype-ran
 mkdir -p "$HOME" "$XDG_RUNTIME_DIR" "$test_root/bin"
 chmod 700 "$XDG_RUNTIME_DIR"
 fifo=$XDG_RUNTIME_DIR/voice-captions/control
 reply=$XDG_RUNTIME_DIR/voice-captions/reply
 events=$XDG_RUNTIME_DIR/voice-captions/events.sock
-: >"$WTYPE_LOG"
+: >"$HYPRCTL_LOG"
 
-# The compositor: hyprctl names the focused window from a file the test
-# rewrites, and wtype logs the text it was given or how many keys it pressed.
+# The compositor: hyprctl logs each batch and answers every command the way
+# Hyprland does. With a number in REFUSE_AFTER it takes that many keys of a
+# batch and refuses the rest, as Hyprland does for a key the last used
+# keyboard lacks; like the real hyprctl it exits 7 only when its answer starts
+# with an error. wtype must never run: held modifiers would turn its keys
+# into keybinds.
 cat >"$test_root/bin/hyprctl" <<'SH'
 #!/usr/bin/env bash
-[[ $* == '-j activewindow' ]] || exit 1
-printf '{"address":"%s"}\n' "$(<"$ACTIVE_FILE")"
+if [[ $# != 2 || $1 != --batch ]]; then
+  printf 'unexpected %s\n' "$*" >>"$HYPRCTL_LOG"
+  exit 1
+fi
+printf '%s\n' "$2" >>"$HYPRCTL_LOG"
+take=$(cat "$REFUSE_AFTER" 2>/dev/null || echo -1)
+IFS=';' read -ra commands <<<"$2"
+for i in "${!commands[@]}"; do
+  ((i == 0)) || printf '\n\n\n'
+  if ((take < 0 || i < take)); then printf ok; else printf 'error: =[C]:-1: send_shortcut: key not found'; fi
+done
+((take != 0)) || exit 7
 SH
 cat >"$test_root/bin/wtype" <<'SH'
 #!/usr/bin/env bash
-if [[ $* == - ]]; then
-  text=$(cat; printf .)
-  printf 'type [%s]\n' "${text%.}" >>"$WTYPE_LOG"
-  exit
-fi
-keys=0
-while [[ ${1:-} == -k && ${2:-} == BackSpace ]]; do
-  keys=$((keys + 1))
-  shift 2
-done
-if (($# == 0 && keys > 0)); then printf 'erase %s\n' "$keys"; else printf 'unexpected %s\n' "$*"; fi >>"$WTYPE_LOG"
+: >"$WTYPE_RAN"
 SH
 chmod +x "$test_root/bin/hyprctl" "$test_root/bin/wtype"
+PATH=$test_root/bin:$PATH
+
+# keys: each batch as "type [text]" or "erase N". It fails on a batch that is
+# not send_shortcut dispatches to window 0xaaa, on a modifier, and on any key
+# the fake engine's words do not need.
+cat >"$test_root/keys.py" <<'PY'
+import re, sys
+COMMAND = re.compile(r'dispatch hl\.dsp\.send_shortcut\(\{ mods = "([A-Z ]*)", key = "(\w+)", '
+                     r'window = "address:0xaaa" \}\)')
+for line in open(sys.argv[1], encoding="utf-8").read().splitlines():
+    matches = [COMMAND.fullmatch(command) for command in line.split(" ; ")]
+    assert all(matches), line
+    assert not any(match[1] for match in matches), line
+    keys = [match[2] for match in matches]
+    if set(keys) == {"BackSpace"}:
+        print("erase", len(keys))
+    else:
+        assert all(key == "space" or re.fullmatch("[a-z0-9]", key) for key in keys), line
+        print("type [" + "".join(" " if key == "space" else key for key in keys) + "]")
+PY
+keys() { python3 "$test_root/keys.py" "$HYPRCTL_LOG"; }
+# sent KEY...: the request for those keys with no modifier, in window 0xaaa.
+sent() {
+  local key request=''
+  for key; do
+    request+="${request:+ ; }dispatch hl.dsp.send_shortcut({ mods = \"\", key = \"$key\", window = \"address:0xaaa\" })"
+  done
+  printf '%s' "$request"
+}
 
 # Half a fake word per write, so the tentative tail is exercised too, at a
 # steady -18 dBFS. It outlives a closed pipe, so only the daemon's signals can stop it.
@@ -87,12 +120,13 @@ while True:
 '
 SH
 chmod +x "$test_root/bin/recorder"
-focus() { printf '%s' "$1" >"$ACTIVE_FILE"; }
-wtype_calls() { wc -l <"$WTYPE_LOG"; }
-# first_words N: wait until N dictations have typed their first word.
+batches() { wc -l <"$HYPRCTL_LOG"; }
+erases() { grep -c 'key = "BackSpace"' "$HYPRCTL_LOG" || true; }
+# first_words N: wait until N dictations have typed their first word. The fake
+# engine says "wörd1 "; the US key table has no ö.
 first_words() {
   for _ in {1..200}; do
-    [[ $(grep -c 'type \[wörd1 ' "$WTYPE_LOG") == "$1" ]] && return 0
+    [[ $(grep -Fc -- "$(sent w r d 1 space)" "$HYPRCTL_LOG") == "$1" ]] && return 0
     sleep 0.025
   done
   fail "dictation $1 with a target window typed nothing"
@@ -199,39 +233,28 @@ assert events[-1] == {"type": "state", "v": 1, "seq": seqs[-1], "id": "100.1", "
                       "committed": "", "tentative": "", "note": ""}, events[-1]
 PY
 
-[[ ! -s $WTYPE_LOG ]] || fail "a dictation with no target window typed: $(<"$WTYPE_LOG")"
+[[ ! -s $HYPRCTL_LOG ]] || fail "a dictation with no target window typed: $(<"$HYPRCTL_LOG")"
 
-# Live words go into the dictation's window, and only while it has focus.
-focus 0xaaa
-watcher "$test_root/live"
+# Live words go into the dictation's window as keys, and stopping erases them.
 report 150 armed
 report '150 listening alsa_input.test 0xaaa'
-wait_for "$WTYPE_LOG" 'wörd3 '
-focus 0xbbb
-sleep 0.2
-elsewhere=$(wtype_calls)
-wait_for "$test_root/live" 'wörd9 '
-[[ $(wtype_calls) == "$elsewhere" ]] || fail 'words were typed while another window had focus'
-focus 0xaaa
-for _ in {1..200}; do
-  (($(wtype_calls) > elsewhere)) && break
-  sleep 0.025
-done
-(($(wtype_calls) > elsewhere)) || fail 'typing did not resume when the window got focus back'
+wait_for "$HYPRCTL_LOG" "$(sent d 9 space)"
 stop_and_time 150
-python3 - "$WTYPE_LOG" <<'PY' || fail "live typing went wrong: $(<"$WTYPE_LOG")"
+keys >"$test_root/keys" || fail "the keys sent are wrong: $(<"$HYPRCTL_LOG")"
+python3 - "$test_root/keys" <<'PY' || fail "live typing went wrong: $(<"$test_root/keys")"
 import re, sys
 *typed, erase = open(sys.argv[1], encoding="utf-8").read().splitlines()
 assert all(line.startswith("type [") and line.endswith("]") for line in typed), typed
 text = "".join(line[6:-1] for line in typed)
-# Whole settled words in order with no gap or repeat: nothing tentative was
-# typed, and the words missed while unfocused were caught up.
-numbers = [int(n) for n in re.fullmatch(r"(?:wörd(\d+) )+", text) and re.findall(r"\d+", text)]
+# Whole settled words in order with no gap or repeat, and nothing tentative.
+numbers = [int(n) for n in re.fullmatch(r"(?:wrd(\d+) )+", text) and re.findall(r"\d+", text)]
 assert numbers == list(range(1, len(numbers) + 1)) and len(numbers) >= 9, text
-assert erase == f"erase {len(text)}" and len(text) < len(text.encode()), (erase, len(text))
+# One BackSpace per key sent: the ö of each word was said but never typed.
+said = sum(len(f"wörd{n} ") for n in numbers)
+assert erase == f"erase {len(text)}" and len(text) == said - len(numbers), (erase, len(text), said)
 PY
-typed_chars=$(sed -n '$s/^erase //p' "$WTYPE_LOG")
-printf 'stop handshake, %s characters erased: %s ms\n' "$typed_chars" "$handshake_ms"
+typed_keys=$(sed -n '$s/^erase //p' "$test_root/keys")
+printf 'stop handshake, %s keys erased: %s ms\n' "$typed_keys" "$handshake_ms"
 stop_and_time 150
 report 150 idle
 
@@ -239,27 +262,47 @@ report 160 armed
 stop_and_time 160
 printf 'stop handshake, nothing typed: %s ms\n' "$handshake_ms"
 report 160 idle
-[[ $(grep -c '^erase ' "$WTYPE_LOG") == 1 ]] || fail 'a repeated stop or a dictation with no words pressed BackSpace'
+[[ $(erases) == 1 ]] || fail 'a repeated stop or a dictation with no words pressed BackSpace'
 
-# A dictation that ends without typing keeps its live words, and BackSpace
-# never goes to another window.
+# A dictation that ends without a stop keeps its live words.
 report '170 listening alsa_input.test 0xaaa'
 first_words 2
 report 170 idle
+sleep 0.2
+[[ $(erases) == 1 ]] || fail 'BackSpace was pressed after idle'
+
+# Hyprland takes three keys of a batch and refuses the rest: live typing ends
+# for that dictation, and the stop erases exactly the three that landed.
+printf 3 >"$REFUSE_AFTER"
+before=$(batches)
 report '180 listening alsa_input.test 0xaaa'
 first_words 3
-focus 0xbbb
-sleep 0.2
+wait_for "$test_root/daemon.log" 'Hyprland took 3 of '
+sleep 0.3
+[[ $(batches) == $((before + 1)) ]] || fail 'words were typed after Hyprland refused a key'
+rm -f -- "$REFUSE_AFTER"
 stop_and_time 180
 report 180 idle
-[[ $(grep -c '^erase ' "$WTYPE_LOG") == 1 ]] || fail 'BackSpace was pressed after idle or in another window'
-! grep -q '^unexpected' "$WTYPE_LOG" || fail "wtype got unexpected arguments: $(grep '^unexpected' "$WTYPE_LOG")"
-focus 0xaaa
-quiet=$(wtype_calls)
+[[ $(batches) == $((before + 2)) && $(keys | tail -n1) == 'erase 3' ]] ||
+  fail "a refused batch was not erased by the keys that landed: $(keys | tail -n2)"
+
+# A refused erase is still answered, so Hyprvoice is not held up.
+report '190 listening alsa_input.test 0xaaa'
+first_words 4
+printf 0 >"$REFUSE_AFTER"
+stop_and_time 190
+rm -f -- "$REFUSE_AFTER"
+report 190 idle
+grep -Eq '^voice-captions: Hyprland took 0 of [0-9]+ keys$' "$test_root/daemon.log" ||
+  fail 'a refused erase was not logged'
+[[ $(erases) == 3 ]] || fail 'the refused erase was retried or never sent'
+keys >/dev/null || fail "the keys sent are wrong: $(<"$HYPRCTL_LOG")"
+! grep -Eq 'w.?rd' "$test_root/daemon.log" || fail 'the daemon logged dictated words'
+quiet=$(batches)
 
 report 200 armed
 report '200 listening alsa_input.test'
-second=$(recorder_pid 5)
+second=$(recorder_pid 6)
 kill -KILL "$second"
 python3 "$vc" watch --until-note no-audio --timeout 5 >/dev/null || fail 'a killed recorder did not show no-audio'
 kill -0 "$daemon_pid" || fail 'the daemon died with its recorder'
@@ -271,7 +314,7 @@ awk -v a="${started/,/.}" -v b="${EPOCHREALTIME/,/.}" 'BEGIN { exit !(b - a < 1)
   fail "late snapshot: $(<"$test_root/late")"
 
 report '250 listening alsa_input.test'
-third=$(recorder_pid 6)
+third=$(recorder_pid 7)
 report 300 armed
 python3 "$vc" watch --until-phase armed --timeout 2 | grep -Fq '"id":"300"' || fail 'a newer id did not pre-empt'
 gone "$third" || fail 'the pre-empted recorder still runs'
@@ -297,11 +340,12 @@ report 400 idle
 wait_for "$test_root/busy" '"id":"400","phase":"idle"'
 
 report '500 listening alsa_input.test'
-eighth=$(recorder_pid 8)
+ninth=$(recorder_pid 9)
 stop_daemon
-gone "$eighth" || fail 'the recorder outlived the daemon'
+gone "$ninth" || fail 'the recorder outlived the daemon'
 [[ ! -e $fifo && ! -e $reply && ! -e $events ]] || fail 'the daemon left a FIFO or its socket behind'
-[[ $(wtype_calls) == "$quiet" ]] || fail 'a dictation with no target window typed'
+[[ $(batches) == "$quiet" ]] || fail 'a dictation with no target window typed'
+[[ ! -e $WTYPE_RAN ]] || fail 'wtype ran'
 
 start_daemon
 timeout 5 python3 "$vc" serve 2>"$test_root/second.log" &&

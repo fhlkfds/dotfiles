@@ -44,6 +44,9 @@ FAKE_WORD_BYTES = BYTES_PER_SECOND // 10
 LEVEL_INTERVAL = 0.05
 LEVEL_BYTES = int(LEVEL_INTERVAL * BYTES_PER_SECOND)
 HELPER_TIMEOUT = 2.0
+# Hyprland reads a request until its socket runs dry, so a very long request
+# can arrive cut short. A 256-key batch (at most 29 KiB) lands whole.
+BATCH_KEYS = 256
 
 SHERPA_VERSION = "2.0.3"
 MODEL_NAME = "sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25"
@@ -133,19 +136,23 @@ class RecorderExited:
 
 @dataclass(frozen=True)
 class Typed:
-    """A Type effect ended. count is 0 when the target was not focused."""
+    """A Type effect ended and Hyprland took all count keys."""
     id: str
     count: int
 
 
 @dataclass(frozen=True)
 class TypeFailed:
+    """A Type effect ended early: only count of its keys reached the box."""
     id: str
+    count: int
 
 
 @dataclass(frozen=True)
 class Erased:
+    """An Erase effect ended after count BackSpaces."""
     id: str
+    count: int
 
 
 @dataclass(frozen=True)
@@ -168,7 +175,7 @@ class StopRecorder:
 class Type:
     id: str
     target: str
-    text: str
+    keys: tuple  # of (mods, key)
 
 
 @dataclass(frozen=True)
@@ -197,17 +204,48 @@ class State:
     engine: str = "loading"  # loading | ready | failed, for the daemon's lifetime
     no_audio: bool = False
     deadline: float = math.inf
-    # The live typist. Committed text goes into the target window, one wtype at
-    # a time: typed codepoints are in the box, inflight ones are with a wtype.
+    # The live typist. Committed text goes into the target window as keys, one
+    # batch at a time: cursor counts the committed codepoints handed over,
+    # typed the keys in the box, inflight the keys in the running batch.
     target: str = ""
+    cursor: int = 0
     typed: int = 0
     inflight: int = 0
+    # Hyprland refused a key: no more live words for this dictation.
+    refused: bool = False
     # How far the stop has got once phase is typing: draining waits for the
-    # running wtype, erasing for the backspaces, acked has answered the script.
+    # running batch, erasing for the backspaces, acked has answered the script.
     stop: str = ""
 
 
 LIMITS = {"armed": 5.0, "listening": 600.0, "typing": 60.0}
+
+# What to press for each character on a US layout, as (mods, key). Hyprland
+# looks a key name up at the keyboard's unshifted level, so a shifted
+# character is its base key with SHIFT.
+US_PUNCTUATION = {" ": "space", "`": "grave", "-": "minus", "=": "equal", "[": "bracketleft", "]": "bracketright",
+                  "\\": "backslash", ";": "semicolon", "'": "apostrophe", ",": "comma", ".": "period", "/": "slash"}
+US_SHIFTED = dict(zip('~!@#$%^&*()_+{}|:"<>?', "`1234567890-=[]\\;',./"))
+KEYS = {char: ("", char) for char in "abcdefghijklmnopqrstuvwxyz0123456789"}
+KEYS |= {char: ("", name) for char, name in US_PUNCTUATION.items()}
+KEYS |= {char.upper(): ("SHIFT", char) for char in "abcdefghijklmnopqrstuvwxyz"}
+KEYS |= {char: ("SHIFT", KEYS[base][1]) for char, base in US_SHIFTED.items()}
+BACKSPACE = ("", "BackSpace")
+
+
+def keys_for(text: str) -> tuple:
+    """A character the table lacks is left out, so every key sent is one
+    BackSpace to erase. A line break would press Enter in the box; Hyprvoice
+    types a space too."""
+    chars = (char if char.isprintable() else " " for char in text)
+    return tuple(KEYS[char] for char in chars if char in KEYS)
+
+
+def batch(target: str, keys) -> str:
+    """One hyprctl --batch request. Every name in it comes from KEYS or from
+    the address parse_report checked, so no dictated text reaches Lua."""
+    return " ; ".join(f'dispatch hl.dsp.send_shortcut({{ mods = "{mods}", key = "{key}", window = "address:{target}" }})'
+                      for mods, key in keys)
 
 
 def step(state: State, inp, now: float, limits=LIMITS) -> "tuple[State, list]":
@@ -223,11 +261,11 @@ def step(state: State, inp, now: float, limits=LIMITS) -> "tuple[State, list]":
                 return state, []
             return _type(replace(state, transcript=transcript), [Publish(urgent=False)])
         case Typed(id=id, count=count) if id == state.id and state.inflight:
-            return _typed(replace(state, typed=state.typed + count, inflight=0), count)
-        case TypeFailed(id=id) if id == state.id and state.inflight:
-            return _typed(replace(state, target="", inflight=0), 0)
-        case Erased(id=id) if id == state.id and state.stop == "erasing":
-            return replace(state, typed=0, stop="acked"), [Ack(id)]
+            return _typed(replace(state, typed=state.typed + count, inflight=0))
+        case TypeFailed(id=id, count=count) if id == state.id and state.inflight:
+            return _typed(replace(state, typed=state.typed + count, inflight=0, refused=True))
+        case Erased(id=id, count=count) if id == state.id and state.stop == "erasing":
+            return replace(state, typed=state.typed - count, stop="acked"), [Ack(id)]
         case RecorderExited(id=id) if id == state.id and state.phase == "listening" and not state.no_audio:
             return replace(state, no_audio=True), [Publish(urgent=True)]
         case EngineReady() | EngineFailed():
@@ -272,23 +310,20 @@ def _enter(state, report, now, limits, effects):
 def _type(state, effects):
     """Type the committed text the box lacks. Tentative text may still change,
     so it is never typed."""
-    text = state.transcript.committed[state.typed:]
-    if state.phase != "listening" or not state.target or state.inflight or not text:
+    committed = state.transcript.committed
+    if state.phase != "listening" or not state.target or state.refused or state.inflight:
         return state, effects
-    # A line break would press Enter in the box; Hyprvoice types a space too.
-    text = "".join(char if char.isprintable() else " " for char in text)
-    return replace(state, inflight=len(text)), effects + [Type(state.id, state.target, text)]
+    keys = keys_for(committed[state.cursor:])
+    state = replace(state, cursor=len(committed), inflight=len(keys))
+    return state, effects + ([Type(state.id, state.target, keys)] if keys else [])
 
 
-def _typed(state, count):
-    if state.stop == "draining":
-        return _erase(state, [])
-    # Nothing typed means the box was not focused; the next words try again.
-    return _type(state, []) if count else (state, [])
+def _typed(state):
+    return _erase(state, []) if state.stop == "draining" else _type(state, [])
 
 
 def _erase(state, effects):
-    if state.target and state.typed:
+    if state.typed:
         return replace(state, stop="erasing"), effects + [Erase(state.id, state.target, state.typed)]
     return replace(state, stop="acked"), effects + [Ack(state.id)]
 
@@ -618,8 +653,8 @@ class Daemon:
                                          lambda: self.handle(RecorderExited(id)))
             case StopRecorder():
                 self.stop_recorder()
-            case Type(id=id, target=target, text=text):
-                self.start(self.type_text(id, target, text))
+            case Type(id=id, target=target, keys=keys):
+                self.start(self.type_keys(id, target, keys))
             case Erase(id=id, target=target, count=count):
                 self.start(self.erase(id, target, count))
             case Ack(id=id):
@@ -635,51 +670,47 @@ class Daemon:
         self.jobs.add(task)
         task.add_done_callback(self.jobs.discard)
 
-    async def call(self, argv, data=None):
-        """Run a helper without blocking the loop. Returns its stdout, or None
-        when it failed or hung."""
+    async def hyprctl(self, request) -> bytes:
+        """Hyprland's answer to a batch, empty when hyprctl did not run or
+        hung. Its exit status says nothing about the keys."""
         pipe = asyncio.subprocess
         try:
             proc = await asyncio.create_subprocess_exec(
-                *argv, stdin=pipe.DEVNULL if data is None else pipe.PIPE, stdout=pipe.PIPE)
+                self.cfg.hyprctl, "--batch", request, stdin=pipe.DEVNULL, stdout=pipe.PIPE)
         except OSError as error:
-            log(f"{argv[0]} did not start: {error.strerror}")
-            return None
+            log(f"{self.cfg.hyprctl} did not start: {error.strerror}")
+            return b""
         try:
-            out, _ = await asyncio.wait_for(proc.communicate(data), HELPER_TIMEOUT)
+            out, _ = await asyncio.wait_for(proc.communicate(), HELPER_TIMEOUT)
         except TimeoutError:
             proc.kill()
             await proc.wait()
-            log(f"{argv[0]} hung")
-            return None
-        if proc.returncode:
-            log(f"{argv[0]} exited with {proc.returncode}")
-            return None
+            log(f"{self.cfg.hyprctl} hung")
+            return b""
         return out
 
-    async def focused(self, target):
-        """Keyboard focus follows the mouse, so keys go out only while the
-        dictation's own window has it."""
-        out = await self.call([self.cfg.hyprctl, "-j", "activewindow"])
-        try:
-            return out is not None and json.loads(out).get("address") == target
-        except (ValueError, AttributeError):
-            return False
-
-    async def type_text(self, id, target, text):
-        result = Typed(id, 0)
+    async def press(self, target, keys) -> int:
+        """Press keys in the target window, whichever window has focus and
+        whatever modifiers are held: send_shortcut goes to the window's
+        surface with exactly the mods named and runs no keybind. Returns how
+        many keys Hyprland took, which answers ok for each."""
+        taken = 0
         async with self.keyboard:
-            if await self.focused(target):
-                # On stdin, so the words never show in the process list.
-                done = await self.call([self.cfg.wtype, "-"], text.encode())
-                result = Typed(id, len(text)) if done is not None else TypeFailed(id)
-        self.handle(result)
+            for start in range(0, len(keys), BATCH_KEYS):
+                part = keys[start:start + BATCH_KEYS]
+                ok = (await self.hyprctl(batch(target, part))).split().count(b"ok")
+                taken += ok
+                if ok < len(part):
+                    log(f"Hyprland took {taken} of {len(keys)} keys")
+                    break
+        return taken
+
+    async def type_keys(self, id, target, keys):
+        taken = await self.press(target, keys)
+        self.handle(Typed(id, taken) if taken == len(keys) else TypeFailed(id, taken))
 
     async def erase(self, id, target, count):
-        async with self.keyboard:
-            if await self.focused(target):
-                await self.call([self.cfg.wtype] + ["-k", "BackSpace"] * count)
-        self.handle(Erased(id))
+        self.handle(Erased(id, await self.press(target, (BACKSPACE,) * count)))
 
     def on_audio(self, id, pcm):
         self.decoder.audio(id, pcm)
@@ -1036,7 +1067,6 @@ class Config:
     events: "Path | None"
     recorder: str
     hyprctl: str
-    wtype: str
     engine: str
     model_dir: Path
     venv: Path
@@ -1068,8 +1098,7 @@ def config_from_env(env) -> Config:
     return Config(
         control=control and Path(control), reply=reply and Path(reply), events=events and Path(events),
         recorder=env.get("VOICE_CAPTIONS_RECORDER") or str(home / ".local/libexec/hyprvoice-gpu/pw-record"),
-        hyprctl=env.get("VOICE_CAPTIONS_HYPRCTL") or "hyprctl", wtype=env.get("VOICE_CAPTIONS_WTYPE") or "wtype",
-        engine=engine,
+        hyprctl=env.get("VOICE_CAPTIONS_HYPRCTL") or "hyprctl", engine=engine,
         model_dir=Path(env.get("VOICE_CAPTIONS_MODEL_DIR") or data / "models" / MODEL_NAME),
         venv=data / "venv", limits=limits, fake_load=env.get("VOICE_CAPTIONS_FAKE_LOAD", ""))
 
@@ -1085,7 +1114,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="voice-captions",
         description="Live, offline words for voice dictation.",
-        epilog="Environment: VOICE_CAPTIONS_CONTROL, _REPLY, _EVENTS, _RECORDER, _HYPRCTL, _WTYPE, "
+        epilog="Environment: VOICE_CAPTIONS_CONTROL, _REPLY, _EVENTS, _RECORDER, _HYPRCTL, "
                "_ENGINE (sherpa|fake), _MODEL_DIR, _ARMED_TIMEOUT, _LISTENING_TIMEOUT, _TYPING_TIMEOUT; for install "
                "_PYTHON, _PIP, _CURL.")
     commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")

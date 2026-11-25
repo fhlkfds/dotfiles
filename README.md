@@ -253,12 +253,13 @@ live words cannot work ("Loading speech model…", "No microphone audio",
 "Live captions unavailable"). It runs fully offline: no cloud service, no API
 key, and audio never leaves the machine.
 
-Live words go only to the window that had focus when dictation started.
-Keyboard focus follows the mouse here, so while the pointer is over another
-window nothing is typed, and the words you said meanwhile are typed together
-with the next ones once that window has focus again. A word is typed once the
-recogniser has settled on it. If dictation ends without a stop (Hyprvoice
-fails, or the 10 minute limit passes), the live words stay in the box.
+Live words go only to the window that had focus when dictation started, and
+they keep going there while the pointer is over another window. A word is
+typed once the recogniser has settled on it. Live words are typed as US
+keyboard keys, so a character with no key there (an accented letter, an emoji)
+is left out of the live text; Hyprvoice's final text still has it. If
+dictation ends without a stop (Hyprvoice fails, or the 10 minute limit
+passes), the live words stay in the box.
 
 The `voice-captions` daemon (Stow package `systemd`) records the dictation
 microphone and streams it through the NVIDIA Nemotron Speech Streaming 0.6B
@@ -267,11 +268,17 @@ uses about 0.7 of a CPU core while you talk and about 1.1 GB of memory.
 A word is usually recognised within 0.2 s of you saying it, and within 0.6 s
 nine times in ten. `voice-dictation` reports each phase to it through a FIFO
 with a shell builtin, so the keypress spawns no extra process. The daemon
-types with `wtype` after `hyprctl activewindow` confirms the focused window,
-and sends the phase and microphone level to the Quickshell pill over a unix
-socket. On stop, `voice-dictation` waits for the daemon to answer `erased` on
-a second FIFO before it lets Hyprvoice type. The wait ends after 1.5 s at
-most, and took 3 to 5 ms in the fixture test. The service may only open unix
+types and erases with Hyprland's `send_shortcut` dispatcher, one
+`hyprctl --batch` per group of words. That sends each key straight to the
+window by its address with only the modifiers the daemon names, so a `SUPER`
+still held from the `SUPER+R` that stops dictation cannot turn a typed letter
+into a keybind. If Hyprland refuses a key, live typing ends for that
+dictation and only the keys that landed are erased. The daemon sends the
+phase and microphone level to the Quickshell pill over a unix socket. On
+stop, `voice-dictation` waits for the daemon to answer `erased` on a second
+FIFO before it lets Hyprvoice type. The wait ends after 1.5 s at most.
+Hyprland takes about 10 ms to type or erase 256 keys, even with `SUPER`
+held. The service may only open unix
 sockets (`RestrictAddressFamilies=AF_UNIX`), so the kernel keeps it offline.
 It never logs or stores what you said.
 
