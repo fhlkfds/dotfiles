@@ -183,6 +183,19 @@ no_notify 'oversized'
 [[ -s $FAKE_DIR/stderr ]] || fail 'oversized: expected a stderr note'
 pass 'oversized body shows no card'
 
+for hidden in $'a\rb' $'rm x\bsafe' $'ls \e[8mrm -rf ~' $'echo ‮abc'; do
+  run allow "$(payload_for Bash "$(jq -cn --arg c "$hidden" '{command: $c}')")" claude
+  [[ $status == 0 && -z $out ]] || fail "control character: expected empty for $(printf %q "$hidden")"
+  no_notify 'control character'
+done
+pass 'a command with control characters shows no card'
+
+run allow "$(payload_for exec_command '{"command":"rm -rf build","workdir":"/tmp/other"}')" codex
+read_argv
+i=$(separator_index)
+[[ ${argv[i + 2]} == $'rm -rf build\n\nin /tmp/other' ]] || fail "workdir: body '${argv[i + 2]}'"
+pass 'card names the tool working directory'
+
 LD_LIBRARY_PATH=/nonexistent/lib run allow "$bash_payload" claude
 [[ $(<"$FAKE_DIR/ld") == '<unset>' ]] || fail "LD_LIBRARY_PATH leaked: $(<"$FAKE_DIR/ld")"
 pass 'notify-send does not see LD_LIBRARY_PATH'

@@ -10,6 +10,12 @@ function durationFor(urgency, requested, lowMs, normalMs, maximumMs) {
   return Math.min(maximumMs, Math.max(floor, wanted))
 }
 
+// A critical card counts down only to a deadline its sender owns, so hovering
+// it must not stretch the bar past that deadline.
+function pausesOnHover(urgency) {
+  return Number(urgency) !== 2
+}
+
 function decodeEntities(text) {
   return text
     .replace(/&nbsp;/gi, " ")
@@ -164,6 +170,7 @@ function validEntry(value) {
 if (typeof module !== "undefined") {
   module.exports = {
     durationFor: durationFor,
+    pausesOnHover: pausesOnHover,
     sanitizeBody: sanitizeBody,
     verbatimBody: verbatimBody,
     knownGlyph: knownGlyph,

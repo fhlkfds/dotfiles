@@ -1,6 +1,7 @@
 import Quickshell
 import QtQuick
 import ".."
+import "NotificationLogic.js" as Logic
 
 Item {
   id: root
@@ -83,7 +84,8 @@ Item {
         Timer {
           interval: 50
           repeat: true
-          running: slot.belongsHere && slot.lifetime > 0 && !card.hovered && !slot.closing
+          running: slot.belongsHere && slot.lifetime > 0 && !slot.closing
+                   && !(card.hovered && Logic.pausesOnHover(slot.urgency))
           onRunningChanged: slot.lastTick = Date.now()
           onTriggered: {
             const now = Date.now()

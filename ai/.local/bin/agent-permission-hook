@@ -78,8 +78,16 @@ summary=$(jq -r .summary <<<"$card")
 # The sentinel keeps trailing newlines, which $(...) would strip.
 body=$(jq -j .body <<<"$card"; printf x)
 body=${body%x}
-cwd=$(jq -r '.cwd // "" | strings' <<<"$input")
+cwd=$(jq -r '(.tool_input | objects | .workdir // .cwd) // .cwd // "" | strings' <<<"$input")
 [[ -z $cwd ]] || body+=$'\n\n'"in $cwd"
+
+# Carriage returns, escapes, backspaces and bidi controls can make the card
+# show something other than what runs, so leave such a request to the terminal.
+if jq -Rse 'test("[\u0000-\u0008\u000b-\u001f\u007f\u202a-\u202e\u2066-\u2069]")' \
+  <<<"$body" >/dev/null; then
+  printf 'agent-permission-hook: request has control characters, not shown\n' >&2
+  exit 0
+fi
 
 if (($(printf %s "$body" | wc -c) > max_body)); then
   printf 'agent-permission-hook: request body over %s bytes, not shown\n' "$max_body" >&2

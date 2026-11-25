@@ -958,7 +958,7 @@ Left click invokes the live default action, then falls back to matching
 `desktop-entry`, app name, and icon against Hyprland window classes. Right click
 or the hover close button dismisses. Hover pauses the deadline. Critical cards
 remain until acted on, unless the sender sets an expire time; then they count
-down and expire at that time. Low and normal cards last at least 5 and 8
+down and expire at that time, and hover does not pause them. Low and normal cards last at least 5 and 8
 seconds, with ordinary requests clamped to 30 seconds.
 
 ### State and configuration

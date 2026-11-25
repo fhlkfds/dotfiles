@@ -8,6 +8,9 @@ assert.equal(logic.durationFor(2, 0, 5000, 8000, 30000), 0);
 assert.equal(logic.durationFor(2, -1, 5000, 8000, 30000), 0);
 assert.equal(logic.durationFor(2, 120000, 5000, 8000, 30000), 120000);
 assert.equal(logic.durationFor(2, 1000, 5000, 8000, 30000), 8000);
+assert.equal(logic.pausesOnHover(1), true);
+assert.equal(logic.pausesOnHover(0), true);
+assert.equal(logic.pausesOnHover(2), false);
 
 assert.equal(logic.sanitizeBody("<b>Hello</b><br>world<img src=x>"), "Hello\nworld");
 assert.equal(logic.sanitizeBody("A &amp; B"), "A & B");
