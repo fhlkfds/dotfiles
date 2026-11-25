@@ -371,6 +371,36 @@ The fast.com token is public and hardcoded. Netflix can rotate or restrict it,
 which may make the API return HTTP 403. That is a known fragility of the
 unofficial API, not a script failure.
 
+## Timer
+
+A countdown that shows in the bar, left of the clock, and rings when it ends.
+One timer runs at a time.
+
+- **Keys:** `SUPER+ALT+Z` opens the panel on the focused monitor. Press `Alt+1` to
+  `Alt+4` for the presets (5, 10, 25 and 60 minutes, set in
+  `quickshell/.config/quickshell/timer/config.json`), or type a time and press
+  Enter. Escape, a click outside, `SUPER+ALT+Z` again and `SUPER+Q` close the
+  panel.
+- **Menu:** lmenu (`SUPER+SHIFT+A`), Trigger → Timer: 5, 10, 25 or 60 minutes,
+  or Custom time… to open the panel. Scripts can run
+  `quickshell ipc call timer start 7m30s`.
+- **Time formats:** a bare number is minutes (`10`), `90s`, `7m30s`, `1h`,
+  `1h30m`, or `7:30` for minutes and seconds. The longest is 24 hours.
+- **In the bar:** the pill counts down while it runs. Click it for the panel,
+  where `+1 min` adds a minute and `Cancel` stops it. When time is up it turns
+  red and reads Done. Click it, or open the panel, to clear it.
+- **Do not disturb:** when it ends the shell sends a notification and plays
+  `alarm-clock-elapsed.oga`, unless do-not-disturb is on. Then nothing pops up
+  or plays, and the red Done pill is the only sign.
+- **Restarts:** the end time is saved in
+  `${XDG_STATE_HOME:-~/.local/state}/quickshell/timer.json`, so a reload or
+  suspend does not lose it. A timer that ended while the shell was down shows
+  Done and rings once.
+
+Test it with `bash tests/timer.test.sh`. It runs `node tests/timer.logic.test.js`
+for the state machine, then `TimerSmoke.qml` with a fake clock, so nothing
+notifies or plays a sound.
+
 ## Disk speed test
 
 `disk-speedtest` measures a disk's sequential write, sequential read, and

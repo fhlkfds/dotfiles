@@ -59,6 +59,9 @@ the user sees. Four H2 sections follow, in this order:
 - [Battery panel](./battery-panel.md): the battery icon, the panel it opens,
   the readouts, the power-profile switch, and low-battery alerts. Smokes,
   fixture mode and clicked PNG shots.
+- [Timer](./timer.md): the countdown timer's key, bar pill, panel, alert and
+  do-not-disturb silence, through a smoke and a clicked, typed shot with
+  optional frames.
 - [lmenu](./lmenu.md): the launcher tree, aliases, generated submenus and
   guards, through `lmenu --dry-run` and `--dry-run-display`.
 - [Keybind palette](./keybind-palette.md): the SUPER+K palette's collector,

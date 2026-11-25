@@ -12,6 +12,12 @@ Scope {
     function close() { panelVisible = false; closes += 1 }
   }
   QtObject {
+    id: timer
+    property bool panelVisible: false
+    property int closes: 0
+    function close() { panelVisible = false; closes += 1 }
+  }
+  QtObject {
     id: compositor
     property var requests: []
     function dispatch(request) { requests = requests.concat([request]) }
@@ -19,6 +25,7 @@ Scope {
   CloseWindowShortcut {
     id: shortcut
     modesState: modes
+    timerState: timer
     hyprland: compositor
   }
 
@@ -45,6 +52,11 @@ Scope {
     shortcut.closeWindow()
     check("reopened menu still protects the underlying window",
       !modes.panelVisible && compositor.requests.length === 0)
+    compositor.requests = []
+    timer.panelVisible = true
+    shortcut.closeWindow()
+    check("Super+Q dismisses the timer panel", !timer.panelVisible && timer.closes === 1)
+    check("timer panel keeps the underlying window open", compositor.requests.length === 0)
     console.log(failures === 0 ? "ok: close window shortcut" : "FAIL: close window shortcut")
     Qt.quit()
   }

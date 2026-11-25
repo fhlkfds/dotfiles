@@ -1,0 +1,4 @@
+{
+  "presets": [5, 10, 25, 60],
+  "sound": "/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
+}
