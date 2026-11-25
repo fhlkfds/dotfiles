@@ -44,38 +44,29 @@ case $agent in
   codex) label=Codex ;;
 esac
 
-# Tool-kind table, the one place that knows each tool's shape. Stdin JSON in,
-# {summary, kind, body} out. kind "json" means the body is tool_input itself.
 card_program='
   (.tool_input // {}) as $in
   | .tool_name as $tool
   | if ($tool | IN("Bash", "shell", "exec_command", "local_shell")) then
-      {summary: "\($label) wants to run a command", kind: "text",
+      {summary: "\($label) wants to run a command",
        body: (if ($in | type) == "string" then $in
               else ($in.command // $in.cmd // "")
                    | if type == "array" then @sh else tostring end
               end)}
     elif ($tool | IN("Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch")) then
-      {summary: "\($label) wants to edit a file", kind: "text",
+      {summary: "\($label) wants to edit a file",
        body: (if ($in | type) == "string" then $in
               else ($in.file_path // $in.notebook_path // $in.patch // $in.command // $in.input // "")
               end)}
     else
-      {summary: "\($label) wants to use \($tool)", kind: "json", body: ""}
+      {summary: "\($label) wants to use \($tool)", body: ($in | tojson)}
     end'
 
-# Exactly one of allow | deny | none becomes the agent's reply.
 reply() {
-  local behavior message=
-  case $1 in
-    allow) behavior=allow ;;
-    deny) behavior=deny; message='Denied from the desktop notification.' ;;
-    *) return 0 ;;
-  esac
-  jq -cn --arg behavior "$behavior" --arg message "$message" '
+  jq -cn --arg behavior "$1" '
     {hookSpecificOutput: {hookEventName: "PermissionRequest",
       decision: ({behavior: $behavior}
-        + (if $message == "" then {} else {message: $message} end))}}'
+        + if $behavior == "deny" then {message: "Denied from the desktop notification."} else {} end)}}'
 }
 
 input=$(cat)
@@ -84,13 +75,9 @@ jq -e '.hook_event_name == "PermissionRequest"
 
 card=$(jq -c --arg label "$label" "$card_program" <<<"$input")
 summary=$(jq -r .summary <<<"$card")
-if [[ $(jq -r .kind <<<"$card") == json ]]; then
-  body=$(jq '.tool_input // {}' <<<"$input")
-else
-  # The sentinel keeps trailing newlines, which $(...) would strip.
-  body=$(jq -j .body <<<"$card"; printf x)
-  body=${body%x}
-fi
+# The sentinel keeps trailing newlines, which $(...) would strip.
+body=$(jq -j .body <<<"$card"; printf x)
+body=${body%x}
 cwd=$(jq -r '.cwd // "" | strings' <<<"$input")
 [[ -z $cwd ]] || body+=$'\n\n'"in $cwd"
 
@@ -139,14 +126,7 @@ if read -r -t 5 -u "$from_card" id; then
   fi
 fi
 
-decision=none
 case $action in
-  allow) decision=allow ;;
-  deny) decision=deny ;;
+  allow|deny) reply "$action" ;;
+  *) close_and_exit ;;
 esac
-if [[ $decision == none ]]; then
-  # No click: dismissed, timed out, or notify-send failed. Close what is left.
-  close_and_exit
-fi
-[[ -z ${NS_PID:-} ]] || kill "$NS_PID" 2>/dev/null || true
-reply "$decision"

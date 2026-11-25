@@ -39,7 +39,6 @@ export AGENT_PERMISSION_GDBUS="$test_root/bin/gdbus"
 allow='{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}'
 deny='{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Denied from the desktop notification."}}}'
 
-# run <click> <payload> <hook args...>: sets out and status, resets the fakes.
 run() {
   local click=$1 payload=$2
   shift 2
@@ -50,20 +49,22 @@ run() {
   out=$(FAKE_NOTIFY_CLICK=$click PATH="$test_root/bin:$PATH" "$hook" "$@" <<<"$payload" 2>"$FAKE_DIR/stderr") || status=$?
 }
 
-payload_for() { # tool, tool_input json
-  jq -cn --arg tool "$1" --argjson input "$2" \
+payload_for() {
+  local tool=$1 input=$2
+  jq -cn --arg tool "$tool" --argjson input "$input" \
     '{hook_event_name: "PermissionRequest", tool_name: $tool, tool_input: $input, cwd: "/tmp/p", session_id: "s"}'
 }
 
 read_argv() { mapfile -d '' -t argv <"$FAKE_DIR/argv"; }
-argv_index() { # index of the `--` separator
+separator_index() {
   local i
   for i in "${!argv[@]}"; do [[ ${argv[i]} == -- ]] && { printf '%s' "$i"; return; }; done
   fail 'no -- separator in notify-send argv'
 }
 no_notify() { [[ ! -e $FAKE_DIR/notify-calls ]] || fail "$1: notify-send was called"; }
-check_json() { # name, got, want
-  [[ $(jq -cS . <<<"$2") == "$(jq -cS . <<<"$3")" ]] || fail "$1: got '$2'"
+check_json() {
+  local name=$1 got=$2 want=$3
+  [[ $(jq -cS . <<<"$got") == "$(jq -cS . <<<"$want")" ]] || fail "$name: got '$got'"
 }
 pass() { printf 'ok   %s\n' "$1"; }
 
@@ -124,7 +125,7 @@ command=$'-n <b>&</b> "q" '\''s'\'' $(touch /tmp/pwned) `x`\n  line two > out\\n
 payload=$(payload_for Bash "$(jq -cn --arg c "$command" '{command: $c}')")
 run allow "$payload" claude
 read_argv
-i=$(argv_index)
+i=$(separator_index)
 [[ ${argv[i + 2]} == "$command"$'\n\nin /tmp/p' ]] || fail 'verbatim: body differs'
 [[ ${argv[i + 1]} == 'Claude Code wants to run a command' ]] || fail 'verbatim: summary'
 joined=$(printf '%s\n' "${argv[@]:0:i}")
@@ -138,7 +139,7 @@ pass 'body reaches notify-send verbatim after --'
 payload=$(payload_for exec_command '{"command":["git","commit","-m","a b"]}')
 run allow "$payload" codex
 read_argv
-i=$(argv_index)
+i=$(separator_index)
 want_command="'git' 'commit' '-m' 'a b'"$'\n\nin /tmp/p'
 [[ ${argv[i + 2]} == "$want_command" ]] || fail "argv command: '${argv[i + 2]}'"
 pass 'command array is joined'
@@ -146,13 +147,13 @@ pass 'command array is joined'
 payload=$(payload_for Edit '{"file_path":"/home/x/a.txt","old_string":"a","new_string":"b"}')
 run allow "$payload" claude
 read_argv
-i=$(argv_index)
+i=$(separator_index)
 [[ ${argv[i + 1]} == 'Claude Code wants to edit a file' ]] || fail 'edit: summary'
 [[ ${argv[i + 2]} == "/home/x/a.txt"$'\n\nin /tmp/p' ]] || fail 'edit: body'
 payload=$(payload_for mcp__thing '{"a":1,"b":[2]}')
 run allow "$payload" claude
 read_argv
-i=$(argv_index)
+i=$(separator_index)
 [[ ${argv[i + 1]} == 'Claude Code wants to use mcp__thing' ]] || fail 'unknown tool: summary'
 jq -e '.a == 1 and .b == [2]' <<<"${argv[i + 2]%%$'\n\nin '*}" >/dev/null || fail 'unknown tool: JSON body'
 pass 'edit shows the path, unknown tool shows JSON'
@@ -160,7 +161,7 @@ pass 'edit shows the path, unknown tool shows JSON'
 patch=$'*** Begin Patch\n*** Add File: /tmp/p/new.txt\n+hi\n*** End Patch'
 run allow "$(payload_for apply_patch "$(jq -cn --arg c "$patch" '{command: $c}')")" codex
 read_argv
-i=$(argv_index)
+i=$(separator_index)
 [[ ${argv[i + 1]} == 'Codex wants to edit a file' ]] || fail 'apply_patch: summary'
 [[ ${argv[i + 2]} == "$patch"$'\n\nin /tmp/p' ]] || fail "apply_patch: body '${argv[i + 2]}'"
 pass 'codex apply_patch shows the whole patch'
@@ -187,8 +188,8 @@ LD_LIBRARY_PATH=/nonexistent/lib run allow "$bash_payload" claude
 pass 'notify-send does not see LD_LIBRARY_PATH'
 
 for bad in "" "--bogus claude" "claude codex" "gemini" "--timeout claude" "--timeout 0 claude" "--timeout x claude"; do
-  # shellcheck disable=SC2086
-  run allow "$bash_payload" $bad
+  read -ra bad_args <<<"$bad"
+  run allow "$bash_payload" "${bad_args[@]}"
   [[ $status == 2 ]] || fail "bad args '$bad': exit $status"
 done
 AGENT_PERMISSION_TIMEOUT=abc run allow "$bash_payload" claude

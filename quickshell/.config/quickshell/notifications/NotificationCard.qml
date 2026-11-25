@@ -196,8 +196,6 @@ NotificationBorder {
         maximumLineCount: root.vinyl ? 1 : 2
       }
 
-      // Verbatim body: monospace, never elided or capped. Taller than
-      // verbatimMaxLines scrolls with the mouse wheel.
       Flickable {
         id: verbatimView
         objectName: "notificationBodyVerbatimView"

@@ -3,8 +3,6 @@ function finiteNumber(value, fallback) {
   return isFinite(n) ? n : fallback
 }
 
-// A critical card stays until acted on unless its sender set a time limit,
-// which it then keeps unclamped (agent-permission-hook counts down this way).
 function durationFor(urgency, requested, lowMs, normalMs, maximumMs) {
   var wanted = Math.max(0, finiteNumber(requested, 0))
   if (Number(urgency) === 2) return wanted > 0 ? Math.max(normalMs, wanted) : 0
