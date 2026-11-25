@@ -51,7 +51,7 @@ caption() {
   local fd
   { exec {fd}<>"$captions_control"; } 2>/dev/null || return 0
   if fdflags -s +nonblock "$fd" 2>/dev/null; then
-    printf '%s %s\n' "$caption_id" "$*" 2>/dev/null >&"$fd" || true
+    printf '%s %s\n' "$caption_id" "$*" 1>&"$fd" 2>/dev/null || true
   fi
   exec {fd}>&-
 }
