@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# Answer a coding agent's permission prompt from a desktop notification.
+# Claude Code and Codex both run a PermissionRequest hook with the request as
+# JSON on stdin. This shows the full command in a notification with "Allow
+# once" and "Deny" buttons and prints the agent's reply for the button clicked.
+# Anything else (timeout, dismissal, error, oversized request) prints nothing,
+# which leaves the agent's own terminal prompt in charge: never an approval.
+set -euo pipefail
+
+notify_send=${AGENT_PERMISSION_NOTIFY_SEND:-notify-send}
+gdbus=${AGENT_PERMISSION_GDBUS:-gdbus}
+timeout=${AGENT_PERMISSION_TIMEOUT:-120}
+max_body=${AGENT_PERMISSION_MAX_BODY:-8000}
+dry_run=0
+agent=
+
+usage() {
+  printf 'usage: %s [--dry-run] [--timeout SECONDS] <claude|codex>\n' "${0##*/}"
+}
+
+while (($#)); do
+  case $1 in
+    --dry-run) dry_run=1 ;;
+    --timeout)
+      (($# >= 2)) || { usage >&2; exit 2; }
+      timeout=$2
+      shift
+      ;;
+    -h|--help) usage; exit 0 ;;
+    claude|codex)
+      [[ -z $agent ]] || { usage >&2; exit 2; }
+      agent=$1
+      ;;
+    *) usage >&2; exit 2 ;;
+  esac
+  shift
+done
+[[ -n $agent ]] || { usage >&2; exit 2; }
+[[ $timeout =~ ^[1-9][0-9]*$ ]] || { usage >&2; exit 2; }
+[[ $max_body =~ ^[1-9][0-9]*$ ]] || { usage >&2; exit 2; }
+
+case $agent in
+  claude) label='Claude Code' ;;
+  codex) label=Codex ;;
+esac
+
+# Tool-kind table, the one place that knows each tool's shape. Stdin JSON in,
+# {summary, kind, body} out. kind "json" means the body is tool_input itself.
+card_program='
+  (.tool_input // {}) as $in
+  | .tool_name as $tool
+  | if ($tool | IN("Bash", "shell", "exec_command", "local_shell")) then
+      {summary: "\($label) wants to run a command", kind: "text",
+       body: (if ($in | type) == "string" then $in
+              else ($in.command // $in.cmd // "")
+                   | if type == "array" then @sh else tostring end
+              end)}
+    elif ($tool | IN("Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch")) then
+      {summary: "\($label) wants to edit a file", kind: "text",
+       body: (if ($in | type) == "string" then $in
+              else ($in.file_path // $in.notebook_path // $in.patch // $in.command // $in.input // "")
+              end)}
+    else
+      {summary: "\($label) wants to use \($tool)", kind: "json", body: ""}
+    end'
+
+# Exactly one of allow | deny | none becomes the agent's reply.
+reply() {
+  local behavior message=
+  case $1 in
+    allow) behavior=allow ;;
+    deny) behavior=deny; message='Denied from the desktop notification.' ;;
+    *) return 0 ;;
+  esac
+  jq -cn --arg behavior "$behavior" --arg message "$message" '
+    {hookSpecificOutput: {hookEventName: "PermissionRequest",
+      decision: ({behavior: $behavior}
+        + (if $message == "" then {} else {message: $message} end))}}'
+}
+
+input=$(cat)
+jq -e '.hook_event_name == "PermissionRequest"
+  and (.tool_name | type == "string" and length > 0)' <<<"$input" >/dev/null 2>&1 || exit 0
+
+card=$(jq -c --arg label "$label" "$card_program" <<<"$input")
+summary=$(jq -r .summary <<<"$card")
+if [[ $(jq -r .kind <<<"$card") == json ]]; then
+  body=$(jq '.tool_input // {}' <<<"$input")
+else
+  # The sentinel keeps trailing newlines, which $(...) would strip.
+  body=$(jq -j .body <<<"$card"; printf x)
+  body=${body%x}
+fi
+cwd=$(jq -r '.cwd // "" | strings' <<<"$input")
+[[ -z $cwd ]] || body+=$'\n\n'"in $cwd"
+
+if (($(printf %s "$body" | wc -c) > max_body)); then
+  printf 'agent-permission-hook: request body over %s bytes, not shown\n' "$max_body" >&2
+  exit 0
+fi
+
+argv=(env -u LD_LIBRARY_PATH "$notify_send"
+  --app-name "$label" --urgency critical --print-id
+  --action allow='Allow once' --action deny=Deny
+  --hint boolean:desktop-verbatim:true -- "$summary" "$body")
+
+if ((dry_run)); then
+  printf '%s\n%s\n' "$summary" "$body"
+  printf '%q ' "${argv[@]}"
+  printf '\n'
+  exit 0
+fi
+
+id=
+close_and_exit() {
+  if [[ $id =~ ^[0-9]+$ ]]; then
+    env -u LD_LIBRARY_PATH "$gdbus" call --session \
+      --dest org.freedesktop.Notifications \
+      --object-path /org/freedesktop/Notifications \
+      --method org.freedesktop.Notifications.CloseNotification "$id" \
+      >/dev/null 2>&1 || true
+  fi
+  [[ -z ${NS_PID:-} ]] || kill "$NS_PID" 2>/dev/null || true
+  exit 0
+}
+trap close_and_exit TERM INT HUP
+
+deadline=$((SECONDS + timeout))
+coproc NS { exec "${argv[@]}"; }
+# Fixed FDs: the coproc array is unset once notify-send exits.
+exec {from_card}<&"${NS[0]}"
+
+action=
+if read -r -t 5 -u "$from_card" id; then
+  remaining=$((deadline - SECONDS))
+  if ((remaining > 0)); then
+    read -r -t "$remaining" -u "$from_card" action || action=
+  fi
+fi
+
+decision=none
+case $action in
+  allow) decision=allow ;;
+  deny) decision=deny ;;
+esac
+if [[ $decision == none ]]; then
+  # No click: dismissed, timed out, or notify-send failed. Close what is left.
+  close_and_exit
+fi
+[[ -z ${NS_PID:-} ]] || kill "$NS_PID" 2>/dev/null || true
+reply "$decision"
