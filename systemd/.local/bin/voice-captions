@@ -142,11 +142,6 @@ class StopRecorder:
 
 
 @dataclass(frozen=True)
-class Flush:
-    id: str
-
-
-@dataclass(frozen=True)
 class Publish:
     urgent: bool
 
@@ -198,8 +193,6 @@ def _report(state, report, now, limits):
     effects = []
     if state.phase == "listening":
         effects.append(StopRecorder())
-        if report.id == state.id and report.phase == "typing":
-            effects.append(Flush(report.id))
     if report.id != state.id:
         state = State(id=report.id, engine=state.engine)
     return _enter(state, report.phase, report.source, now, limits, effects)
@@ -361,17 +354,12 @@ class Decoder:
             self._queued += len(pcm)
             self._ready.notify()
 
-    def flush(self, id):
-        with self._ready:
-            self._items.append((id, None))
-            self._ready.notify()
-
     def _next(self):
         with self._ready:
             while not self._items:
                 self._ready.wait()
             id, pcm = self._items.popleft()
-            self._queued -= len(pcm or b"")
+            self._queued -= len(pcm)
             return id, pcm
 
     def _fail(self, error):
@@ -396,7 +384,7 @@ class Decoder:
                 if id != current:
                     engine.reset()
                     current = id
-                updates = engine.feed(pcm) if pcm is not None else engine.flush()
+                updates = engine.feed(pcm)
             except Exception as error:
                 return self._fail(error)
             if updates:
@@ -542,8 +530,6 @@ class Daemon:
                                          lambda: self.handle(RecorderExited(id)))
             case StopRecorder():
                 self.stop_recorder()
-            case Flush(id=id):
-                self.decoder.flush(id)
             case Publish(urgent=urgent):
                 self.publish(urgent)
 

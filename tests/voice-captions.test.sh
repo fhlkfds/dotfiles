@@ -145,7 +145,7 @@ assert all(b.startswith(a) for a, b in zip(committed, committed[1:])), committed
 assert len(set(committed)) >= 3, committed
 assert any(e["tentative"] for e in spoken), "no tentative text was ever shown"
 last = [e for e in events if e["phase"] == "typing"][-1]
-assert last["tentative"] == "" and last["committed"].startswith("word1 word2 word3 "), last
+assert last["committed"].startswith("word1 word2 word3 "), last
 assert events[-1] == {"type": "state", "v": 1, "seq": seqs[-1], "id": "100.1", "phase": "idle",
                       "committed": "", "tentative": "", "note": ""}, events[-1]
 PY
@@ -331,7 +331,7 @@ SH
   sleep 7.5
   report 900 typing
   wait_for "$test_root/real" '"phase":"typing"'
-  # TERM while the final decode runs: onnxruntime must not abort the exit.
+  # TERM while a decode may still run: onnxruntime must not abort the exit.
   stop_daemon
   python3 - "$test_root/real" <<'PY' || fail 'the real engine did not caption the words before typing'
 import json, re, sys

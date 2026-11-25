@@ -37,7 +37,7 @@ def check(name, condition, detail=""):
 
 State, Transcript, Commit, Revise = vc.State, vc.Transcript, vc.Commit, vc.Revise
 Report, Updates, Tick = vc.Report, vc.Updates, vc.Tick
-StartRecorder, StopRecorder, Flush, Publish = vc.StartRecorder, vc.StopRecorder, vc.Flush, vc.Publish
+StartRecorder, StopRecorder, Publish = vc.StartRecorder, vc.StopRecorder, vc.Publish
 URGENT, LATER = Publish(urgent=True), Publish(urgent=False)
 
 INF = float("inf")
@@ -57,14 +57,14 @@ transitions = [
      replace(listening, transcript=Transcript("hello world ", "")), [LATER]),
     ("an update that changes nothing publishes nothing", listening, Updates("10", (Revise("wor"),)), 2,
      listening, []),
-    ("typing stops the recorder and flushes", listening, Report("10", "typing"), 3,
-     replace(listening, phase="typing", deadline=63), [StopRecorder(), Flush("10"), URGENT]),
-    ("flushed words still land while typing", typing, Updates("10", (Commit("wor"), Revise(""))), 4,
+    ("typing stops the recorder", listening, Report("10", "typing"), 3,
+     replace(listening, phase="typing", deadline=63), [StopRecorder(), URGENT]),
+    ("words decoded late still land while typing", typing, Updates("10", (Commit("wor"), Revise(""))), 4,
      replace(typing, transcript=Transcript("hello wor", "")), [LATER]),
     ("idle ends the session and forgets its text", typing, Report("10", "idle"), 5, idle10, [URGENT]),
     ("listening straight to idle stops the recorder", listening, Report("10", "idle"), 5, idle10,
      [StopRecorder(), URGENT]),
-    ("armed to typing never flushes", armed, Report("10", "typing"), 1,
+    ("armed to typing has no recorder to stop", armed, Report("10", "typing"), 1,
      replace(armed, phase="typing", deadline=61), [URGENT]),
     ("a dead recorder notes no-audio and keeps listening", listening, vc.RecorderExited("10"), 6,
      replace(listening, no_audio=True), [URGENT]),
@@ -243,7 +243,7 @@ def run_decoder(load, feed):
 
     def post(inp):
         posted.append(inp)
-        if isinstance(inp, (vc.EngineFailed,)) or (isinstance(inp, Updates) and inp.updates[-1] == Revise("")):
+        if isinstance(inp, (vc.EngineFailed, Updates)):
             done.set()
     decoder = vc.Decoder(load, post)
     feed(decoder)
@@ -252,14 +252,14 @@ def run_decoder(load, feed):
 
 
 posted = run_decoder(lambda: (time.sleep(0.2), vc.FakeEngine())[1],
-                     lambda d: (d.audio("1", b"\0" * (vc.FAKE_WORD_BYTES * 3 // 2)), d.flush("1")))
+                     lambda d: d.audio("1", b"\0" * (vc.FAKE_WORD_BYTES * 3 // 2)))
 folded = Transcript()
 for inp in posted:
     if isinstance(inp, Updates):
         for update in inp.updates:
             folded = folded.apply(update)
 check("decoder: audio queued while loading is decoded after ready",
-      isinstance(posted[0], vc.EngineReady) and folded == Transcript("word1 word2", ""), f"{posted} {folded}")
+      isinstance(posted[0], vc.EngineReady) and folded == Transcript("word1 ", "word2"), f"{posted} {folded}")
 
 
 def broken():
