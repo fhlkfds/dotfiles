@@ -1,0 +1,940 @@
+#!/usr/bin/env python3
+"""Live captions for voice dictation, fully offline.
+
+Hyprvoice has no live text, so this resident daemon runs its own recorder on
+the dictation microphone through a streaming recogniser and publishes the
+caption for the shell to draw. voice-dictation reports each dictation's phase
+into a FIFO with a bash builtin; the daemon answers with whole-state NDJSON
+snapshots on a unix socket. Captions sit outside the dictation path: with the
+daemon down, dictation behaves exactly as before and only the caption is
+missing. Transcript text is never logged or stored.
+"""
+import argparse
+import json
+import math
+import os
+import re
+import signal
+import socket
+import subprocess
+import sys
+import threading
+import time
+from array import array
+from collections import deque
+from dataclasses import dataclass, replace
+from decimal import Decimal
+from pathlib import Path
+
+SAMPLE_RATE = 16000
+BYTES_PER_SECOND = SAMPLE_RATE * 2
+PHASES = ("armed", "listening", "typing", "idle")
+RANK = {phase: rank for rank, phase in enumerate(PHASES)}
+NOTES = ("", "loading", "no-audio", "engine-failed")
+TAIL_CHARS = 600
+PUBLISH_INTERVAL = 0.05
+SUBSCRIBER_BUFFER_MAX = 64 * 1024
+AUDIO_QUEUE_MAX = 60 * BYTES_PER_SECOND
+STOP_GRACE = 0.5
+CONTROL_LINE_MAX = 4096
+FAKE_WORD_BYTES = BYTES_PER_SECOND // 10
+
+SHERPA_VERSION = "2.0.3"
+MODEL_NAME = "sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25"
+MODEL_URL = f"https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/{MODEL_NAME}.tar.bz2"
+MODEL_SHA256 = "78e2b79fcf7271553a74402a76b771b09ea40117a39566a79f52235b23db6358"
+MODEL_FILES = ("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt")
+REQUIREMENTS = f"""\
+sherpa-onnx=={SHERPA_VERSION} \\
+    --hash=sha256:108539bc25cb1dce1cb4699b6ba47a97529f8d409ddca51ffb2aeace7b9796ce \\
+    --hash=sha256:7e2a534057b52ba9a3c7f6c533375b58965e9e4c59c028573190e73d3df2952b \\
+    --hash=sha256:e45a7d3b1e664b8ef684f86d85ef36e33bda75f3649428151d6fb896a75117d7 \\
+    --hash=sha256:fd9ae354b544781399efb3302d5a822627b8be3971ea7671198af490dbb38408 \\
+    --hash=sha256:449cc737d771de3b930d54219bb9c33462f7874e4cbb183fcd3de0951a625f52 \\
+    --hash=sha256:a91aba083eba69b612c2b2fe3c74532958183d4decd3330bea2d567247d6b01c \\
+    --hash=sha256:d659dd277c59318a40fa63e5429ae99be6671d210f6e20d381cb02046f1cfa58 \\
+    --hash=sha256:511d155a1442936eaf9daf2d0b00e89022510502fec7f495a3c5f6c4fb4e4014
+sherpa-onnx-core=={SHERPA_VERSION} \\
+    --hash=sha256:3c4e54ed9ac03ef8cc9b7340dc18a1203017bdd0e4ecc9923562560006d881e0
+"""
+
+
+def log(message):
+    print(f"voice-captions: {message}", file=sys.stderr, flush=True)
+
+
+@dataclass(frozen=True)
+class Report:
+    id: str
+    phase: str
+    source: str = ""
+
+
+REPORT_LINE = re.compile(
+    r"([0-9]{1,20}(?:\.[0-9]{1,9})?) (armed|typing|idle|listening ([A-Za-z0-9_.:-]{1,255}))")
+
+
+def parse_report(line: str) -> "Report | None":
+    match = REPORT_LINE.fullmatch(line)
+    if not match:
+        return None
+    return Report(match[1], match[2].split(" ", 1)[0], match[3] or "")
+
+
+@dataclass(frozen=True)
+class Commit:
+    text: str
+
+
+@dataclass(frozen=True)
+class Revise:
+    text: str
+
+
+@dataclass(frozen=True)
+class Transcript:
+    committed: str = ""
+    tentative: str = ""
+
+    def apply(self, update: "Commit | Revise") -> "Transcript":
+        if isinstance(update, Commit):
+            return Transcript(self.committed + update.text, self.tentative)
+        return Transcript(self.committed, update.text)
+
+
+@dataclass(frozen=True)
+class EngineReady:
+    pass
+
+
+@dataclass(frozen=True)
+class EngineFailed:
+    pass
+
+
+@dataclass(frozen=True)
+class Updates:
+    id: str
+    updates: tuple
+
+
+@dataclass(frozen=True)
+class RecorderExited:
+    id: str
+
+
+@dataclass(frozen=True)
+class Tick:
+    pass
+
+
+@dataclass(frozen=True)
+class StartRecorder:
+    id: str
+    source: str
+
+
+@dataclass(frozen=True)
+class StopRecorder:
+    pass
+
+
+@dataclass(frozen=True)
+class Flush:
+    id: str
+
+
+@dataclass(frozen=True)
+class Publish:
+    urgent: bool
+
+
+@dataclass(frozen=True)
+class State:
+    phase: str = "idle"
+    id: str = ""
+    source: str = ""
+    transcript: Transcript = Transcript()
+    engine: str = "loading"  # loading | ready | failed, for the daemon's lifetime
+    no_audio: bool = False
+    deadline: float = math.inf
+
+
+LIMITS = {"armed": 5.0, "listening": 600.0, "typing": 60.0}
+
+
+def step(state: State, inp, now: float, limits=LIMITS) -> "tuple[State, list]":
+    """The whole session logic. The recorder runs exactly while phase is listening."""
+    match inp:
+        case Report():
+            return _report(state, inp, now, limits)
+        case Updates(id=id) if id == state.id and state.phase in ("listening", "typing"):
+            transcript = state.transcript
+            for update in inp.updates:
+                transcript = transcript.apply(update)
+            if transcript == state.transcript:
+                return state, []
+            return replace(state, transcript=transcript), [Publish(urgent=False)]
+        case RecorderExited(id=id) if id == state.id and state.phase == "listening" and not state.no_audio:
+            return replace(state, no_audio=True), [Publish(urgent=True)]
+        case EngineReady() | EngineFailed():
+            engine = "ready" if isinstance(inp, EngineReady) else "failed"
+            changed = replace(state, engine=engine)
+            return changed, [Publish(urgent=True)] if state.phase != "idle" else []
+        case Tick() if now >= state.deadline:
+            effects = [StopRecorder()] if state.phase == "listening" else []
+            return _enter(state, "idle", "", now, limits, effects)
+    return state, []
+
+
+def _report(state, report, now, limits):
+    """A report states the dictation's phase; anything not newer is a no-op."""
+    if state.id:
+        old, new = Decimal(state.id), Decimal(report.id)
+        if new < old or (new == old and RANK[report.phase] <= RANK[state.phase]):
+            return state, []
+    effects = []
+    if state.phase == "listening":
+        effects.append(StopRecorder())
+        if report.id == state.id and report.phase == "typing":
+            effects.append(Flush(report.id))
+    if report.id != state.id:
+        state = State(id=report.id, engine=state.engine)
+    return _enter(state, report.phase, report.source, now, limits, effects)
+
+
+def _enter(state, phase, source, now, limits, effects):
+    if phase == "listening":
+        effects.append(StartRecorder(state.id, source))
+    if phase == "idle":
+        state = State(id=state.id, engine=state.engine)
+    else:
+        state = replace(state, phase=phase, source=source or state.source,
+                        deadline=now + limits[phase])
+    return state, effects + [Publish(urgent=True)]
+
+
+def note(state: State) -> str:
+    if state.phase == "idle":
+        return ""
+    if state.engine == "failed":
+        return "engine-failed"
+    if state.no_audio:
+        return "no-audio"
+    return "loading" if state.engine == "loading" else ""
+
+
+def tail(text: str, limit: int = TAIL_CHARS) -> str:
+    if len(text) <= limit:
+        return text
+    cut = text[-limit:]
+    if text[-limit - 1].isspace():
+        return cut
+    space = re.search(r"\s", cut)
+    return cut[space.end():] if space else cut
+
+
+def snapshot(state: State, seq: int) -> dict:
+    return {"type": "state", "v": 1, "seq": seq, "id": state.id, "phase": state.phase,
+            "committed": tail(state.transcript.committed),
+            "tentative": tail(state.transcript.tentative), "note": note(state)}
+
+
+def encode(event: dict) -> bytes:
+    return (json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+
+
+class FakeEngine:
+    """Deterministic stand-in for tests: one word per 0.1 s of audio, the
+    unfinished word tentative, so both update kinds are exercised."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self._bytes = 0
+        self._tentative = ""
+
+    def feed(self, pcm):
+        before = self._bytes // FAKE_WORD_BYTES
+        self._bytes += len(pcm)
+        done = self._bytes // FAKE_WORD_BYTES
+        updates = [Commit(f"word{n} ") for n in range(before + 1, done + 1)]
+        tentative = f"word{done + 1}" if self._bytes % FAKE_WORD_BYTES else ""
+        if tentative != self._tentative:
+            updates.append(Revise(tentative))
+            self._tentative = tentative
+        return updates
+
+    def flush(self):
+        if not self._tentative:
+            return []
+        updates = [Commit(self._tentative), Revise("")]
+        self._tentative = ""
+        return updates
+
+
+class SherpaEngine:
+    def __init__(self, model_dir: Path):
+        import sherpa_onnx
+        missing = [name for name in MODEL_FILES if not (model_dir / name).is_file()]
+        if missing:
+            raise FileNotFoundError(f"{model_dir} lacks {', '.join(missing)}")
+        self._recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
+            tokens=str(model_dir / "tokens.txt"), encoder=str(model_dir / "encoder.int8.onnx"),
+            decoder=str(model_dir / "decoder.int8.onnx"), joiner=str(model_dir / "joiner.int8.onnx"),
+            num_threads=2, sample_rate=SAMPLE_RATE, decoding_method="greedy_search")
+        self.reset()
+
+    def reset(self):
+        self._stream = self._recognizer.create_stream()
+        self._text = ""
+        self._odd = b""
+
+    def feed(self, pcm):
+        pcm = self._odd + pcm
+        even = len(pcm) & ~1
+        self._odd = pcm[even:]
+        samples = array("h")
+        samples.frombytes(pcm[:even])
+        self._stream.accept_waveform(SAMPLE_RATE, [sample / 32768 for sample in samples])
+        return self._decode()
+
+    def flush(self):
+        self._stream.accept_waveform(SAMPLE_RATE, [0.0] * int(0.8 * SAMPLE_RATE))
+        self._stream.input_finished()
+        return self._decode()
+
+    def _decode(self):
+        while self._recognizer.is_ready(self._stream):
+            self._recognizer.decode_stream(self._stream)
+        text = self._recognizer.get_result(self._stream)
+        # Nemotron only appends. Were a result ever to differ, adding just the
+        # part past what is already shown still keeps committed from shrinking.
+        if len(text) <= len(self._text):
+            return []
+        new, self._text = text[len(self._text):], text
+        return [Commit(new)]
+
+
+def load_engine(cfg):
+    if cfg.engine == "sherpa":
+        return SherpaEngine(cfg.model_dir)
+    if cfg.fake_load == "fail":
+        raise RuntimeError("fake engine told to fail")
+    time.sleep(float(cfg.fake_load or 0))
+    return FakeEngine()
+
+
+class Decoder:
+    """Owns the engine on one worker thread. It loads the model, then decodes
+    queued audio in order; audio that arrives while loading waits (bounded)."""
+
+    def __init__(self, load, post):
+        self._load, self._post = load, post
+        self._items = deque()
+        self._queued = 0
+        self._failed = False
+        self._ready = threading.Condition()
+        threading.Thread(target=self._run, name="decoder", daemon=True).start()
+
+    def audio(self, id, pcm):
+        with self._ready:
+            if self._failed or self._queued + len(pcm) > AUDIO_QUEUE_MAX:
+                return
+            self._items.append((id, pcm))
+            self._queued += len(pcm)
+            self._ready.notify()
+
+    def flush(self, id):
+        with self._ready:
+            self._items.append((id, None))
+            self._ready.notify()
+
+    def _next(self):
+        with self._ready:
+            while not self._items:
+                self._ready.wait()
+            id, pcm = self._items.popleft()
+            self._queued -= len(pcm or b"")
+            return id, pcm
+
+    def _fail(self, error):
+        log(f"speech engine failed: {type(error).__name__}: {error}")
+        with self._ready:
+            self._failed = True
+            self._items.clear()
+        self._post(EngineFailed())
+
+    def _run(self):
+        started = time.monotonic()
+        try:
+            engine = self._load()
+        except Exception as error:
+            return self._fail(error)
+        log(f"speech engine ready in {time.monotonic() - started:.1f} s")
+        self._post(EngineReady())
+        current = None
+        while True:
+            id, pcm = self._next()
+            try:
+                if id != current:
+                    engine.reset()
+                    current = id
+                updates = engine.feed(pcm) if pcm is not None else engine.flush()
+            except Exception as error:
+                return self._fail(error)
+            if updates:
+                self._post(Updates(id, tuple(updates)))
+
+
+class Recorder:
+    def __init__(self, loop, argv, on_audio, on_exit):
+        self._loop, self._on_audio, self._on_exit = loop, on_audio, on_exit
+        self._fd = None
+        try:
+            # Its own process group, so a wrapper's children die with it.
+            self._proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                          start_new_session=True)
+        except OSError as error:
+            log(f"recorder did not start: {error}")
+            self._proc = None
+            loop.call_soon(on_exit)
+            return
+        self._fd = self._proc.stdout.fileno()
+        os.set_blocking(self._fd, False)
+        loop.add_reader(self._fd, self._read)
+
+    def _read(self):
+        try:
+            data = os.read(self._fd, 65536)
+        except BlockingIOError:
+            return
+        except OSError:
+            data = b""
+        if data:
+            self._on_audio(data)
+            return
+        self.stop()
+        self._on_exit()
+
+    def _release(self):
+        if self._fd is not None:
+            self._loop.remove_reader(self._fd)
+            self._proc.stdout.close()
+            self._fd = None
+
+    def alive(self):
+        return self._proc is not None and self._proc.poll() is None
+
+    def _signal(self, sig):
+        try:
+            os.killpg(self._proc.pid, sig)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+    def stop(self):
+        self._release()
+        if not self.alive():
+            return
+        self._signal(signal.SIGTERM)
+        self._loop.call_later(STOP_GRACE, self._reap)
+
+    def _reap(self):
+        if self._proc.poll() is None:
+            self._signal(signal.SIGKILL)
+            self._proc.wait()
+
+    def stop_now(self):
+        self._release()
+        if not self.alive():
+            return
+        self._signal(signal.SIGTERM)
+        try:
+            self._proc.wait(timeout=STOP_GRACE)
+        except subprocess.TimeoutExpired:
+            self._signal(signal.SIGKILL)
+            self._proc.wait()
+
+
+class Subscriber:
+    """One events reader. Sends never block; a reader that falls too far
+    behind is dropped instead of slowing anyone else."""
+
+    def __init__(self, sock):
+        self.sock = sock
+        self.pending = bytearray()
+
+    def offer(self, line: bytes) -> bool:
+        self.pending += line
+        return self.send()
+
+    def send(self) -> bool:
+        try:
+            while self.pending:
+                del self.pending[:self.sock.send(self.pending)]
+        except BlockingIOError:
+            pass
+        except OSError:
+            return False
+        return len(self.pending) <= SUBSCRIBER_BUFFER_MAX
+
+
+class Daemon:
+    def __init__(self, cfg, loop, control_fd, server):
+        self.cfg, self.loop, self.control_fd, self.server = cfg, loop, control_fd, server
+        self.state = State()
+        self.seq = 0
+        self.subscribers = {}
+        self.recorder = None
+        self.retired = []
+        self.control_buffer = b""
+        self.last_sent = -math.inf
+        self.pending_publish = None
+        self.deadline_timer = None
+        loop.add_reader(control_fd, self.on_control)
+        loop.add_reader(server.fileno(), self.on_accept)
+        self.decoder = Decoder(lambda: load_engine(cfg), self.post)
+
+    def post(self, inp):
+        try:
+            self.loop.call_soon_threadsafe(self.handle, inp)
+        except RuntimeError:
+            pass  # the loop closed while a decode finished
+
+    def handle(self, inp):
+        self.state, effects = step(self.state, inp, self.loop.time(), self.cfg.limits)
+        for effect in effects:
+            self.perform(effect)
+        if self.deadline_timer:
+            self.deadline_timer.cancel()
+            self.deadline_timer = None
+        if self.state.deadline < math.inf:
+            self.deadline_timer = self.loop.call_at(self.state.deadline, self.handle, Tick())
+
+    def perform(self, effect):
+        match effect:
+            case StartRecorder(id=id, source=source):
+                self.stop_recorder()
+                argv = [self.cfg.recorder, "--target", source, "--rate", str(SAMPLE_RATE),
+                        "--channels", "1", "--format", "s16", "-"]
+                self.recorder = Recorder(self.loop, argv,
+                                         lambda pcm: self.decoder.audio(id, pcm),
+                                         lambda: self.handle(RecorderExited(id)))
+            case StopRecorder():
+                self.stop_recorder()
+            case Flush(id=id):
+                self.decoder.flush(id)
+            case Publish(urgent=urgent):
+                self.publish(urgent)
+
+    def stop_recorder(self):
+        if self.recorder:
+            self.recorder.stop()
+            self.retired = [r for r in self.retired if r.alive()] + [self.recorder]
+            self.recorder = None
+
+    def publish(self, urgent):
+        wait = self.last_sent + PUBLISH_INTERVAL - self.loop.time()
+        if urgent or wait <= 0:
+            self.send_now()
+        elif self.pending_publish is None:
+            self.pending_publish = self.loop.call_later(wait, self.send_now)
+
+    def send_now(self):
+        if self.pending_publish:
+            self.pending_publish.cancel()
+            self.pending_publish = None
+        self.last_sent = self.loop.time()
+        self.seq += 1
+        line = encode(snapshot(self.state, self.seq))
+        for fd in list(self.subscribers):
+            self.deliver(fd, line)
+
+    def deliver(self, fd, line=b""):
+        subscriber = self.subscribers[fd]
+        if not subscriber.offer(line):
+            return self.drop(fd)
+        if subscriber.pending:
+            self.loop.add_writer(fd, self.deliver, fd)
+        else:
+            self.loop.remove_writer(fd)
+
+    def on_accept(self):
+        try:
+            conn, _ = self.server.accept()
+        except OSError:
+            return
+        conn.setblocking(False)
+        fd = conn.fileno()
+        self.subscribers[fd] = Subscriber(conn)
+        self.loop.add_reader(fd, self.on_subscriber_readable, fd)
+        self.deliver(fd, encode(snapshot(self.state, self.seq)))
+
+    def on_subscriber_readable(self, fd):
+        try:
+            data = self.subscribers[fd].sock.recv(4096)
+        except BlockingIOError:
+            return
+        except OSError:
+            data = b""
+        if not data:
+            self.drop(fd)
+
+    def drop(self, fd):
+        subscriber = self.subscribers.pop(fd)
+        self.loop.remove_reader(fd)
+        self.loop.remove_writer(fd)
+        subscriber.sock.close()
+
+    def on_control(self):
+        try:
+            data = os.read(self.control_fd, 4096)
+        except BlockingIOError:
+            return
+        *lines, rest = (self.control_buffer + data).split(b"\n")
+        self.control_buffer = rest if len(rest) <= CONTROL_LINE_MAX else b""
+        for line in lines:
+            report = parse_report(line.decode("ascii", "replace"))
+            if report:
+                self.handle(report)
+
+    def close(self):
+        for recorder in self.retired + ([self.recorder] if self.recorder else []):
+            recorder.stop_now()
+        for fd in list(self.subscribers):
+            self.drop(fd)
+        self.server.close()
+        os.close(self.control_fd)
+
+
+def claim_socket_path(path: Path):
+    if not (path.exists() or path.is_symlink()):
+        return
+    probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        probe.connect(str(path))
+    except OSError:
+        path.unlink()
+        return
+    finally:
+        probe.close()
+    raise SystemExit(f"voice-captions: another daemon is serving {path}")
+
+
+def serve(cfg):
+    import asyncio
+    if cfg.control is None:
+        raise SystemExit("voice-captions: XDG_RUNTIME_DIR is not set")
+    os.umask(0o077)
+    for path in (cfg.control, cfg.events):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    claim_socket_path(cfg.events)
+    if cfg.control.exists() or cfg.control.is_symlink():
+        cfg.control.unlink()
+    os.mkfifo(cfg.control, 0o600)
+    # Read-write, so the daemon never sees EOF between writers.
+    control_fd = os.open(cfg.control, os.O_RDWR | os.O_NONBLOCK)
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(str(cfg.events))
+    os.chmod(cfg.events, 0o600)
+    server.listen(16)
+    server.setblocking(False)
+    loop = asyncio.new_event_loop()
+    daemon = Daemon(cfg, loop, control_fd, server)
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        loop.add_signal_handler(sig, loop.stop)
+    log(f"listening on {cfg.control} and {cfg.events}")
+    try:
+        loop.run_forever()
+    finally:
+        daemon.close()
+        for path in (cfg.events, cfg.control):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+        loop.close()
+    # Skip interpreter teardown: the decoder thread may still be inside
+    # onnxruntime, which aborts the process when Python finalizes under it.
+    sys.stderr.flush()
+    os._exit(0)
+
+
+def watch(cfg, until_phase, until_note, timeout):
+    if cfg.events is None:
+        raise SystemExit("voice-captions: XDG_RUNTIME_DIR is not set")
+    deadline = time.monotonic() + timeout if timeout else None
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.connect(str(cfg.events))
+    except OSError as error:
+        log(f"cannot connect to {cfg.events}: {error.strerror}")
+        return 1
+    buffer = b""
+    while True:
+        if deadline is not None:
+            sock.settimeout(max(deadline - time.monotonic(), 0.001))
+        try:
+            data = sock.recv(65536)
+        except TimeoutError:
+            log("timed out")
+            return 1
+        if not data:
+            log("the daemon closed the connection")
+            return 1
+        *lines, buffer = (buffer + data).split(b"\n")
+        for line in lines:
+            sys.stdout.buffer.write(line + b"\n")
+            sys.stdout.flush()
+            if until_phase is None and until_note is None:
+                continue
+            event = json.loads(line)
+            if ((until_phase is None or event.get("phase") == until_phase)
+                    and (until_note is None or event.get("note") == until_note)):
+                return 0
+
+
+def status(cfg):
+    running = None
+    if cfg.events is not None:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        try:
+            sock.connect(str(cfg.events))
+            running = json.loads(sock.makefile("rb").readline())
+        except (OSError, ValueError):
+            pass
+        finally:
+            sock.close()
+    control = cfg.control is not None and cfg.control.is_fifo()
+    print(f"daemon={'running' if running else 'stopped'}")
+    if running:
+        print(f"phase={running.get('phase')}\nnote={running.get('note')}")
+    print(f"control={cfg.control} ({'present' if control else 'absent'})")
+    print(f"venv={cfg.venv} ({'present' if venv_ready(cfg.venv) else 'missing'})")
+    print(f"model={cfg.model_dir} ({'present' if model_ready(cfg.model_dir) else 'missing'})")
+    return 0
+
+
+def selftest(cfg):
+    """Decode the model's own sample through the live adapter."""
+    import wave
+    engine = load_engine(cfg)
+    wav = cfg.model_dir / "test_wavs" / "0.wav"
+    expected = next(line.split(None, 1)[1]
+                    for line in (cfg.model_dir / "test_wavs" / "trans.txt").read_text().splitlines()
+                    if line.startswith("0.wav "))
+    with wave.open(str(wav)) as audio:
+        if (audio.getnchannels(), audio.getsampwidth(), audio.getframerate()) != (1, 2, SAMPLE_RATE):
+            log(f"{wav} is not 16 kHz mono s16")
+            return 1
+        pcm = audio.readframes(audio.getnframes())
+    transcript = Transcript()
+    chunk = BYTES_PER_SECOND // 10
+    for start in range(0, len(pcm), chunk):
+        for update in engine.feed(pcm[start:start + chunk]):
+            transcript = transcript.apply(update)
+    for update in engine.flush():
+        transcript = transcript.apply(update)
+    words = lambda text: " ".join(re.sub(r"[^a-z0-9' ]+", " ", text.lower()).split())
+    heard, want = words(transcript.committed + transcript.tentative), words(expected).split()[:5]
+    if " ".join(want) not in heard:
+        log(f"self-test failed: expected {' '.join(want)!r}, heard {heard!r}")
+        return 1
+    print("self-test passed")
+    return 0
+
+
+def venv_ready(venv: Path) -> bool:
+    site = list(venv.glob("lib/python3*/site-packages"))
+    return (venv / "bin" / "python").exists() and any(
+        (s / f"sherpa_onnx-{SHERPA_VERSION}.dist-info").is_dir()
+        and (s / f"sherpa_onnx_core-{SHERPA_VERSION}.dist-info").is_dir() for s in site)
+
+
+def model_ready(model_dir: Path) -> bool:
+    return all((model_dir / name).is_file() for name in MODEL_FILES + ("test_wavs/0.wav", "test_wavs/trans.txt"))
+
+
+class InstallError(Exception):
+    pass
+
+
+def run(argv, **kwargs):
+    try:
+        result = subprocess.run(argv, **kwargs)
+    except OSError as error:
+        raise InstallError(f"{argv[0]}: {error.strerror}") from None
+    if result.returncode != 0:
+        raise InstallError(f"{' '.join(map(str, argv[:3]))} … exited with {result.returncode}")
+
+
+def sha256(path: Path) -> str:
+    import hashlib
+    digest = hashlib.sha256()
+    with open(path, "rb") as file:
+        while chunk := file.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def fetch_model(curl, model_dir: Path):
+    import shutil
+    import tarfile
+    import tempfile
+    model_dir.parent.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix=".voice-captions-", dir=model_dir.parent))
+    try:
+        archive = work / "model.tar.bz2"
+        run([curl, "-fL", "--proto", "=https", "--retry", "2", "-o", str(archive), MODEL_URL],
+            stdin=subprocess.DEVNULL)
+        actual = sha256(archive)
+        if actual != MODEL_SHA256:
+            raise InstallError(f"the model archive has sha256 {actual}, expected {MODEL_SHA256}; "
+                               "refusing to unpack it")
+        with tarfile.open(archive, "r:bz2") as tar:
+            tar.extractall(work / "unpacked", filter="data")
+        unpacked = work / "unpacked" / MODEL_NAME
+        if not model_ready(unpacked):
+            raise InstallError(f"the archive has no complete {MODEL_NAME}/")
+        os.rename(unpacked, model_dir)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def install(cfg, env, dry_run):
+    import tempfile
+    python = env.get("VOICE_CAPTIONS_PYTHON", "python3")
+    curl = env.get("VOICE_CAPTIONS_CURL", "curl")
+    venv_python = cfg.venv / "bin" / "python"
+    pip = [env["VOICE_CAPTIONS_PIP"]] if env.get("VOICE_CAPTIONS_PIP") else [str(venv_python), "-m", "pip"]
+    pip_args = ["install", "--require-hashes", "--only-binary=:all:", "--no-input",
+                "--disable-pip-version-check", "-r"]
+    would = "would " if dry_run else ""
+    try:
+        if venv_python.exists():
+            print(f"venv: {cfg.venv} exists")
+        else:
+            print(f"venv: {would}run {python} -m venv {cfg.venv}")
+            if not dry_run:
+                run([python, "-m", "venv", str(cfg.venv)], stdin=subprocess.DEVNULL)
+
+        if venv_ready(cfg.venv):
+            print(f"sherpa-onnx: {SHERPA_VERSION} already installed")
+        else:
+            print(f"sherpa-onnx: {would}run {' '.join(pip + pip_args)} <requirements>, with:")
+            print("  " + REQUIREMENTS.rstrip().replace("\n", "\n  "))
+            if not dry_run:
+                with tempfile.NamedTemporaryFile("w", suffix=".txt", prefix="voice-captions-") as reqs:
+                    reqs.write(REQUIREMENTS)
+                    reqs.flush()
+                    run(pip + pip_args + [reqs.name], stdin=subprocess.DEVNULL)
+
+        if model_ready(cfg.model_dir):
+            print(f"model: {cfg.model_dir} exists")
+        else:
+            print(f"model: {would}download {MODEL_URL} to a temporary file,\n"
+                  f"  check its sha256 is {MODEL_SHA256} before unpacking,\n"
+                  f"  and move the unpacked model to {cfg.model_dir}")
+            if not dry_run:
+                fetch_model(curl, cfg.model_dir)
+
+        print(f"self-test: {would}decode {cfg.model_dir}/test_wavs/0.wav and compare it with trans.txt")
+        if not dry_run:
+            run([str(venv_python), str(Path(__file__).resolve()), "selftest"],
+                env={**env, "VOICE_CAPTIONS_ENGINE": "sherpa",
+                     "VOICE_CAPTIONS_MODEL_DIR": str(cfg.model_dir)},
+                stdin=subprocess.DEVNULL)
+    except InstallError as error:
+        log(str(error))
+        return 1
+    print("\nNothing was enabled or started. To turn live captions on:\n"
+          "  dots deploy\n"
+          "  systemctl --user daemon-reload\n"
+          "  systemctl --user enable --now voice-captions.service")
+    return 0
+
+
+@dataclass(frozen=True)
+class Config:
+    control: "Path | None"
+    events: "Path | None"
+    recorder: str
+    engine: str
+    model_dir: Path
+    venv: Path
+    limits: dict
+    fake_load: str
+
+
+def config_from_env(env) -> Config:
+    home = Path(env.get("HOME") or Path.home())
+    data = Path(env.get("XDG_DATA_HOME") or home / ".local/share") / "voice-captions"
+    runtime = Path(env["XDG_RUNTIME_DIR"]) / "voice-captions" if env.get("XDG_RUNTIME_DIR") else None
+    control = env.get("VOICE_CAPTIONS_CONTROL") or (runtime and runtime / "control")
+    events = env.get("VOICE_CAPTIONS_EVENTS") or (runtime and runtime / "events.sock")
+    engine = env.get("VOICE_CAPTIONS_ENGINE", "sherpa")
+    if engine not in ("sherpa", "fake"):
+        raise ValueError(f"VOICE_CAPTIONS_ENGINE must be sherpa or fake, not {engine!r}")
+    limits = {}
+    for phase, default in LIMITS.items():
+        name = f"VOICE_CAPTIONS_{phase.upper()}_TIMEOUT"
+        try:
+            limits[phase] = float(env.get(name, default))
+        except ValueError:
+            raise ValueError(f"{name} must be a number of seconds") from None
+        if not limits[phase] > 0:
+            raise ValueError(f"{name} must be positive")
+    return Config(
+        control=control and Path(control), events=events and Path(events),
+        recorder=env.get("VOICE_CAPTIONS_RECORDER") or str(home / ".local/libexec/hyprvoice-gpu/pw-record"),
+        engine=engine,
+        model_dir=Path(env.get("VOICE_CAPTIONS_MODEL_DIR") or data / "models" / MODEL_NAME),
+        venv=data / "venv", limits=limits, fake_load=env.get("VOICE_CAPTIONS_FAKE_LOAD", ""))
+
+
+def positive_seconds(text):
+    value = float(text)
+    if not value > 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return value
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="voice-captions",
+        description="Live, offline captions for voice dictation.",
+        epilog="Environment: VOICE_CAPTIONS_CONTROL, _EVENTS, _RECORDER, _ENGINE (sherpa|fake), "
+               "_MODEL_DIR, _ARMED_TIMEOUT, _LISTENING_TIMEOUT, _TYPING_TIMEOUT; for install "
+               "_PYTHON, _PIP, _CURL.")
+    commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
+    commands.add_parser("serve", help="run the caption daemon")
+    watch_parser = commands.add_parser("watch", help="print caption events as they arrive")
+    watch_parser.add_argument("--until-phase", choices=PHASES, help="exit 0 after an event in this phase")
+    watch_parser.add_argument("--until-note", choices=NOTES, help="exit 0 after an event with this note")
+    watch_parser.add_argument("--timeout", type=positive_seconds, help="exit 1 after this many seconds")
+    install_parser = commands.add_parser("install", help="install the engine and model; enables nothing")
+    install_parser.add_argument("--dry-run", action="store_true", help="print each step, change nothing")
+    commands.add_parser("status", help="show whether the daemon, venv and model are there")
+    commands.add_parser("selftest", help="decode the model's sample and check the words")
+    args = parser.parse_args(argv)
+    try:
+        cfg = config_from_env(os.environ)
+    except ValueError as error:
+        parser.error(str(error))
+    match args.command:
+        case "serve":
+            return serve(cfg)
+        case "watch":
+            return watch(cfg, args.until_phase, args.until_note, args.timeout)
+        case "install":
+            return install(cfg, os.environ, args.dry_run)
+        case "status":
+            return status(cfg)
+        case "selftest":
+            return selftest(cfg)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
