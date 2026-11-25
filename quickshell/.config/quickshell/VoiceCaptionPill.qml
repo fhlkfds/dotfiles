@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Layouts
 
 // The caption pill. Takes its state as a property so the smoke can load it
 // with a fake; VoiceCaptionPopup passes the VoiceCaptionState singleton. The
@@ -11,8 +10,6 @@ Rectangle {
   readonly property real targetOpacity: caption.visible ? Theme.surfaceOpacity : 0
   readonly property bool dimmed: caption.phase === "typing"
 
-  implicitWidth: Math.min(content.implicitWidth, Theme.fs(720)) + Theme.gapL * 2
-  implicitHeight: content.implicitHeight + Theme.gapM * 2
   radius: Math.min(height / 2, Theme.fs(22))
   color: Theme.background
   border.width: Math.max(1, Theme.borderWidth)
@@ -41,28 +38,52 @@ Rectangle {
     return out
   }
 
-  RowLayout {
-    id: content
-    anchors.centerIn: parent
-    width: Math.min(implicitWidth, Theme.fs(720))
-    spacing: Theme.gapM
+  // Plain bindings rather than a layout, so sizes settle without a window
+  // polish pass and the headless smoke sees the real geometry.
+  readonly property real maxWordsWidth: Theme.fs(720) - glyph.implicitWidth - Theme.gapM
 
-    Text {
-      Layout.alignment: Qt.AlignTop
-      text: String.fromCodePoint(0xf036c) // md-microphone
-      color: Theme.accent
-      font.family: Theme.glyphFamily
-      font.pixelSize: Theme.fs(22)
-    }
+  implicitWidth: Theme.gapL * 2 + glyph.implicitWidth + Theme.gapM + wordWindow.width
+  implicitHeight: Theme.gapM * 2 + Math.max(glyph.implicitHeight, wordWindow.height)
+
+  Text {
+    id: glyph
+    x: Theme.gapL
+    y: Theme.gapM
+    text: String.fromCodePoint(0xf036c) // md-microphone
+    color: Theme.accent
+    font.family: Theme.glyphFamily
+    font.pixelSize: Theme.fs(22)
+  }
+
+  Text {
+    id: natural
+    visible: false
+    text: pill.markup
+    textFormat: Text.StyledText
+    font: words.font
+  }
+
+  FontMetrics { id: metrics; font: words.font }
+
+  // Newest words stay visible: the text wraps freely and is pinned to the
+  // bottom of a two-line window, so older lines scroll off the top.
+  Item {
+    id: wordWindow
+    objectName: "captionWindow"
+    x: glyph.x + glyph.implicitWidth + Theme.gapM
+    y: Theme.gapM
+    width: Math.min(natural.implicitWidth, pill.maxWordsWidth)
+    height: Math.min(words.implicitHeight, metrics.lineSpacing * 2)
+    clip: true
 
     Text {
       id: words
-      Layout.fillWidth: true
-      Layout.maximumWidth: Theme.fs(720) - Theme.fs(22) - Theme.gapM
+      objectName: "captionWords"
+      width: parent.width
+      anchors.bottom: parent.bottom
       text: pill.markup
       textFormat: Text.StyledText
       wrapMode: Text.WordWrap
-      maximumLineCount: 2
       opacity: pill.dimmed ? 0.5 : 1
       font.family: Theme.uiFamily
       font.pixelSize: Theme.fs(18)

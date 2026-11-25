@@ -8,6 +8,15 @@ Scope {
   id: smoke
   property int failures: 0
 
+  function findByName(item, name) {
+    if (item.objectName === name) return item
+    for (let i = 0; i < item.children.length; ++i) {
+      const hit = findByName(item.children[i], name)
+      if (hit) return hit
+    }
+    return null
+  }
+
   function check(name, condition) {
     if (condition) console.log("ok   " + name)
     else { console.log("FAIL " + name); ++smoke.failures }
@@ -69,6 +78,14 @@ Scope {
     show(caption(state))
     check("long text keeps the newest words", fake.settled.endsWith("keeps growing"))
     check("long text elides the head", fake.settled.startsWith("…") && fake.settled.indexOf("quick") < 0)
+
+    // Layout, not just markup: a full 150-character tail must still show its
+    // last words inside the two-line window.
+    fake.settled = "…" + "word ".repeat(28) + "newest"
+    const win = findByName(pill, "captionWindow"), words = findByName(pill, "captionWords")
+    check("the caption window is at most two lines", win !== null && words !== null && words.lineCount > 2 && win.height < words.height)
+    check("the newest line is inside the window", win !== null && words !== null && Math.abs(words.y + words.height - win.height) < 1)
+    show(caption(state))
 
     state = VoiceCaptionLogic.receive(state, line(4, "typing", long))
     show(caption(state))
