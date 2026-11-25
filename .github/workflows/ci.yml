@@ -139,7 +139,8 @@ jobs:
                   if line.startswith('skip:') or 'skipped=' in line:
                       skipped.append(f'{label}: {line}')
                       # Hyprvoice is AUR-only, so its real-daemon test cannot run here.
-                      if not re.search(r'quickshell|Wayland|docker|hyprvoice not installed',
+                      # The live-captions speech model is a 460 MB download.
+                      if not re.search(r'quickshell|Wayland|docker|hyprvoice not installed|real speech model',
                                        line, re.IGNORECASE):
                           unexpected_skip = True
               if result.returncode or unexpected_skip:
