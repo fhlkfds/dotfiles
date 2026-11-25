@@ -12,6 +12,8 @@ Scope {
   // Likewise for Bluetooth device low-battery alerts.
   readonly property var bluetoothState: BluetoothState
   readonly property var osdState: OsdState
+  // Restores a running timer and ticks it even when no bar pill is on screen.
+  readonly property var timerState: TimerState
 
   // Wallpaper transitions. Declared first: its Bottom-layer windows must be
   // created before the desktop widgets so the widgets stack above it.
