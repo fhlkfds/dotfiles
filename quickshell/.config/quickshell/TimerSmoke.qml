@@ -152,11 +152,30 @@ Scope {
     check("restoring the saved done timer never alerts again", smoke.alerts() === 1)
     TimerState.dismiss()
 
+    smoke.launched = []
+    const beforeDeferred = smoke.savedText()
+    TimerState.restoreFrom(past, true)
+    check("a deferred alert waits", TimerState.phase === "done" && smoke.alerts() === 0)
+    check("and saves nothing until it runs, so a reload in the wait alerts again", smoke.savedText() === beforeDeferred)
+    TimerState.firePendingAlert()
+    check("the deferred alert fires once", smoke.alerts() === 1 && smoke.savedState().notified === true)
+    TimerState.firePendingAlert()
+    check("and only once", smoke.alerts() === 1)
+    TimerState.dismiss()
+
+    smoke.launched = []
+    TimerState.restoreFrom(past, true)
+    TimerState.dismiss()
+    TimerState.startText("5")
+    TimerState.firePendingAlert()
+    check("a deferred alert for a dismissed timer never fires", smoke.alerts() === 0 && TimerState.phase === "running")
+    TimerState.cancel()
+
     TimerState.startText("90s")
     const running = smoke.savedText()
     smoke.advance(30000)
     TimerState.restoreFrom(running)
-    check("a timer with time left restores running", TimerState.phase === "running" && icon.label === "1:00" && smoke.alerts() === 1)
+    check("a timer with time left restores running", TimerState.phase === "running" && icon.label === "1:00" && smoke.alerts() === 0)
     TimerState.restoreFrom("{ not json")
     check("a bad file restores idle", TimerState.phase === "idle" && !icon.visible)
     TimerState.cancel()

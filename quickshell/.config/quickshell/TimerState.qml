@@ -100,12 +100,21 @@ Singleton {
     root.now = time
     const result = TimerLogic.restore(text, time)
     root.current = result.state
-    const alerts = result.effects.indexOf("alert") >= 0
-    runEffects(result.effects.filter(effect => effect !== "alert" || !deferAlert), result.state)
-    if (alerts && deferAlert) {
-      lateAlert.durationMs = result.state.durationMs
-      lateAlert.start()
+    if (deferAlert && result.effects.indexOf("alert") >= 0) {
+      // Saved only when the alert runs, so a reload inside the wait alerts again.
+      lateAlert.endsAt = result.state.endsAt
+      lateAlert.restart()
+      return
     }
+    runEffects(result.effects, result.state)
+  }
+
+  // The alert restoreFrom deferred, if that same timer is still the one ringing.
+  function firePendingAlert() {
+    const endsAt = lateAlert.endsAt
+    lateAlert.endsAt = 0
+    if (root.current.phase === "done" && root.current.endsAt === endsAt)
+      runEffects(["persist", "alert"], root.current)
   }
 
   FileView {
@@ -130,9 +139,9 @@ Singleton {
 
   Timer {
     id: lateAlert
-    property real durationMs: 0
+    property real endsAt: 0
     interval: 2000
-    onTriggered: root.alert(durationMs)
+    onTriggered: root.firePendingAlert()
   }
 
   Component.onCompleted: restoreFrom(stateFile.text(), true)
