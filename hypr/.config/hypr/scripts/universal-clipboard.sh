@@ -14,8 +14,6 @@
 
 set -uo pipefail
 
-# Terminal classification lives in lib/terminals.sh -- the single place it is
-# defined, shared with files-here.sh.
 scripts_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=lib/terminals.sh
 source "$scripts_dir/lib/terminals.sh"

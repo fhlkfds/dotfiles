@@ -13,8 +13,7 @@ Themed regreet login screen. This package only holds the two files `theme set
 | `.gitkeep` | — | yes, so the directory exists before the first `theme set` |
 
 Edit the templates or `hypr/.config/hypr/theme/generate.py`, never these two
-generated files directly -- exactly the same rule as `hyprlock/colors.conf`,
-`swaync/style.css` etc.
+generated files directly -- exactly the same rule as `hyprlock/colors.conf`.
 
 ## Setup
 

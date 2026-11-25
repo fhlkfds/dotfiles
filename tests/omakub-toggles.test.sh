@@ -151,9 +151,7 @@ CURRENT_ACTIVE_OPACITY=1 CURRENT_INACTIVE_OPACITY=1 CURRENT_FULLSCREEN_OPACITY=1
 [[ ! -e "$test_root/state/hyprland-desktop/opacity-defaults.json" ]] ||
   fail 'a complete transparency toggle cycle left stale state'
 
-if grep -Eq 'opacity.*override' \
-  "$repo_root/hypr/.config/hypr/conf/window_rules.lua" \
-  "$repo_root/hypr/.config/hypr/conf/windows-rules.conf"; then
+if grep -Eq 'opacity.*override' "$repo_root/hypr/.config/hypr/conf/window_rules.lua"; then
   fail 'an application-specific rule can override the global transparency toggle'
 fi
 

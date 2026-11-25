@@ -35,8 +35,6 @@ notify() {
 }
 
 # notify_error <message>
-# Confirmations for something the user just did should surface even under Do Not
-# Disturb -- the same reasoning night-light.sh and dnd.sh already use.
 notify_error() {
   notify "$CAPTURE_APP" "$1" -u critical -h boolean:swaync-bypass-dnd:true
 }

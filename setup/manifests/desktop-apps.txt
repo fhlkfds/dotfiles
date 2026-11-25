@@ -1,6 +1,5 @@
 firefox
 chromium
-thunar
 file-roller
 fastfetch
 btop

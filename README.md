@@ -42,8 +42,7 @@ contents into `~`.
 
 ```bash
 stow ai browser cliphist fastfetch greeter hypr hyprlock kitty modes \
-     menu quickshell rofi screensaver security ssh swaync systemd tmux windows \
-     wofi xdg zsh
+     menu quickshell rofi screensaver security ssh systemd windows xdg zsh
 ```
 
 **Or deploy packages individually:**
@@ -56,14 +55,11 @@ stow security    # ~/.local/bin/yubikey-auth, safe YubiKey PAM setup/addition;
                  # ~/.local/bin/fingerprint-auth, laptop fingerprint sign-in;
                  # ~/.config/gnupg-conf gpg/gpg-agent examples
 stow ssh         # ~/.local/bin/sshpersist, SSH keepalive config fragment
-stow tmux        # ~/.config/tmux/tmux.conf for local tmux behavior
 stow browser     # Chromium extensions, flags, and native messaging hosts
 stow hypr        # ~/.config/hypr
 stow hyprlock    # ~/.config/hyprlock
 stow kitty       # ~/.config/kitty
 stow rofi        # ~/.config/rofi
-stow wofi        # ~/.config/wofi
-stow swaync      # ~/.config/swaync
 stow fastfetch   # ~/.config/fastfetch
 stow menu        # ~/.config/lmenu, ~/.local/bin/lmenu
 stow quickshell  # ~/.config/quickshell
@@ -76,8 +72,7 @@ stow zsh         # ~/.zshrc, ~/.p10k.zsh (see Shell setup below)
 ## Persistent SSH sessions
 
 The `sshpersist` launcher provides reconnecting SSH sessions through autossh and
-tmux on the remote host. The local `tmux` package only configures local tmux
-behavior.
+tmux on the remote host.
 Install the required Arch packages without changing any configuration:
 
 ```bash
@@ -525,8 +520,8 @@ Selection priority is `--agent`, then `AI_AGENT_DEFAULT`, then the config file.
 Setup > Defaults > Coding agent in lmenu rewrites that file, offering only the
 agents that are installed, plus every installed [web app](#web-apps). A web app
 is stored as `default_agent=webapp:<id>` (for example `webapp:chatgpt`) and
-opens in its own window through `webapp-launch`; it takes no agent arguments. The same menu sets the default browser, editor,
-terminal, and file manager.
+opens in its own window through `webapp-launch`; it takes no agent arguments. The same menu sets the default browser, editor
+and terminal.
 Invalid names and unavailable executables fail clearly; the launcher never
 silently switches to another agent.
 
@@ -829,8 +824,6 @@ Each theme consistently updates:
 - **Zsh / Powerlevel10k** — prompt colours via generated `current-theme.zsh`
 - **Hyprlock** — lock screen colours
 - **Quickshell notifications** — cards, gradients, borders, countdown and radius
-- **SwayNC** — rollback notification CSS (not the active backend)
-- **Wofi** — launcher CSS
 - **Noctalia** — shell colour scheme
 - **Fastfetch** — section key colours
 - **Neovim** — generated colorscheme, with a stable `current` alias
@@ -847,7 +840,7 @@ The theme system requires:
 - `python3` (3.11+, for `tomllib`)
 - `rofi` — theme selection menu
 
-Optional (for live reload or rollback):
+Optional (for live reload):
 
 - `hyprctl` — reloads Hyprland decorations
 - `kitty` — live-applies colours to running terminals
@@ -856,7 +849,6 @@ Optional (for live reload or rollback):
   system-aware applications
 - `t3` — selects the generated `dotfiles-desktop` environment theme in T3 Code;
   without the CLI, select that theme once under Settings > Appearance
-- `swaync` / `swaync-client` — only needed when using the rollback backend
 
 ### Switching Manually
 
@@ -930,7 +922,7 @@ focused monitor.
 |---|---|
 | `Super+,` | dismiss newest visible card |
 | `Super+Shift+,` | dismiss all visible cards |
-| `Super+Ctrl+,` | toggle persistent DND |
+| `Super+D` | toggle persistent DND |
 | `Super+Alt+,` | invoke/focus newest card |
 | `Super+Shift+Alt+,` | replay the newest 10 history entries |
 
@@ -1023,14 +1015,6 @@ python3 -m unittest discover -s quickshell/.config/quickshell/notifications/test
 node quickshell/.config/quickshell/notifications/tests/notification_logic.test.js
 theme validate --all
 ```
-
-The `systemd` package masks `swaync.service` so D-Bus cannot start SwayNC at
-login and take the notification service before Quickshell registers. For
-rollback, remove that mask (`rm ~/.config/systemd/user/swaync.service`, then
-`systemctl --user daemon-reload`), stop Quickshell, start `swaync.service`, and
-restore the two former comma bindings to `~/.config/hypr/scripts/dnd.sh`. The
-SwayNC package and theme template remain in the repository; no notification
-data is shared between the two backends.
 
 ---
 
@@ -1173,12 +1157,9 @@ top-right stack. Validate with `bash tests/bar-center.test.sh`.
 | `hyprlock` | [Hyprlock](https://github.com/hyprwm/hyprlock) | Lock screen with music widget, weather, and multiple layouts |
 | `kitty` | [Kitty](https://sw.kovidgoyal.net/kitty/) | Terminal emulator with generated theme palette |
 | `rofi` | [Rofi](https://github.com/davatorium/rofi) | App launcher with generated colour theme on comet-glass layout |
-| `wofi` | [Wofi](https://hg.sr.ht/~scoopta/wofi) | Wayland-native app launcher with themed colors |
-| `swaync` | [SwayNC](https://github.com/ErikReider/SwayNotificationCenter) | Optional rollback notification backend |
 | `fastfetch` | [Fastfetch](https://github.com/fastfetch-cli/fastfetch) | System info with themed key colors |
 | `zsh` | Zsh | Shell config — `.zshrc` and `.p10k.zsh`; Oh My Zsh itself is installed separately |
 | `ssh` | autossh | Reconnecting SSH launcher and opt-in client keepalive fragment |
-| `tmux` | tmux | Persistent remote-session defaults |
 
 ---
 
@@ -1187,9 +1168,8 @@ top-right stack. Validate with `bash tests/bar-center.test.sh`.
 **Core:**
 - `hyprland`, `hyprlock`, `hypridle`
 - `kitty`
-- `rofi`, `wofi`
+- `rofi`
 - `quickshell`
-- `swaync` (optional rollback backend)
 - `fastfetch`
 
 **Scripts:** the packages in `setup/manifests/scripts.txt`, which `dots deploy`

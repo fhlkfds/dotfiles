@@ -124,7 +124,6 @@ matches the target:
 - Write a `description`: it is the label in the `SUPER+K` palette. Its wording
   must match a rule in the ranking list in `keybinds-collector`, which
   `KeybindsState.qml` repeats identically, or it sorts last.
-- Mirror it in `conf/keybinding.conf`, the compatibility copy.
 - Run `python3 tests/keybinds-collector.test.py`, then add the row to the doc
   that lists the other keybindings.
 

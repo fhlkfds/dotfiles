@@ -38,21 +38,4 @@ for _, device in ipairs({ "ydotoold-virtual-device", "hl-virtual-keyboard-wtype"
 end
 LUA
 
-# The retained legacy entry point needs the same device gate.
-python3 - "$repo_root/hypr/.config/hypr/conf/keybinding.conf" <<'PY'
-from pathlib import Path
-import re
-import sys
-
-text = Path(sys.argv[1]).read_text()
-assert 'bindd = $mainMod, R, voice dictation, exec, $scriptsDir/voice-dictation toggle' in text
-devices = {}
-for body in re.findall(r"(?m)^device\s*\{([^}]+)\}", text):
-    name = re.search(r"(?m)^\s*name\s*=\s*(\S+)", body)
-    if name:
-        devices[name[1]] = body
-for name in ("ydotoold-virtual-device", "hl-virtual-keyboard-wtype", "hl-virtual-keyboard"):
-    assert re.search(r"(?m)^\s*keybinds\s*=\s*false\s*$", devices.get(name, "")), name
-PY
-
 printf 'voice dictation keyboard isolation: ok\n'

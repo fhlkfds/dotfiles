@@ -5,7 +5,6 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 script=${VOICE_DICTATION_SCRIPT:-"$repo_root/hypr/.config/hypr/scripts/voice-dictation"}
 menu="$repo_root/menu/.config/lmenu/menu.jsonc"
 lua="$repo_root/hypr/.config/hypr/conf/keybindings.lua"
-legacy="$repo_root/hypr/.config/hypr/conf/keybinding.conf"
 test_root=$(mktemp -d -t voice-dictation-test.XXXXXX)
 trap 'rm -rf "$test_root"' EXIT
 
@@ -746,7 +745,6 @@ HOME="$test_root/home" LMENU_MENU="$test_root/home/menu/menu.jsonc" LMENU_EXTENS
 export HYPRVOICE_CONFIG=$hyprvoice_config
 
 grep -Fq 'cfg.scripts_dir .. "/voice-dictation toggle"' "$lua" || fail 'Lua binding bypasses microphone resolution'
-grep -Fq "exec, \$scriptsDir/voice-dictation toggle" "$legacy" || fail 'legacy binding bypasses microphone resolution'
 grep -Fq 'setup.voice-dictation' "$menu" || fail 'Setup menu lacks voice dictation settings'
 
 printf 'voice dictation: ok\n'

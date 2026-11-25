@@ -49,14 +49,8 @@ class AuditTests(unittest.TestCase):
             line = next(l for l in (HYPR / "conf/keybindings.lua").read_text().splitlines()
                         if l.startswith(f'exec("{key}"'))
             self.assertIn("locked = true", line)
-        legacy = (HYPR / "conf/keybinding.conf").read_text().splitlines()
-        for key in ("XF86AudioRaiseVolume", "XF86AudioLowerVolume", "XF86AudioMute"):
-            lines = [l for l in legacy if l.startswith("bind") and f", {key}," in l]
-            self.assertEqual(1, len(lines))
-            self.assertIn("l", lines[0].split(" =")[0][4:])
-        close = next(l for l in legacy if l.startswith("bind") and "close all windows" in l)
-        self.assertEqual(["CTRL ALT", "Delete", "close all windows", "exec"],
-                         [s.strip() for s in close.split("=", 1)[1].split(",")[:4]])
+        close = next(r for r in rows if r["description"] == "close all windows")
+        self.assertEqual((12, "Delete"), (close["modmask"], close["key"]))
 
     def test_setup_is_never_a_stow_package(self):
         repo = self.tmp / "repo"

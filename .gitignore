@@ -7,7 +7,6 @@
 # generator and templates in hypr/.config/hypr/theme/. Everything below is
 # derived from those by `theme set <slug>`, so it is not tracked -- a fresh
 # clone runs `theme set <slug>` once to materialise it.
-hypr/.config/hypr/conf/decorations.conf
 hypr/.config/hypr/conf/decorations.lua
 hypr/.config/hypr/themes/.active/
 hypr/.config/hypr/themes/current-theme
@@ -17,8 +16,6 @@ rofi/.config/rofi/current-theme.rasi
 rofi/.config/rofi/powermenu/theme.rasi
 hyprlock/.config/hyprlock/colors.conf
 hyprlock/.config/hyprlock/layouts/colors.conf
-swaync/.config/swaync/style.css
-wofi/.config/wofi/style.css
 greeter/.config/greeter/greeter.css
 greeter/.config/greeter/regreet.toml
 neovim/.config/nvim/colors/*.lua

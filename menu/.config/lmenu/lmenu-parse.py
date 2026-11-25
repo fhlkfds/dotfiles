@@ -47,7 +47,6 @@ CRUMB_SEP = " / "  # joins the menu names above a nested search row
 DEFAULT_APP_PROVIDERS = {
     "default-browser": "browser",
     "default-terminal": "terminal",
-    "default-file-manager": "file-manager",
     "default-editor": "editor",
     "default-agent": "agent",
 }

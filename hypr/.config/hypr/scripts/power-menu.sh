@@ -14,12 +14,10 @@ pick() {
     else
       printf '%s\n' "$options" | rofi -dmenu -i -no-custom -p "$prompt" -theme "$theme" -u '1'
     fi
-  elif command -v wofi >/dev/null 2>&1; then
-    printf '%s\n' "$options" | wofi --dmenu --prompt "$prompt"
   elif command -v bemenu >/dev/null 2>&1; then
     printf '%s\n' "$options" | bemenu -p "$prompt"
   else
-    printf 'No launcher found. Install fuzzel, rofi, wofi, or bemenu.\n' >&2
+    printf 'No launcher found. Install fuzzel, rofi or bemenu.\n' >&2
     exit 1
   fi
 }

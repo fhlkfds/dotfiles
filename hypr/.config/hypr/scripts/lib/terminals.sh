@@ -4,8 +4,6 @@
 # This is the ONLY place terminal classification lives. Add new terminals to
 # TERMINAL_CLASSES below and every consumer picks them up.
 #
-# Consumers: universal-clipboard.sh, files-here.sh
-#
 # This file is sourced, never executed -- it defines data and one function and
 # deliberately has no side effects.
 

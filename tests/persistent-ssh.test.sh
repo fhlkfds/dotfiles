@@ -4,7 +4,6 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 launcher="$repo_root/ssh/.local/bin/sshpersist"
 ssh_fragment="$repo_root/ssh/.config/ssh/conf.d/autossh.conf"
-tmux_config="$repo_root/tmux/.config/tmux/tmux.conf"
 zsh_config="$repo_root/zsh/.zshrc"
 test_root=$(mktemp -d -t persistent-ssh.XXXXXX)
 trap 'rm -rf -- "$test_root"' EXIT
@@ -69,10 +68,9 @@ assert_contains "$zsh_config" "alias sshp='sshpersist'"
 assert_contains "$ssh_fragment" 'ServerAliveInterval 15'
 assert_contains "$ssh_fragment" 'ServerAliveCountMax 3'
 assert_contains "$ssh_fragment" 'ConnectTimeout 10'
-assert_contains "$tmux_config" 'set-option -g detach-on-destroy off'
 
 if grep -ERiq -- '(IdentityFile|id_(rsa|dsa|ecdsa|ed25519)|/home/[^/]+/\.ssh)' \
-  "$launcher" "$ssh_fragment" "$tmux_config"; then
+  "$launcher" "$ssh_fragment"; then
   fail 'persistent SSH files contain a hardcoded key path'
 fi
 
