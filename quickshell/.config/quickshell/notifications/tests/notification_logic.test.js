@@ -41,6 +41,25 @@ assert.deepEqual(JSON.parse(screenshot.actionsJson), [
 ]);
 assert.ok(logic.updateRoles().includes("actionsJson"));
 
+assert.ok(logic.updateRoles().includes("verbatim"));
+
+const command = 'sort < in > out && echo "&amp;"\n\n\n  indented\r\nlast  ';
+const verbatim = logic.snapshotOf({id: 1, body: command, hints: {"desktop-verbatim": true}}, 1, "DP-1");
+assert.equal(verbatim.verbatim, true);
+assert.equal(verbatim.body, 'sort < in > out && echo "&amp;"\n\n\n  indented\nlast  ');
+assert.equal(logic.snapshotOf({id: 1, body: "a\r\nb", hints: {"desktop-verbatim": true}}, 1, "").body, "a\nb");
+const plain = logic.snapshotOf({id: 1, body: command, hints: {}}, 1, "DP-1");
+assert.equal(plain.verbatim, false);
+assert.equal(plain.body, 'sort  out && echo "&"\n  indented\nlast');
+for (const hints of [undefined, {}, {"desktop-verbatim": false}, {"desktop-verbatim": "false"}]) {
+  const entry = logic.snapshotOf({id: 1, body: "<b>x</b>", hints: hints}, 1, "");
+  assert.equal(entry.verbatim, false);
+  assert.equal(entry.body, "x");
+}
+assert.equal(logic.snapshotOf({id: 1, body: "x".repeat(9000), hints: {"desktop-verbatim": true}}, 1, "").body.length, 8192);
+assert.equal(logic.snapshotOf({id: 1, body: "x".repeat(9000)}, 1, "").body.length, 8192);
+assert.equal(logic.replacementSnapshot({id: 1, body: "a < b", hints: {"desktop-verbatim": true}}, verbatim).body, "a < b");
+
 assert.equal(logic.shouldBypassDnd({appName: "Slack", hints: {"swaync-bypass-dnd": true}}, ["Capture"]), false);
 assert.equal(logic.shouldBypassDnd({appName: "Capture", hints: {"swaync-bypass-dnd": true}}, ["Capture"]), true);
 assert.equal(logic.shouldBypassDnd({appName: "Capture", hints: {}}, ["Capture"]), false);

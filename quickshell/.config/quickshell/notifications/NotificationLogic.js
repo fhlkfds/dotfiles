@@ -26,7 +26,13 @@ function sanitizeBody(value) {
   text = text.replace(/<br\s*\/?>/gi, "\n")
   text = text.replace(/<\/p\s*>/gi, "\n")
   text = text.replace(/<[^>]+>/g, "")
-  return decodeEntities(text).replace(/\r\n?|\n{3,}/g, "\n").trim().slice(0, 8192)
+  return decodeEntities(text).replace(/\r\n?|\n{3,}/g, "\n").trim().slice(0, BODY_LIMIT)
+}
+
+var BODY_LIMIT = 8192
+
+function verbatimBody(value) {
+  return String(value || "").replace(/\r\n?/g, "\n").slice(0, BODY_LIMIT)
 }
 
 function stringHint(hints, name) {
@@ -36,6 +42,11 @@ function stringHint(hints, name) {
   } catch (e) {
     return ""
   }
+}
+
+function wantsVerbatim(notification) {
+  var value = stringHint(notification && notification.hints, "desktop-verbatim")
+  return value === "true" || value === "1"
 }
 
 function knownGlyph(notification) {
@@ -62,7 +73,8 @@ function snapshotOf(notification, timestamp, screenName) {
     desktopEntry: String(n.desktopEntry || ""),
     appIcon: String(n.appIcon || ""),
     summary: String(n.summary || "").slice(0, 2048),
-    body: sanitizeBody(n.body),
+    body: wantsVerbatim(n) ? verbatimBody(n.body) : sanitizeBody(n.body),
+    verbatim: wantsVerbatim(n),
     image: String(n.image || ""),
     actionsJson: JSON.stringify(Array.prototype.filter.call(n.actions || [], function(action) {
       return action && action.identifier !== "default"
@@ -83,7 +95,7 @@ function snapshotOf(notification, timestamp, screenName) {
 }
 
 var UPDATE_ROLES = ["app", "desktopEntry", "appIcon", "summary", "body", "image", "actionsJson",
-                    "glyph", "urgency", "expireTimeout"]
+                    "verbatim", "glyph", "urgency", "expireTimeout"]
 
 function replacementSnapshot(notification, old) {
   var next = snapshotOf(notification, old.timestamp, old.screenName)
@@ -153,6 +165,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     durationFor: durationFor,
     sanitizeBody: sanitizeBody,
+    verbatimBody: verbatimBody,
     knownGlyph: knownGlyph,
     snapshotOf: snapshotOf,
     replacementSnapshot: replacementSnapshot,

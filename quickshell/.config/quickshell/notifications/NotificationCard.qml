@@ -16,6 +16,7 @@ NotificationBorder {
   property string appIcon: ""
   property string summary: ""
   property string body: ""
+  property bool verbatim: false
   property string image: ""
   property string actionsJson: "[]"
   readonly property var actionItems: {
@@ -36,12 +37,14 @@ NotificationBorder {
   readonly property string iconSource: resolveIcon(iconValue)
   readonly property string badgeGlyph: glyph.length > 0 ? glyph : "󰂚"
   readonly property bool vinyl: Logic.isMediaNotification(app, iconSource)
+  readonly property bool verbatimBody: verbatim && !vinyl && body.length > 0
   readonly property var bodyLines: body.split("\n")
   readonly property string trackTitle: vinyl ? bodyLines[0] : ""
   readonly property string trackDetail: vinyl ? bodyLines.slice(1).join(" ") : ""
   readonly property int padX: Theme.fs(NotificationConfig.sidePadding)
   readonly property int padY: Theme.fs(NotificationConfig.multiLinePadding)
   readonly property color accent: urgency === 2 ? Theme.critical : Theme.notificationCountdown
+  readonly property int verbatimMaxLines: 14
   property real nowMs: Date.now()
 
   signal closeRequested()
@@ -193,9 +196,43 @@ NotificationBorder {
         maximumLineCount: root.vinyl ? 1 : 2
       }
 
-      Text {
+      // Verbatim body: monospace, never elided or capped. Taller than
+      // verbatimMaxLines scrolls with the mouse wheel.
+      Flickable {
+        id: verbatimView
+        objectName: "notificationBodyVerbatimView"
         Layout.fillWidth: true
-        visible: text.length > 0
+        Layout.preferredHeight: Math.min(verbatimText.implicitHeight,
+                                         verbatimMetrics.lineSpacing * root.verbatimMaxLines)
+        visible: root.verbatimBody
+        clip: true
+        contentWidth: width
+        contentHeight: verbatimText.implicitHeight
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: contentHeight > height
+
+        FontMetrics {
+          id: verbatimMetrics
+          font: verbatimText.font
+        }
+
+        Text {
+          id: verbatimText
+          objectName: "notificationBodyVerbatim"
+          width: verbatimView.width
+          text: root.verbatimBody ? root.body : ""
+          textFormat: Text.PlainText
+          color: Theme.notificationBodyText
+          font.family: Theme.glyphFamily
+          font.pixelSize: Theme.fs(12.5)
+          wrapMode: Text.WrapAnywhere
+        }
+      }
+
+      Text {
+        objectName: "notificationBody"
+        Layout.fillWidth: true
+        visible: !root.verbatimBody && text.length > 0
         text: root.vinyl ? root.trackDetail : root.body
         textFormat: Text.PlainText
         color: Theme.notificationBodyText

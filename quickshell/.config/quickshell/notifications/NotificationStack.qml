@@ -34,6 +34,7 @@ Item {
         required property string appIcon
         required property string summary
         required property string body
+        required property bool verbatim
         required property string image
         required property string actionsJson
         required property string glyph
@@ -108,6 +109,7 @@ Item {
           appIcon: slot.appIcon
           summary: slot.summary
           body: slot.body
+          verbatim: slot.verbatim
           image: slot.image
           actionsJson: slot.actionsJson
           glyph: slot.glyph
