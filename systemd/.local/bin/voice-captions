@@ -904,7 +904,8 @@ class Config:
 
 def config_from_env(env) -> Config:
     home = Path(env.get("HOME") or Path.home())
-    data = Path(env.get("XDG_DATA_HOME") or home / ".local/share") / "voice-captions"
+    # Fixed, not XDG_DATA_HOME: the service unit and the menu guards name this path too.
+    data = home / ".local/share" / "voice-captions"
     runtime = Path(env["XDG_RUNTIME_DIR"]) / "voice-captions" if env.get("XDG_RUNTIME_DIR") else None
     control = env.get("VOICE_CAPTIONS_CONTROL") or (runtime and runtime / "control")
     events = env.get("VOICE_CAPTIONS_EVENTS") or (runtime and runtime / "events.sock")

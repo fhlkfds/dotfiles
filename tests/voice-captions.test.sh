@@ -32,7 +32,9 @@ fail() {
 python3 -c 'import ast, sys; ast.parse(open(sys.argv[1]).read())' "$vc" || fail 'voice-captions does not parse'
 
 export HOME=$test_root/home XDG_RUNTIME_DIR=$test_root/run
-export XDG_DATA_HOME=$HOME/.local/share PYTHONDONTWRITEBYTECODE=1
+# A decoy: the venv and model live in ~/.local/share whatever XDG_DATA_HOME says,
+# because the service unit and the menu guards name that path.
+export XDG_DATA_HOME=$HOME/decoy-data PYTHONDONTWRITEBYTECODE=1
 export VOICE_CAPTIONS_ENGINE=fake VOICE_CAPTIONS_RECORDER=$test_root/bin/recorder
 export RECORDER_LOG=$test_root/recorder.log
 mkdir -p "$HOME" "$XDG_RUNTIME_DIR" "$test_root/bin"
@@ -244,7 +246,7 @@ before=$(tree)
 env "${install_env[@]}" python3 "$vc" install --dry-run >"$test_root/dry-run" || fail 'install --dry-run failed'
 [[ ! -e $calls ]] || fail "install --dry-run ran: $(<"$calls")"
 [[ $(tree) == "$before" ]] || fail 'install --dry-run changed files'
-for expected in "-m venv $XDG_DATA_HOME/voice-captions/venv" 'install --require-hashes' 'sherpa-onnx==2.0.3' \
+for expected in "-m venv $HOME/.local/share/voice-captions/venv" 'install --require-hashes' 'sherpa-onnx==2.0.3' \
   'sherpa-onnx-core==2.0.3' 'sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25.tar.bz2' \
   '78e2b79fcf7271553a74402a76b771b09ea40117a39566a79f52235b23db6358 before unpacking' 'test_wavs/0.wav' \
   'systemctl --user enable --now voice-captions.service'; do
@@ -285,8 +287,8 @@ env "${install_env[@]}" INSTALL_CALLS="$calls" FIXTURE_ARCHIVE="$test_root/fixtu
 [[ $status == 1 ]] || fail "a wrong-checksum install exited $status: $(<"$test_root/install.out")"
 grep -Fq 'refusing to unpack' "$test_root/install.out" || fail 'the checksum refusal was not explained'
 [[ -z $(find "$HOME" -name unpacked-marker) ]] || fail 'a wrong-checksum archive was unpacked'
-[[ ! -e $XDG_DATA_HOME/voice-captions/models/$model ]] || fail 'a wrong-checksum model was moved into place'
-[[ -z $(find "$XDG_DATA_HOME/voice-captions/models" -mindepth 1) ]] || fail 'install left temporary files'
+[[ ! -e $HOME/.local/share/voice-captions/models/$model ]] || fail 'a wrong-checksum model was moved into place'
+[[ -z $(find "$HOME/.local/share/voice-captions/models" -mindepth 1) ]] || fail 'install left temporary files'
 grep -q '^pip install --require-hashes .* -r ' "$calls" || fail "pip ran without --require-hashes: $(<"$calls")"
 [[ $(grep -c -- '--hash=sha256:' "$calls.requirements") == 9 ]] || fail 'pip did not get all nine hashes'
 ! grep -q '^venv-python\|^systemctl' "$calls" || fail "install ran the self-test or systemctl after a refusal: $(<"$calls")"
@@ -341,5 +343,10 @@ PY
 else
   printf 'skip: real speech model (set VOICE_CAPTIONS_REAL_MODEL_DIR and VOICE_CAPTIONS_PYTHON)\n'
 fi
+
+# Hyprland sessions here never reach graphical-session.target, so login starts
+# the service from autostart, and only when the menu enabled it.
+grep -Fq 'systemctl --user -q is-enabled voice-captions.service && systemctl --user start --no-block voice-captions.service' \
+  "$repo_root/hypr/.config/hypr/conf/autostart.lua" || fail 'login does not start enabled live captions'
 
 printf 'voice captions: ok\n'

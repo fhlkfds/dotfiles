@@ -24,7 +24,9 @@ target_file=${VOICE_DICTATION_TARGET:-"${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOM
 paused_media_file="$target_file.media"
 started_file="$target_file.started"
 captions_control=${VOICE_CAPTIONS_CONTROL:-"${XDG_RUNTIME_DIR:-/nonexistent}/voice-captions/control"}
+fdflags_loadable=${VOICE_DICTATION_FDFLAGS:-/usr/lib/bash/fdflags}
 caption_id=
+caption_writer=
 
 resolved_source=
 resolved_label=
@@ -35,11 +37,23 @@ valid_name() { [[ $1 =~ ^[[:alnum:]_.:-]+$ ]]; }
 
 # Report the dictation phase to the voice-captions daemon: armed, listening
 # SOURCE, typing or idle. Builtins only, so it adds no process to the keypress
-# path. A FIFO opened read-write never blocks, and with no daemon holding it
-# the line is dropped.
+# path. A FIFO opened read-write never blocks on open, and with no daemon
+# holding it the line is dropped. A write still blocks once a stuck daemon lets
+# the 64 KiB buffer fill, so bash's loadable fdflags makes it nonblocking and a
+# full FIFO drops the report. Without fdflags, captions stay off.
 caption() {
   [[ -n $caption_id && -p $captions_control ]] || return 0
-  printf '%s %s\n' "$caption_id" "$*" 2>/dev/null 1<>"$captions_control" || true
+  if [[ -z $caption_writer ]]; then
+    caption_writer=off
+    enable -f "$fdflags_loadable" fdflags 2>/dev/null && caption_writer=on
+  fi
+  [[ $caption_writer == on ]] || return 0
+  local fd
+  { exec {fd}<>"$captions_control"; } 2>/dev/null || return 0
+  if fdflags -s +nonblock "$fd" 2>/dev/null; then
+    printf '%s %s\n' "$caption_id" "$*" 2>/dev/null >&"$fd" || true
+  fi
+  exec {fd}>&-
 }
 
 mode() {

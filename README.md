@@ -274,7 +274,8 @@ voice-captions watch               # print caption events as they arrive
 ```
 
 The install downloads about 460 MB once. After that, "Live captions" in the
-same menu turns the service on and off. If the daemon is stopped or broken,
+same menu turns the service on and off. Hyprland's autostart starts it at
+login while it is enabled. If the daemon is stopped or broken,
 dictation works exactly as before, just without the caption.
 
 Validate with `bash tests/hyprvoice-gpu.test.sh`,

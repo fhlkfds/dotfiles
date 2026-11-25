@@ -750,6 +750,10 @@ export HYPRVOICE_CONFIG=$hyprvoice_config
 "$script" use-source alsa_input.webcam
 captions=$test_root/captions
 mkfifo "$captions"
+export VOICE_DICTATION_FDFLAGS=${VOICE_DICTATION_FDFLAGS:-/usr/lib/bash/fdflags}
+if ! bash -c 'enable -f "$1" fdflags' _ "$VOICE_DICTATION_FDFLAGS" 2>/dev/null; then
+  printf 'skip: bash fdflags loadable not installed, caption reports not checked\n'
+else
 exec 7<>"$captions"
 reports() {
   local line
@@ -807,7 +811,24 @@ printf transcribing >"$HYPRVOICE_STATE"
 printf '%s\n' 43.5 >"$VOICE_DICTATION_TARGET.started"
 VOICE_CAPTIONS_CONTROL=$captions HYPRVOICE_TOGGLE_FAIL=1 "$script" toggle 2>/dev/null || true
 [[ -z $(reports) ]] || fail 'a stop that left Hyprvoice listening reported a phase'
+
+# A daemon that stops reading lets the FIFO fill; reports are then dropped
+# instead of blocking the keypress.
+python3 -c '
+import fcntl, os
+fcntl.fcntl(7, fcntl.F_SETFL, os.O_NONBLOCK)
+try:
+    while True: os.write(7, b"x" * 4096)
+except BlockingIOError:
+    pass
+'
+printf idle >"$HYPRVOICE_STATE"
+status=0
+VOICE_CAPTIONS_CONTROL=$captions HYPR_ACTIVE=0xaaa timeout 5 "$script" toggle >"$test_root/full.out" 2>&1 || status=$?
+[[ $status == 0 ]] || fail "dictation with a full captions FIFO exited $status (124 means it hung)"
+cmp -s "$test_root/full.out" "$test_root/with.start.out" || fail 'a full captions FIFO changed what dictation prints'
 exec 7>&-
+fi
 
 [[ $(VOICE_CAPTIONS_CONTROL=$captions "$script" toggle --dry-run | tail -n1) == captions=on ]] ||
   fail 'dry-run does not say captions are on'
