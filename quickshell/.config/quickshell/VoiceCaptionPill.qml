@@ -26,18 +26,18 @@ Rectangle {
     function h(v) { return ("0" + Math.round(v * 255).toString(16)).slice(-2) }
     return "#" + h(c.r) + h(c.g) + h(c.b)
   }
-  function escape(s) {
+  function escapeMarkup(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
   }
   readonly property string markup: {
     const c = caption
     let out = ""
     if (c.settled !== "")
-      out += "<font color=\"" + hex(Theme.foregroundBright) + "\">" + escape(c.settled) + "</font>"
+      out += "<font color=\"" + hex(Theme.foregroundBright) + "\">" + escapeMarkup(c.settled) + "</font>"
     if (c.pending !== "")
-      out += "<font color=\"" + hex(Theme.textMuted) + "\">" + escape(c.pending) + "</font>"
+      out += "<font color=\"" + hex(Theme.textMuted) + "\">" + escapeMarkup(c.pending) + "</font>"
     if (c.hint !== "")
-      out += (out !== "" ? " " : "") + "<font color=\"" + hex(Theme.textMuted) + "\">" + escape(c.hint) + "</font>"
+      out += (out !== "" ? " " : "") + "<font color=\"" + hex(Theme.textMuted) + "\">" + escapeMarkup(c.hint) + "</font>"
     return out
   }
 
