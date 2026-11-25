@@ -40,8 +40,8 @@ chmod 700 "$XDG_RUNTIME_DIR"
 fifo=$XDG_RUNTIME_DIR/voice-captions/control
 events=$XDG_RUNTIME_DIR/voice-captions/events.sock
 
-# Half a fake word per write, so the tentative tail is exercised too. It
-# outlives a closed pipe, so only the daemon's signals can stop it.
+# Half a fake word per write, so the tentative tail is exercised too, at a
+# steady -18 dBFS. It outlives a closed pipe, so only the daemon's signals can stop it.
 cat >"$test_root/bin/recorder" <<'SH'
 #!/usr/bin/env bash
 printf '%s %s\n' "$$" "$*" >>"$RECORDER_LOG"
@@ -49,7 +49,7 @@ exec python3 -c '
 import sys, time
 while True:
     try:
-        sys.stdout.buffer.write(bytes(1600))
+        sys.stdout.buffer.write(b"\x00\x10" * 800)
         sys.stdout.buffer.flush()
     except OSError:
         pass
@@ -126,7 +126,12 @@ report 100.1 idle
 wait_for "$test_root/session" '"id":"100.1","phase":"idle"'
 python3 - "$test_root/session" <<'PY' || fail 'the session events are wrong'
 import json, sys
-events = [json.loads(line) for line in open(sys.argv[1])]
+everything = [json.loads(line) for line in open(sys.argv[1])]
+typing_at = next(i for i, e in enumerate(everything) if e.get("phase") == "typing")
+levels = [e for e in everything[:typing_at] if e["type"] == "level"]
+assert levels and all(e == {"type": "level", "v": 1, "id": "100.1", "level": 0.7} for e in levels), levels
+assert not [e for e in everything[typing_at:] if e["type"] == "level"], "a level was sent after typing"
+events = [e for e in everything if e["type"] == "state"]
 seqs = [e["seq"] for e in events]
 assert all(a < b for a, b in zip(seqs, seqs[1:])), seqs
 phases = [e["phase"] for e in events]
@@ -205,7 +210,7 @@ wait_for "$test_root/loading" '"committed":"word1 word2 word3 word4 word5 word6 
 report 600 idle
 python3 - "$test_root/loading" <<'PY' || fail 'a stale socket was not replaced, or audio recorded while loading was lost'
 import json, sys
-events = [json.loads(line) for line in open(sys.argv[1])]
+events = [e for e in map(json.loads, open(sys.argv[1])) if e["type"] == "state"]
 assert any(e["phase"] == "listening" and e["note"] == "loading" for e in events), "loading was never noted"
 first = next(e["committed"] for e in events if e["committed"])
 assert len(first.split()) >= 6, f"the first words after loading were {first!r}"
@@ -329,7 +334,7 @@ SH
   python3 - "$test_root/real" <<'PY' || fail 'the real engine did not caption the words before typing'
 import json, re, sys
 heard = [re.sub(r"[^a-z ]", "", e["committed"].lower()) for e in map(json.loads, open(sys.argv[1]))
-         if e["phase"] == "listening"]
+         if e.get("phase") == "listening"]
 assert any("after early nightfall the yellow lamps" in h for h in heard), heard[-1:]
 PY
   printf 'real engine: ok\n'

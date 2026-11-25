@@ -5,6 +5,8 @@ the control-line parser, event snapshots, subscribers and the decoder."""
 import importlib.machinery
 import importlib.util
 import json
+import math
+from array import array
 import socket
 import sys
 import threading
@@ -152,6 +154,23 @@ check("fake engine: flush commits the tentative tail", transcript == Transcript(
       str(transcript))
 check("fake engine: committed only grows",
       all(b.startswith(a) for a, b in zip(committed_seen, committed_seen[1:])))
+
+def pcm(samples):
+    return array("h", samples).tobytes()
+
+
+def sine(rms_db, n=800):
+    peak = 32768 * 10 ** (rms_db / 20) * math.sqrt(2)
+    return pcm(round(peak * math.sin(2 * math.pi * 440 * i / vc.SAMPLE_RATE)) for i in range(n))
+
+
+check("level: silence is 0", vc.level_of(pcm([0] * 800)) == 0.0)
+check("level: nothing is 0", vc.level_of(b"") == 0.0)
+check("level: full scale is 1", vc.level_of(pcm([32767, -32768] * 400)) == 1.0, str(vc.level_of(pcm([32767, -32768] * 400))))
+check("level: a -30 dBFS sine reads about 0.5", abs(vc.level_of(sine(-30)) - 0.5) <= 0.01, str(vc.level_of(sine(-30))))
+check("level: a -6 dBFS sine reads about 0.9", abs(vc.level_of(sine(-6)) - 0.9) <= 0.01, str(vc.level_of(sine(-6))))
+check("level: below -60 dB clamps to 0", vc.level_of(sine(-80)) == 0.0, str(vc.level_of(sine(-80))))
+check("level: a trailing half sample is ignored", vc.level_of(sine(-30) + b"\x7f") == vc.level_of(sine(-30)))
 
 valid = {
     "1764069000.123456 armed": Report("1764069000.123456", "armed"),
