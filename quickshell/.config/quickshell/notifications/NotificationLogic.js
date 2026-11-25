@@ -5,7 +5,7 @@ function finiteNumber(value, fallback) {
 
 function durationFor(urgency, requested, lowMs, normalMs, maximumMs) {
   var wanted = Math.max(0, finiteNumber(requested, 0))
-  if (Number(urgency) === 2) return wanted > 0 ? Math.max(normalMs, wanted) : 0
+  if (Number(urgency) === 2) return wanted
   var floor = Number(urgency) === 0 ? lowMs : normalMs
   return Math.min(maximumMs, Math.max(floor, wanted))
 }

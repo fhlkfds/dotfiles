@@ -7,7 +7,7 @@ assert.equal(logic.durationFor(1, 90000, 5000, 8000, 30000), 30000);
 assert.equal(logic.durationFor(2, 0, 5000, 8000, 30000), 0);
 assert.equal(logic.durationFor(2, -1, 5000, 8000, 30000), 0);
 assert.equal(logic.durationFor(2, 120000, 5000, 8000, 30000), 120000);
-assert.equal(logic.durationFor(2, 1000, 5000, 8000, 30000), 8000);
+assert.equal(logic.durationFor(2, 1000, 5000, 8000, 30000), 1000);
 assert.equal(logic.pausesOnHover(1), true);
 assert.equal(logic.pausesOnHover(0), true);
 assert.equal(logic.pausesOnHover(2), false);
