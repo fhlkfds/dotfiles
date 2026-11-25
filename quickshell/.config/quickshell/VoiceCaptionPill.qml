@@ -2,13 +2,16 @@ import QtQuick
 
 // The caption pill. Takes its state as a property so the smoke can load it
 // with a fake; VoiceCaptionPopup passes the VoiceCaptionState singleton. The
-// caption carries visible, phase, settled, pending and hint.
+// caption carries visible, phase, settled, pending, hint and level.
 Rectangle {
   id: pill
   required property var caption
 
   readonly property real targetOpacity: caption.visible ? Theme.surfaceOpacity : 0
   readonly property bool dimmed: caption.phase === "typing"
+  // The daemon maps -60..0 dBFS to 0..1. Room noise sits near 0.3 and loud
+  // speech near 0.85, so that band fills the meter.
+  readonly property real meterDrive: Math.max(0, Math.min(1, (caption.level - 0.3) / 0.55))
 
   radius: Math.min(height / 2, Theme.fs(22))
   color: Theme.background
@@ -40,9 +43,9 @@ Rectangle {
 
   // Plain bindings rather than a layout, so sizes settle without a window
   // polish pass and the headless smoke sees the real geometry.
-  readonly property real maxWordsWidth: Theme.fs(720) - glyph.implicitWidth - Theme.gapM
+  readonly property real maxWordsWidth: Theme.fs(720) - glyph.implicitWidth - Theme.gapS - meter.width - Theme.gapM
 
-  implicitWidth: Theme.gapL * 2 + glyph.implicitWidth + Theme.gapM + wordWindow.width
+  implicitWidth: Theme.gapL * 2 + glyph.implicitWidth + Theme.gapS + meter.width + Theme.gapM + wordWindow.width
   implicitHeight: Theme.gapM * 2 + Math.max(glyph.implicitHeight, wordWindow.height)
 
   Text {
@@ -53,6 +56,40 @@ Rectangle {
     color: Theme.accent
     font.family: Theme.glyphFamily
     font.pixelSize: Theme.fs(22)
+  }
+
+  // Live mic level: five bars, tallest in the middle, that grow with loudness.
+  Item {
+    id: meter
+    objectName: "captionMeter"
+    readonly property var weights: [0.5, 0.8, 1, 0.8, 0.5]
+    readonly property real barWidth: Theme.fs(3)
+    readonly property real barGap: Theme.fs(2)
+    readonly property real minBar: Theme.fs(3)
+    x: glyph.x + glyph.implicitWidth + Theme.gapS
+    y: glyph.y + (glyph.implicitHeight - height) / 2
+    width: weights.length * barWidth + (weights.length - 1) * barGap
+    height: Theme.fs(18)
+
+    Repeater {
+      model: meter.weights
+      Rectangle {
+        required property int index
+        required property real modelData
+        readonly property real targetHeight: meter.minBar + (meter.height - meter.minBar) * pill.meterDrive * modelData
+        objectName: "meterBar"
+        x: index * (meter.barWidth + meter.barGap)
+        anchors.verticalCenter: parent.verticalCenter
+        width: meter.barWidth
+        height: targetHeight
+        radius: width / 2
+        color: pill.caption.phase === "listening" ? Theme.accent : Theme.textMuted
+        opacity: pill.dimmed ? 0.5 : 1
+        Behavior on height {
+          NumberAnimation { duration: 90; easing.type: Easing.OutQuad }
+        }
+      }
+    }
   }
 
   Text {
@@ -70,7 +107,7 @@ Rectangle {
   Item {
     id: wordWindow
     objectName: "captionWindow"
-    x: glyph.x + glyph.implicitWidth + Theme.gapM
+    x: meter.x + meter.width + Theme.gapM
     y: Theme.gapM
     width: Math.min(natural.implicitWidth, pill.maxWordsWidth)
     height: Math.min(words.implicitHeight, metrics.lineSpacing * 2)

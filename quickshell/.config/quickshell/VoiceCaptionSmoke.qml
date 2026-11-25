@@ -38,8 +38,17 @@ Scope {
     property string settled: ""
     property string pending: ""
     property string hint: ""
+    property real level: 0
   }
   Item { visible: true; VoiceCaptionPill { id: pill; caption: fake } }
+
+  function bars() {
+    const meter = findByName(pill, "captionMeter")
+    const out = []
+    if (meter) for (let i = 0; i < meter.children.length; ++i)
+      if (meter.children[i].objectName === "meterBar") out.push(meter.children[i].targetHeight)
+    return out
+  }
 
   function show(view) {
     fake.visible = view.visible
@@ -47,6 +56,7 @@ Scope {
     fake.settled = view.settled
     fake.pending = view.pending
     fake.hint = view.hint
+    fake.level = view.level
   }
 
   Component.onCompleted: {
@@ -65,6 +75,20 @@ Scope {
     check("settled text uses the bright colour", pill.markup.indexOf(pill.hex(Theme.foregroundBright)) >= 0)
     check("pending text uses the muted colour", pill.markup.indexOf(pill.hex(Theme.textMuted)) >= 0)
     check("listening is not dimmed", !pill.dimmed)
+
+    const flat = bars()
+    check("the meter has five bars", flat.length === 5)
+    check("the meter is flat before any level", flat.every(h => h === flat[0]))
+    const level = v => JSON.stringify({ type: "level", v: 1, id: "1.5", level: v })
+    state = VoiceCaptionLogic.receive(state, level(0.85))
+    show(caption(state))
+    const loud = bars()
+    check("loud speech raises the meter, tallest in the middle", loud[2] > flat[2] && loud[2] > loud[0] && loud[0] > flat[0])
+    check("a level keeps the words", pill.markup.indexOf("and then we can") >= 0)
+    state = VoiceCaptionLogic.receive(state, level(0.3))
+    show(caption(state))
+    check("room noise leaves the meter flat", bars().every((h, i) => h === flat[i]))
+    state = VoiceCaptionLogic.receive(state, level(0.85))
 
     const before = state
     state = VoiceCaptionLogic.receive(state, "not json")
@@ -90,6 +114,7 @@ Scope {
     state = VoiceCaptionLogic.receive(state, line(4, "typing", long))
     show(caption(state))
     check("typing keeps the text and dims it", pill.dimmed && pill.markup.indexOf("growing") >= 0 && pill.targetOpacity > 0)
+    check("typing flattens the meter", bars().every((h, i) => h === flat[i]))
 
     state = VoiceCaptionLogic.receive(state, line(5, "listening", "", "", "loading"))
     show(caption(state))

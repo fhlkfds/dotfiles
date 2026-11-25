@@ -108,4 +108,34 @@ const feed = (lines, from = logic.initialState()) => lines.reduce((state, l) => 
   assert.equal(view.visible, true);
 }
 
+{
+  const level = (id, value) => JSON.stringify({ type: "level", v: 1, id, level: value });
+  const listening = feed([line({ seq: 1, phase: "listening", committed: "hello" })]);
+  assert.equal(logic.display(listening, 100).level, 0, "the meter starts flat");
+
+  const loud = logic.receive(listening, level("1.5", 0.6));
+  assert.equal(logic.display(loud, 100).level, 0.6, "a level for this session moves the meter");
+  assert.equal(logic.display(loud, 100).settled, "hello", "a level leaves the words alone");
+  assert.equal(loud.seq, 1, "a level carries no seq");
+
+  assert.equal(logic.receive(loud, level("1.5", 0.6)), loud, "an unchanged level is a no-op");
+  assert.equal(logic.receive(loud, level("9.9", 0.9)), loud, "another session's level is ignored");
+  assert.equal(logic.receive(loud, level("1.5", "loud")), loud, "a non-number level is ignored");
+  assert.equal(logic.display(logic.receive(loud, level("1.5", 7)), 100).level, 1, "levels clamp to 1");
+  assert.equal(logic.display(logic.receive(loud, level("1.5", -2)), 100).level, 0, "levels clamp to 0");
+
+  const kept = logic.receive(loud, line({ seq: 2, phase: "listening", committed: "hello there" }));
+  assert.equal(logic.display(kept, 100).level, 0.6, "new words keep the current level");
+
+  const typing = logic.receive(kept, line({ seq: 3, phase: "typing", committed: "hello there" }));
+  assert.equal(logic.display(typing, 100).level, 0, "typing flattens the meter");
+  assert.equal(logic.receive(typing, level("1.5", 0.8)), typing, "a late level after listening is ignored");
+
+  const armed = feed([line({ seq: 1, phase: "armed" })]);
+  assert.equal(logic.receive(armed, level("1.5", 0.8)), armed, "no level before listening");
+
+  const next = logic.receive(loud, JSON.stringify({ type: "state", v: 1, seq: 2, id: "2.5", phase: "listening", committed: "", tentative: "", note: "" }));
+  assert.equal(logic.display(next, 100).level, 0, "a new session starts flat");
+}
+
 process.stdout.write("voice-caption logic: ok\n");

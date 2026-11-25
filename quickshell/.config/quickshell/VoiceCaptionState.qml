@@ -26,6 +26,7 @@ Singleton {
   readonly property string settled: view.settled
   readonly property string pending: view.pending
   readonly property string hint: view.hint
+  readonly property real level: view.level
 
   property int attempt: 0
 

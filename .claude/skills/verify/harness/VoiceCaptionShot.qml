@@ -10,11 +10,11 @@ Scope {
   readonly property string outDir: Quickshell.env("VERIFY_SHOT_DIR")
   readonly property string longText: "so the plan for the next release is to move the caption pill above the volume slot and keep the newest words visible while the older ones fade out of the start of the line"
   readonly property var steps: [
-    { name: "armed", visible: true, phase: "armed", settled: "", pending: "", hint: "Listening…" },
-    { name: "listening-short", visible: true, phase: "listening", settled: "and then we can ", pending: "ship it", hint: "" },
-    { name: "listening-long", visible: true, phase: "listening", settled: "…move the caption pill above the volume slot and keep the newest words visible while the older ones fade out of the ", pending: "start of the line", hint: "" },
-    { name: "typing", visible: true, phase: "typing", settled: "and then we can ship it on friday", pending: "", hint: "" },
-    { name: "loading", visible: true, phase: "listening", settled: "", pending: "", hint: "Loading speech model…" }
+    { name: "armed", visible: true, phase: "armed", settled: "", pending: "", hint: "Listening…", level: 0 },
+    { name: "listening-short", visible: true, phase: "listening", settled: "and then we can ", pending: "ship it", hint: "", level: 0.78 },
+    { name: "listening-long", visible: true, phase: "listening", settled: "…move the caption pill above the volume slot and keep the newest words visible while the older ones fade out of the ", pending: "start of the line", hint: "", level: 0.6 },
+    { name: "typing", visible: true, phase: "typing", settled: "and then we can ship it on friday", pending: "", hint: "", level: 0 },
+    { name: "loading", visible: true, phase: "listening", settled: "", pending: "", hint: "Loading speech model…", level: 0 }
   ]
 
   QtObject {
@@ -24,6 +24,7 @@ Scope {
     property string settled: ""
     property string pending: ""
     property string hint: ""
+    property real level: 0
   }
 
   function check(name, condition) { if (condition) console.log("ok   " + name); else { console.log("FAIL " + name); ++shot.failures } }
@@ -68,7 +69,7 @@ Scope {
 
   function applyStep() {
     const s = shot.steps[shot.step]
-    fake.visible = s.visible; fake.phase = s.phase; fake.settled = s.settled; fake.pending = s.pending; fake.hint = s.hint
+    fake.visible = s.visible; fake.phase = s.phase; fake.settled = s.settled; fake.pending = s.pending; fake.hint = s.hint; fake.level = s.level
     grabTimer.start()
   }
 

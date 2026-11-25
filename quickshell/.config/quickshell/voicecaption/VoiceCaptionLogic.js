@@ -1,8 +1,9 @@
 .pragma library
 
-// Reduces the caption daemon's NDJSON snapshots to what the pill shows. Every
+// Reduces the caption daemon's NDJSON events to what the pill shows. A state
 // event is the whole state, so there is nothing to merge: a line either
-// replaces the state or is ignored. Pure and clockless; the daemon owns every
+// replaces the state or is ignored. A level event only moves the mic meter of
+// the current listening session. Pure and clockless; the daemon owns every
 // deadline.
 
 var PHASES = { idle: true, armed: true, listening: true, typing: true }
@@ -15,7 +16,7 @@ var HINTS = {
 var PLACEHOLDER = "Listening…"
 
 function initialState() {
-  return { phase: "idle", id: "", seq: -1, committed: "", tentative: "", note: "" }
+  return { phase: "idle", id: "", seq: -1, committed: "", tentative: "", note: "", level: 0 }
 }
 
 function text(value) {
@@ -29,17 +30,32 @@ function receive(state, line) {
   } catch (error) {
     return state
   }
-  if (event === null || typeof event !== "object" || event.type !== "state") return state
+  if (event === null || typeof event !== "object") return state
+  if (event.type === "level") return receiveLevel(state, event)
+  if (event.type !== "state") return state
   if (typeof event.seq !== "number" || !isFinite(event.seq) || event.seq <= state.seq) return state
   if (typeof event.phase !== "string" || !PHASES.hasOwnProperty(event.phase)) return state
+  var id = text(event.id)
   return {
     phase: event.phase,
-    id: text(event.id),
+    id: id,
     seq: event.seq,
     committed: text(event.committed),
     tentative: text(event.tentative),
-    note: text(event.note)
+    note: text(event.note),
+    level: event.phase === "listening" && id === state.id ? state.level : 0
   }
+}
+
+function receiveLevel(state, event) {
+  if (state.phase !== "listening" || event.id !== state.id) return state
+  if (typeof event.level !== "number" || !isFinite(event.level)) return state
+  var level = Math.max(0, Math.min(1, event.level))
+  if (level === state.level) return state
+  var next = {}
+  for (var key in state) next[key] = state[key]
+  next.level = level
+  return next
 }
 
 // A new connection restarts the daemon's view of us, and its seq may restart.
@@ -77,7 +93,8 @@ function display(state, maxChars) {
   }
   var shown = state.phase !== "idle"
   var hint = !shown ? "" : HINTS.hasOwnProperty(state.note) ? HINTS[state.note] : (full === "" ? PLACEHOLDER : "")
-  return { visible: shown, phase: state.phase, settled: settled, pending: pending, hint: hint }
+  var level = state.phase === "listening" ? state.level : 0
+  return { visible: shown, phase: state.phase, settled: settled, pending: pending, hint: hint, level: level }
 }
 
 if (typeof module !== "undefined" && module.exports) {
