@@ -18,7 +18,7 @@ usage: verify <command> [options]
   smoke NAME [--expect LINE] [--env KEY=VALUE]... [--timeout SECONDS]
                                run quickshell/.config/quickshell/<NAME>Smoke.qml offscreen
   shot battery-panel           click the real BatteryIcon, save icon + panel PNGs
-  shot voice-caption           render the caption pill in five states, one PNG each
+  shot voice-caption           render the dictation pill in five states, one PNG each
   lmenu ROUTE [--display]      lmenu --dry-run (or --dry-run-display) against the repo menu
   evidence                     print the evidence directory and its index
   cleanup                      delete the sandbox, keep the evidence

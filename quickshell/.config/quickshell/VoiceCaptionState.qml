@@ -1,6 +1,7 @@
-// Live dictation captions. The daemon publishes whole-state snapshots on a
-// unix socket; this singleton only mirrors them. It never spawns a process
-// and keeps no hide timer, because the daemon's deadlines decide when idle.
+// The dictation pill's state. The caption daemon publishes whole-state
+// snapshots on a unix socket; this singleton only mirrors them. It never spawns
+// a process and keeps no hide timer, because the daemon's deadlines decide
+// when idle.
 pragma Singleton
 import Quickshell
 import Quickshell.Hyprland
@@ -13,18 +14,14 @@ Singleton {
 
   readonly property string socketPath: Quickshell.env("VOICE_CAPTIONS_EVENTS")
     || (Quickshell.env("XDG_RUNTIME_DIR") + "/voice-captions/events.sock")
-  // Two 720-wide lines at the pill's font size hold about this many characters.
-  property int maxChars: 150
   readonly property var retryMs: [500, 1000, 2000, 4000, 8000]
   readonly property int retryLongMs: 30000
 
   property var model: VoiceCaptionLogic.initialState()
   property string screenName: ""
-  readonly property var view: VoiceCaptionLogic.display(model, maxChars)
+  readonly property var view: VoiceCaptionLogic.display(model)
   readonly property bool visible: view.visible
   readonly property string phase: view.phase
-  readonly property string settled: view.settled
-  readonly property string pending: view.pending
   readonly property string hint: view.hint
   readonly property real level: view.level
 

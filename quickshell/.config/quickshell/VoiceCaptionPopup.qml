@@ -2,7 +2,7 @@ import Quickshell
 import Quickshell.Wayland
 import QtQuick
 
-// Bottom-centre live caption on the overlay layer. Every screen has one, but
+// Bottom-centre dictation pill on the overlay layer. Every screen has one, but
 // only the screen that was focused when dictation started shows it. It sits
 // above the OSD pill's slot (OsdPopup: Theme.fs(96)) so the two never overlap.
 // The empty mask makes it click-through.
