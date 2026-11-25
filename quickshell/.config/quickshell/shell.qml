@@ -12,6 +12,8 @@ Scope {
   // Likewise for Bluetooth device low-battery alerts.
   readonly property var bluetoothState: BluetoothState
   readonly property var osdState: OsdState
+  // Live dictation captions: the singleton owns the daemon socket.
+  readonly property var voiceCaptionState: VoiceCaptionState
 
   // Wallpaper transitions. Declared first: its Bottom-layer windows must be
   // created before the desktop widgets so the widgets stack above it.
@@ -48,6 +50,15 @@ Scope {
     model: Quickshell.screens
 
     OsdPopup {
+      required property var modelData
+      output: modelData
+    }
+  }
+  // Live dictation caption, above the OSD slot. Shown only on the focused screen.
+  Variants {
+    model: Quickshell.screens
+
+    VoiceCaptionPopup {
       required property var modelData
       output: modelData
     }
