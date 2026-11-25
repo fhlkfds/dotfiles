@@ -68,6 +68,12 @@ if [[ $status != 1 ]] || ! grep -Fq 'refused in the sandbox' "$test_root/set.err
 fi
 grep -q $'\ttheme\tset\tnord$' "$calls" || fail 'the refused theme set was not logged'
 
+status=0; VERIFY_QUICKSHELL=/nonexistent/quickshell run_verify smoke Battery >"$test_root/no-qs.out" 2>&1 || status=$?
+if [[ $status == 0 ]] || ! grep -Fq 'quickshell is not installed' "$test_root/no-qs.out"; then
+  fail 'smoke without quickshell did not refuse with a clear message'
+fi
+[[ -z $(find "$evidence" -mindepth 1 -maxdepth 1 -type d) ]] || fail 'a refused smoke left an evidence folder'
+
 mkdir -p "$evidence/01-kept" && printf 'proof\n' >"$evidence/01-kept/stdout.txt"
 run_verify cleanup >/dev/null || fail 'cleanup failed'
 [[ ! -e $sandbox ]] || fail 'cleanup left the sandbox'
@@ -105,6 +111,9 @@ for want in mounts-readonly home-readonly home-hidden repo-readonly runtime-priv
             session-env-clear; do
   grep -qx "ok    sandbox: $want" "$test_root/doctor.out" || fail "doctor did not prove $want"
 done
+VERIFY_QUICKSHELL=/nonexistent/quickshell run_verify doctor >"$test_root/doctor-no-qs.out" \
+  || { cat "$test_root/doctor-no-qs.out" >&2; fail 'doctor refused to drive because quickshell is missing'; }
+grep -q '^note  quickshell missing' "$test_root/doctor-no-qs.out" || fail 'doctor did not note the missing quickshell'
 broken_scanner="$runs/$run_id/sandbox/bin/python3"
 printf '#!/bin/sh\nexit 17\n' >"$broken_scanner"
 chmod +x "$broken_scanner"
