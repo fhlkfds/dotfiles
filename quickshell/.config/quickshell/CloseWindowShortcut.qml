@@ -7,6 +7,7 @@ import Quickshell.Hyprland
 GlobalShortcut {
   id: root
   property var modesState: ModesState
+  property var timerState: TimerState
   property var hyprland: Hyprland
 
   name: "close-window"
@@ -16,6 +17,8 @@ GlobalShortcut {
   function closeWindow() {
     if (root.modesState.panelVisible)
       root.modesState.close()
+    else if (root.timerState.panelVisible)
+      root.timerState.close()
     else
       root.hyprland.dispatch("hl.dsp.window.close()")
   }

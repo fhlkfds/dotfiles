@@ -17,8 +17,12 @@ usage: verify <command> [options]
         --timeout SECONDS        kill CMD after this long (default 60)
   smoke NAME [--expect LINE] [--env KEY=VALUE]... [--timeout SECONDS]
                                run quickshell/.config/quickshell/<NAME>Smoke.qml offscreen
-  shot battery-panel           click the real BatteryIcon, save icon + panel PNGs
-  shot voice-caption           render the caption pill in five states, one PNG each
+  shot NAME [--env KEY=VALUE]... [--timeout SECONDS]
+                               drive a shot harness and save PNGs. NAME is battery-panel
+                               (click the real BatteryIcon, save icon + panel PNGs),
+                               voice-caption (the caption pill in five states, one PNG each)
+                               or timer (the whole timer journey; --env TIMER_SHOT_FRAMES=1
+                               adds frames/)
   lmenu ROUTE [--display]      lmenu --dry-run (or --dry-run-display) against the repo menu
   evidence                     print the evidence directory and its index
   cleanup                      delete the sandbox, keep the evidence
@@ -343,37 +347,53 @@ cmd_smoke() {
 }
 
 cmd_shot() {
-  local harness label token pngs_wanted pass_text
-  case ${1:-} in
+  local name=${1:-} harness='' ok_line='' pngs_wanted=6 timeout=60 passed=''
+  case $name in
     battery-panel)
-      harness=BatteryPanelShot.qml label=shot-battery-panel token='ok: battery panel shots' pngs_wanted=6
-      pass_text='battery panel: clicked icon opened panel, %s PNGs, Escape closed it' ;;
+      harness=BatteryPanelShot ok_line='ok: battery panel shots'
+      passed='clicked icon opened panel, Escape closed it' ;;
     voice-caption)
-      harness=VoiceCaptionShot.qml label=shot-voice-caption token='ok: voice caption shots' pngs_wanted=5
-      pass_text='voice caption: pill rendered in %s states' ;;
-    *) die 'shot: give a harness, battery-panel or voice-caption' 2 ;;
+      harness=VoiceCaptionShot ok_line='ok: voice caption shots' pngs_wanted=5
+      passed='pill rendered in five states' ;;
+    timer)
+      harness=TimerShot ok_line='ok: timer shots' timeout=120
+      passed='typed 7m30s, started, counted down, rang and was dismissed' ;;
+    *) die 'shot: harnesses are battery-panel, voice-caption and timer' 2 ;;
   esac
+  shift
+  local -a envs=()
+  while (($#)); do
+    case $1 in
+      --env) [[ ${2:-} == *=* ]] || die '--env takes KEY=VALUE' 2; envs+=("$2"); shift 2 ;;
+      --timeout) timeout=${2:?--timeout needs seconds}; shift 2 ;;
+      *) die "shot: unknown option $1" 2 ;;
+    esac
+  done
   resolve_run; require_sandbox; require_quickshell
   # Quickshell resolves components and singletons from the directory of the
   # file it loads, so the harness runs from a fresh copy of the shell with
   # the harness beside it.
   rm -rf -- "$sandbox/shell"
   cp -a "$shell_src" "$sandbox/shell"
-  cp "$skill_dir/harness/$harness" "$sandbox/shell/"
+  cp "$skill_dir/harness/$harness.qml" "$sandbox/shell/"
   local status=0
   # shellcheck disable=SC2016
-  sandboxed "$label" 60 -- sh -c 'VERIFY_SHOT_DIR=$VERIFY_EVIDENCE exec "$1" -p "$2"' sh \
-    "$quickshell" "$sandbox/shell/$harness" || status=$?
+  sandboxed "shot-$name" "$timeout" "${envs[@]+"${envs[@]}"}" -- \
+    sh -c 'mkdir -p "$VERIFY_EVIDENCE/frames"; VERIFY_SHOT_DIR=$VERIFY_EVIDENCE exec "$1" -p "$2"' sh \
+    "$quickshell" "$sandbox/shell/$harness.qml" || status=$?
   local log=$slot_dir/log.txt
   cat "$slot_dir/stdout.txt" "$slot_dir/stderr.txt" >"$log"
   grep -E '^.*(text |ok   |FAIL)' "$log" | sed -E 's/^.*qml[^:]*: //' >"$slot_dir/checks.txt" || true
-  local pngs
+  local pngs frames
   pngs=$(find "$slot_dir" -maxdepth 1 -name '*.png' | wc -l)
-  if ((status == 0)) && grep -q "$token" "$log" && ! grep -q 'FAIL' "$log" && ((pngs == pngs_wanted)); then
-    # shellcheck disable=SC2059
-    summarize "PASS $(printf "$pass_text" "$pngs")"
+  frames=$(find "$slot_dir/frames" -name 'frame-*.png' | wc -l)
+  rmdir "$slot_dir/frames" 2>/dev/null || true
+  local frames_note=''
+  ((frames > 0)) && frames_note=", $frames frames"
+  if ((status == 0)) && grep -q "$ok_line" "$log" && ! grep -q 'FAIL' "$log" && ((pngs == pngs_wanted)); then
+    summarize "PASS $name: $passed; $pngs PNGs$frames_note"
   else
-    summarize "FAIL $label: exit $status, $pngs PNGs; see checks.txt and log.txt"
+    summarize "FAIL $name: exit $status, $pngs PNGs$frames_note; see checks.txt and log.txt"
     return 1
   fi
 }

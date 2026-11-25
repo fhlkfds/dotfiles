@@ -1,0 +1,2 @@
+module TimerParts
+singleton TimerConfig 1.0 TimerConfig.qml

@@ -194,6 +194,21 @@ Scope {
     }
   }
 
+  IpcHandler {
+    target: "timer"
+    function toggle(): void {
+      TimerState.togglePanel(bar.focusedScreen())
+    }
+    // The lmenu preset rows: `quickshell ipc call timer start 10m`.
+    function start(text: string): string {
+      const result = TimerState.startText(text)
+      return result.error === undefined ? "started " + result.ms + " ms" : "error: " + result.error
+    }
+    function cancel(): void {
+      TimerState.cancel()
+    }
+  }
+
   // lmenu opens from a Hyprland global shortcut (hl.dsp.global("quickshell:lmenu")
   // in keybindings.lua) rather than `quickshell ipc call`, so the keypress
   // reaches the shell without starting a process. The IPC target is for scripts
@@ -220,6 +235,7 @@ Scope {
   GlobalShortcut { name: "theme"; description: "theme picker"; onPressed: ThemeState.togglePanel(bar.focusedScreen()) }
   GlobalShortcut { name: "nightlight"; description: "night light schedule"; onPressed: NightLightState.togglePanel(bar.focusedScreen()) }
   GlobalShortcut { name: "webapps"; description: "web app manager"; onPressed: WebAppState.togglePanel(bar.focusedScreen()) }
+  GlobalShortcut { name: "timer"; description: "timer"; onPressed: TimerState.togglePanel(bar.focusedScreen()) }
 
   IpcHandler {
     target: "lmenu"
@@ -327,6 +343,16 @@ Scope {
   Variants {
     model: Quickshell.screens
 
+    TimerPanel {
+      required property var modelData
+      screen: modelData
+      ownerScreen: modelData.name
+    }
+  }
+
+  Variants {
+    model: Quickshell.screens
+
     CavaEdgeVisualizer {
       required property var modelData
       output: modelData
@@ -421,6 +447,7 @@ Scope {
 
         RecordIcon { barScale: panel.barScale }
         UpdatesIcon { barScale: panel.barScale }
+        TimerIcon { screenName: panel.modelData.name; barScale: panel.barScale }
         ModeIndicators { screenName: panel.modelData.name; barScale: panel.barScale }
       }
 

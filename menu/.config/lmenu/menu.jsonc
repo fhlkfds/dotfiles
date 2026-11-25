@@ -417,6 +417,44 @@
     "action": "quickshell ipc call disk speedTest"
   },
   {
+    "id": "trigger.timer",
+    "icon": "󰔛",
+    "label": "Timer",
+    "title": "Timer",
+    "aliases": ["countdown"]
+  },
+  {
+    "id": "trigger.timer.5m",
+    "icon": "󰔛",
+    "label": "5 minutes",
+    "action": "quickshell ipc call timer start 5m"
+  },
+  {
+    "id": "trigger.timer.10m",
+    "icon": "󰔛",
+    "label": "10 minutes",
+    "action": "quickshell ipc call timer start 10m"
+  },
+  {
+    "id": "trigger.timer.25m",
+    "icon": "󰔛",
+    "label": "25 minutes",
+    "action": "quickshell ipc call timer start 25m"
+  },
+  {
+    "id": "trigger.timer.60m",
+    "icon": "󰔛",
+    "label": "60 minutes",
+    "action": "quickshell ipc call timer start 60m"
+  },
+  {
+    "id": "trigger.timer.custom",
+    "icon": "󰏫",
+    "label": "Custom time…",
+    "aliases": ["type"],
+    "action": "quickshell ipc call timer toggle"
+  },
+  {
     "id": "trigger.calculator",
     "icon": "󰃬",
     "label": "Calculator",

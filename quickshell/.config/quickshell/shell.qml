@@ -12,6 +12,8 @@ Scope {
   // Likewise for Bluetooth device low-battery alerts.
   readonly property var bluetoothState: BluetoothState
   readonly property var osdState: OsdState
+  // Restores a running timer and ticks it even when no bar pill is on screen.
+  readonly property var timerState: TimerState
   // Live dictation captions: the singleton owns the daemon socket.
   readonly property var voiceCaptionState: VoiceCaptionState
 
