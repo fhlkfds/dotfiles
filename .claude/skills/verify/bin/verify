@@ -18,6 +18,7 @@ usage: verify <command> [options]
   smoke NAME [--expect LINE] [--env KEY=VALUE]... [--timeout SECONDS]
                                run quickshell/.config/quickshell/<NAME>Smoke.qml offscreen
   shot battery-panel           click the real BatteryIcon, save icon + panel PNGs
+  shot voice-caption           render the caption pill in five states, one PNG each
   lmenu ROUTE [--display]      lmenu --dry-run (or --dry-run-display) against the repo menu
   evidence                     print the evidence directory and its index
   cleanup                      delete the sandbox, keep the evidence
@@ -335,27 +336,37 @@ cmd_smoke() {
 }
 
 cmd_shot() {
-  [[ ${1:-} == battery-panel ]] || die 'shot: the only harness so far is battery-panel' 2
+  local harness label token pngs_wanted pass_text
+  case ${1:-} in
+    battery-panel)
+      harness=BatteryPanelShot.qml label=shot-battery-panel token='ok: battery panel shots' pngs_wanted=6
+      pass_text='battery panel: clicked icon opened panel, %s PNGs, Escape closed it' ;;
+    voice-caption)
+      harness=VoiceCaptionShot.qml label=shot-voice-caption token='ok: voice caption shots' pngs_wanted=5
+      pass_text='voice caption: pill rendered in %s states' ;;
+    *) die 'shot: give a harness, battery-panel or voice-caption' 2 ;;
+  esac
   resolve_run; require_sandbox
   # Quickshell resolves components and singletons from the directory of the
   # file it loads, so the harness runs from a fresh copy of the shell with
   # the harness beside it.
   rm -rf -- "$sandbox/shell"
   cp -a "$shell_src" "$sandbox/shell"
-  cp "$skill_dir/harness/BatteryPanelShot.qml" "$sandbox/shell/"
+  cp "$skill_dir/harness/$harness" "$sandbox/shell/"
   local status=0
   # shellcheck disable=SC2016
-  sandboxed shot-battery-panel 60 -- sh -c 'VERIFY_SHOT_DIR=$VERIFY_EVIDENCE exec quickshell -p "$1"' sh \
-    "$sandbox/shell/BatteryPanelShot.qml" || status=$?
+  sandboxed "$label" 60 -- sh -c 'VERIFY_SHOT_DIR=$VERIFY_EVIDENCE exec quickshell -p "$1"' sh \
+    "$sandbox/shell/$harness" || status=$?
   local log=$slot_dir/log.txt
   cat "$slot_dir/stdout.txt" "$slot_dir/stderr.txt" >"$log"
   grep -E '^.*(text |ok   |FAIL)' "$log" | sed -E 's/^.*qml[^:]*: //' >"$slot_dir/checks.txt" || true
   local pngs
   pngs=$(find "$slot_dir" -maxdepth 1 -name '*.png' | wc -l)
-  if ((status == 0)) && grep -q 'ok: battery panel shots' "$log" && ! grep -q 'FAIL' "$log" && ((pngs == 6)); then
-    summarize "PASS battery panel: clicked icon opened panel, $pngs PNGs, Escape closed it"
+  if ((status == 0)) && grep -q "$token" "$log" && ! grep -q 'FAIL' "$log" && ((pngs == pngs_wanted)); then
+    # shellcheck disable=SC2059
+    summarize "PASS $(printf "$pass_text" "$pngs")"
   else
-    summarize "FAIL battery panel: exit $status, $pngs PNGs; see checks.txt and log.txt"
+    summarize "FAIL $label: exit $status, $pngs PNGs; see checks.txt and log.txt"
     return 1
   fi
 }
