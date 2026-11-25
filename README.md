@@ -247,8 +247,47 @@ whole dictation. It reads "Recording Started", then "Transcribing…", then
 matches. If anything fails it reads "Dictation failed" instead, with
 "No speech was recognized." when the recording had no words.
 
+### Live captions
+
+While `SUPER+R` dictation runs, a caption pill at the bottom centre of the
+screen shows your words as you say them, with a small meter for your
+microphone level. When you stop, Hyprvoice types its final text exactly as
+before. The caption is a preview only. It runs fully offline: no cloud
+service, no API key, and audio never leaves the machine.
+
+The `voice-captions` daemon (Stow package `systemd`) records the dictation
+microphone and streams it through the NVIDIA Nemotron Speech Streaming 0.6B
+model on [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), on the CPU. It
+uses about 0.7 of a CPU core while you talk and about 1.1 GB of memory.
+A word usually shows within 0.2 s of you saying it, and within 0.6 s nine
+times in ten. `voice-dictation` reports
+each phase to it through a FIFO with a shell builtin, so the keypress spawns no
+extra process. The daemon sends the text to the Quickshell pill over a unix
+socket. The service may only open unix sockets (`RestrictAddressFamilies=AF_UNIX`),
+so the kernel keeps it offline. It never logs or stores what you said.
+
+Turn it on from the menu under Setup, Voice dictation, "Install live
+captions…", or by hand:
+
+```bash
+voice-captions install --dry-run   # show each step; change nothing
+voice-captions install             # venv with pinned, hash-checked wheels, the model (sha256 checked), a self-test
+systemctl --user daemon-reload
+systemctl --user enable --now voice-captions.service
+voice-captions status              # daemon, venv and model
+voice-captions watch               # print caption events as they arrive
+```
+
+The install downloads about 460 MB once. After that, "Live captions" in the
+same menu turns the service on and off. If the daemon is stopped or broken,
+dictation works exactly as before, just without the caption.
+
 Validate with `bash tests/hyprvoice-gpu.test.sh`,
-`bash tests/hyprvoice-clipboard.test.sh` and `bash tests/voice-dictation.test.sh`.
+`bash tests/hyprvoice-clipboard.test.sh`, `bash tests/voice-dictation.test.sh`,
+`bash tests/voice-captions.test.sh`, `python3 tests/voice-captions.test.py` and
+`bash tests/voice-caption.test.sh`. Set `VOICE_CAPTIONS_REAL_MODEL_DIR` to an
+installed model directory to also run the captions test against the real
+engine.
 
 ## Wallpaper transitions
 
