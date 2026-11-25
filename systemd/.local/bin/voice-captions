@@ -38,6 +38,8 @@ AUDIO_QUEUE_MAX = 60 * BYTES_PER_SECOND
 STOP_GRACE = 0.5
 CONTROL_LINE_MAX = 4096
 FAKE_WORD_BYTES = BYTES_PER_SECOND // 10
+LEVEL_INTERVAL = 0.05
+LEVEL_BYTES = int(LEVEL_INTERVAL * BYTES_PER_SECOND)
 
 SHERPA_VERSION = "2.0.3"
 MODEL_NAME = "sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25"
@@ -238,6 +240,19 @@ def snapshot(state: State, seq: int) -> dict:
     return {"type": "state", "v": 1, "seq": seq, "id": state.id, "phase": state.phase,
             "committed": tail(state.transcript.committed),
             "tentative": tail(state.transcript.tentative), "note": note(state)}
+
+
+def level_of(pcm: bytes) -> float:
+    """Meter reading for s16le audio: RMS in dBFS, -60 dB -> 0.0, 0 dB -> 1.0."""
+    samples = array("h")
+    samples.frombytes(pcm[:len(pcm) & ~1])
+    if not samples:
+        return 0.0
+    power = sum(sample * sample for sample in samples) / len(samples) / (32768 * 32768)
+    if power <= 0:
+        return 0.0
+    db = 10 * math.log10(power)
+    return round(min(max((db + 60) / 60, 0.0), 1.0), 2)
 
 
 def encode(event: dict) -> bytes:
@@ -492,6 +507,9 @@ class Daemon:
         self.last_sent = -math.inf
         self.pending_publish = None
         self.deadline_timer = None
+        self.level_window = b""
+        self.level_bytes = 0
+        self.last_level = -math.inf
         loop.add_reader(control_fd, self.on_control)
         loop.add_reader(server.fileno(), self.on_accept)
         self.decoder = Decoder(lambda: load_engine(cfg), self.post)
@@ -516,10 +534,11 @@ class Daemon:
         match effect:
             case StartRecorder(id=id, source=source):
                 self.stop_recorder()
+                self.level_window, self.level_bytes = b"", 0
                 argv = [self.cfg.recorder, "--target", source, "--rate", str(SAMPLE_RATE),
                         "--channels", "1", "--format", "s16", "-"]
                 self.recorder = Recorder(self.loop, argv,
-                                         lambda pcm: self.decoder.audio(id, pcm),
+                                         lambda pcm: self.on_audio(id, pcm),
                                          lambda: self.handle(RecorderExited(id)))
             case StopRecorder():
                 self.stop_recorder()
@@ -527,6 +546,19 @@ class Daemon:
                 self.decoder.flush(id)
             case Publish(urgent=urgent):
                 self.publish(urgent)
+
+    def on_audio(self, id, pcm):
+        self.decoder.audio(id, pcm)
+        self.level_window = (self.level_window + pcm)[-LEVEL_BYTES - 1:]
+        self.level_bytes += len(pcm)
+        now = self.loop.time()
+        if self.state.phase != "listening" or self.state.id != id or now - self.last_level < LEVEL_INTERVAL:
+            return
+        self.last_level = now
+        # Stop on a sample boundary: a read can end halfway through one.
+        end = len(self.level_window) - self.level_bytes % 2
+        level = level_of(self.level_window[max(0, end - LEVEL_BYTES):end])
+        self.broadcast(encode({"type": "level", "v": 1, "id": id, "level": level}))
 
     def stop_recorder(self):
         if self.recorder:
@@ -547,7 +579,9 @@ class Daemon:
             self.pending_publish = None
         self.last_sent = self.loop.time()
         self.seq += 1
-        line = encode(snapshot(self.state, self.seq))
+        self.broadcast(encode(snapshot(self.state, self.seq)))
+
+    def broadcast(self, line):
         for fd in list(self.subscribers):
             self.deliver(fd, line)
 
