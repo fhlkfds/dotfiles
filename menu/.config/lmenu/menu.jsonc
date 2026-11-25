@@ -622,7 +622,7 @@
     "id": "setup.voice-dictation.live-captions",
     "icon": "󰅨",
     "label": "Live captions",
-    "description": "Shows your words at the bottom of the screen while you dictate, offline",
+    "description": "Types your words into the text box as you dictate, offline",
     "aliases": ["captions", "live-captions"],
     "when": "[[ -f ~/.local/share/voice-captions/models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25/tokens.txt ]]",
     "checked": "[[ -p ${XDG_RUNTIME_DIR:-/run/user/$UID}/voice-captions/control ]]",
