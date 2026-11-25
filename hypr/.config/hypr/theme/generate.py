@@ -95,8 +95,6 @@ def targets(prefix: Path, theme: tl.Theme) -> list[tl.Artifact]:
             "rofi-powermenu-theme.rasi", prefix / "rofi/powermenu/theme.rasi"
         ),
         tl.Artifact("hyprlock-colors.conf", prefix / "hyprlock/colors.conf"),
-        tl.Artifact("swaync-style.css", prefix / "swaync/style.css"),
-        tl.Artifact("wofi-style.css", prefix / "wofi/style.css"),
         tl.Artifact("greeter-theme.css", prefix / "greeter/greeter.css"),
         tl.Artifact("regreet-greeter.toml", prefix / "greeter/regreet.toml"),
         tl.Artifact(
@@ -360,10 +358,6 @@ def reload_apps(
             noun = "terminal" if stale == 1 else "terminals"
             deferred.append(f"kitty opacity (restart {stale} {noun})")
 
-    if _pids_of("swaync") and shutil.which("swaync-client"):
-        if _run(["swaync-client", "--reload-config"]):
-            done.append("swaync")
-
     # Chromium (including Helium), Electron, GTK and websites using
     # prefers-color-scheme consume the desktop portal's appearance preference.
     # On this setup xdg-desktop-portal-gtk publishes the GNOME interface key.
@@ -392,7 +386,7 @@ def reload_apps(
             )
 
     # These read the theme when next launched.
-    deferred += ["rofi", "wofi", "fastfetch", "hyprlock"]
+    deferred += ["rofi", "fastfetch", "hyprlock"]
     deferred.append("zsh (new shells; run `exec zsh` here)")
     return done, deferred
 

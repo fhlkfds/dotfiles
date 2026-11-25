@@ -64,4 +64,4 @@ Preconditions:
   `skip: qmllint is not installed`. The palette QML isn't linted.
 - A new keybinding description must match a rule in the ranking list, or it
   sorts last. The ranking check above proves that for every description in
-  `conf/keybinding.conf`.
+  `conf/keybindings.lua`, replayed through `keybinds-replay.lua`.

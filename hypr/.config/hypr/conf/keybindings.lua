@@ -67,7 +67,6 @@ exec(mod .. " + V", "universal paste", cfg.scripts_dir .. "/universal-clipboard.
 shell(mod .. " + CTRL + V", "clipboard history", "clipboard")
 shell(mod .. " + ALT + V", "toggle audio visualizer", "visualizer")
 exec(mod .. " + SHIFT + C", "calculator", cfg.scripts_dir .. "/calculator.sh")
-exec(mod .. " + CTRL + Q", "calculator", cfg.scripts_dir .. "/calculator.sh")
 exec(mod .. " + CTRL + period", "transcode media", cfg.scripts_dir .. "/transcode-menu.sh")
 app_exec(mod .. " + CTRL + S", "share with LocalSend", "localsend")
 exec(mod .. " + CTRL + T", "activity (btop, floating)", cfg.scripts_dir .. "/btop-float.sh")
@@ -79,7 +78,6 @@ shell(mod .. " + CTRL + M", "toggle media panel", "media")
 shell(mod .. " + CTRL + A", "toggle audio panel", "audio")
 shell(mod .. " + CTRL + B", "toggle Bluetooth panel", "bluetooth")
 exec(mod .. " + SHIFT + B", "power profile menu", cfg.scripts_dir .. "/power-profile.sh menu")
-shell(mod .. " + CTRL + W", "manage Wi-Fi and network", "network")
 shell(mod .. " + T", "theme picker", "theme")
 exec(mod .. " + Backspace", "toggle window transparency on all workspaces", cfg.scripts_dir .. "/toggle-transparency.sh")
 exec(mod .. " + SHIFT + Backspace", "toggle window gaps on all workspaces", cfg.scripts_dir .. "/toggle-gaps.sh")
@@ -90,11 +88,8 @@ shell(mod .. " + SHIFT + N", "night light schedule", "nightlight")
 
 exec(mod .. " + comma", "dismiss newest notification", "$HOME/.local/bin/notificationctl dismiss-one")
 exec(mod .. " + SHIFT + comma", "dismiss all notifications", "$HOME/.local/bin/notificationctl dismiss-all")
-package_exec(mod .. " + CTRL + comma", "toggle do not disturb", "modes", "desktop-mode toggle do-not-disturb")
 exec(mod .. " + ALT + comma", "invoke newest notification", "$HOME/.local/bin/notificationctl invoke-latest")
 exec(mod .. " + SHIFT + ALT + comma", "notification history", "$HOME/.local/bin/notificationctl history")
--- Same route as SUPER+CTRL+comma. The desktop-mode daemon reverts DND changes
--- that bypass it, so notificationctl dnd-toggle would not stick.
 package_exec(mod .. " + D", "toggle do not disturb", "modes", "desktop-mode toggle do-not-disturb")
 package_exec(mod .. " + ALT + M", "desktop modes", "modes", "desktop-mode menu")
 package_exec(mod .. " + SHIFT + I", "stay awake", "modes", "desktop-mode toggle stay-awake")
@@ -158,7 +153,6 @@ bind(mod .. " + SHIFT + F", "fullscreen (true)", hl.dsp.window.fullscreen({ mode
 bind(mod .. " + CTRL + F", "maximize (keep bar)", hl.dsp.window.fullscreen({ mode = "maximized" }))
 
 -- Programs.
-exec(mod .. " + SHIFT + ALT + F", "files here (terminal cwd)", cfg.scripts_dir .. "/files-here.sh")
 app_exec(mod .. " + SHIFT + D", "disks", cfg.disks)
 exec(mod .. " + U", "eject removable drives", cfg.scripts_dir .. "/eject-drive.sh")
 exec(mod .. " + A", "application launcher", cfg.scripts_dir .. "/quick-search.sh drun")

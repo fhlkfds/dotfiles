@@ -35,18 +35,12 @@ Singleton {
   }
 
   // --- ordering ---------------------------------------------------------------
-  // Matched in order against the row's description; the FIRST rule that matches
-  // wins, so specific patterns must come before broad ones -- "files here
-  // (terminal cwd)" has to be caught by the file-manager rule before the
-  // terminal rule sees it. Ties inside a rank sort alphabetically, so anchored
-  // patterns separate the headline entry from its variants. Edit this table to
-  // re-prioritise the list; rules that match nothing cost nothing.
   readonly property var priorityRules: [
     { rank: 0, re: /^keybindings$/i },
     { rank: 1, re: /^application launcher$/i },
     { rank: 2, re: /^terminal$/i },
     { rank: 3, re: /^browser$/i },
-    { rank: 4, re: /^files$/i },
+    { rank: 4, re: /^(Neovim|Herdr) keybindings$/i },
     { rank: 5, re: /^lmenu root$/i },
     { rank: 6, re: /^power menu$/i },
     { rank: 7, re: /^theme picker$/i },
@@ -91,7 +85,6 @@ Singleton {
     { rank: 43, re: /^coding agent$/i },
     { rank: 44, re: /^drop-down terminal$/i },
     { rank: 45, re: /^emoji menu$/i },
-    { rank: 46, re: /^files here/i },
     { rank: 47, re: /^screenshot/i },
     { rank: 48, re: /^screen recording$/i },
     { rank: 49, re: /^colour picker$/i },
@@ -114,7 +107,7 @@ Singleton {
     { rank: 66, re: /^toggle media panel$/i },
     { rank: 67, re: /^toggle audio panel$/i },
     { rank: 68, re: /^toggle Bluetooth panel$/i },
-    { rank: 69, re: /^manage Wi-Fi and network$/i },
+    { rank: 69, re: /^monitor profiles$/i },
     { rank: 70, re: /^power profile menu$/i },
     { rank: 71, re: /^toggle audio visualizer$/i },
     { rank: 72, re: /^wallpaper picker$/i },
@@ -127,7 +120,7 @@ Singleton {
     { rank: 79, re: /^toggle window gaps/i },
     { rank: 80, re: /^cycle window layout$/i },
     { rank: 81, re: /^play temporary dotfiles history$/i },
-    { rank: 82, re: /^pull and apply dotfiles$/i },
+    { rank: 82, re: /^pull and deploy dotfiles updates$/i },
     { rank: 83, re: /^volume (up|down)( \(pactl\))?$/i },
     { rank: 84, re: /^mute( \(pactl\))?$/i },
     { rank: 85, re: /^play \/ pause$|^pause$|^(next|previous) track$|^stop playback$/i },

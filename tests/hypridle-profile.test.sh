@@ -160,8 +160,5 @@ cmp "$test_root/balanced.conf" "$test_root/fallback.conf" || fail 'invalid state
 grep -Fq "\$HOME/.config/hypr/scripts/hypridle-profile daemon" \
   "$repo_root/hypr/.config/hypr/conf/autostart.lua" \
   || fail 'Lua autostart does not use the profile daemon'
-grep -Fq "\$HOME/.config/hypr/scripts/hypridle-profile daemon" \
-  "$repo_root/hypr/.config/hypr/conf/autostart.conf" \
-  || fail 'legacy autostart does not use the profile daemon'
 
 printf 'ok: Hypridle profile fixtures\n'

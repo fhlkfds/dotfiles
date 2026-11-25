@@ -15,28 +15,7 @@ import tempfile
 REPO = Path(__file__).resolve().parent.parent
 COLLECTOR = REPO / "hypr/.config/hypr/scripts/keybinds-collector"
 KEYBINDS_STATE = REPO / "quickshell/.config/quickshell/KeybindsState.qml"
-KEYBINDING_CONF = REPO / "hypr/.config/hypr/conf/keybinding.conf"
-
-
-def conf_descriptions(conf: str) -> list[str]:
-    dispatchers = (
-        "exec|fullscreen|killactive|layoutmsg|movecurrentworkspacetomonitor|"
-        "movefocus|movetoworkspace|movetoworkspacesilent|movewindow|"
-        "resizeactive|swapwindow|togglefloating|workspace"
-    )
-    descriptions = []
-    for line in conf.splitlines():
-        match = re.search(rf",\s*(?:{dispatchers})\s*,", line)
-        if not match:
-            continue
-        fields = line[:match.start()].partition("=")[2].split(",", 2)
-        if len(fields) != 3:
-            continue
-        description = fields[2].strip()
-        if description == "Delete, close all windows":
-            description = "close all windows"
-        descriptions.append(description)
-    return descriptions
+HYPR = REPO / "hypr/.config/hypr"
 
 
 def invoke(*args: str) -> subprocess.CompletedProcess[str]:
@@ -50,7 +29,6 @@ def write_json(path: Path, value: object) -> None:
 
 def main() -> None:
     qml = KEYBINDS_STATE.read_text(encoding="utf-8")
-    conf = KEYBINDING_CONF.read_text(encoding="utf-8")
     collector_globals = runpy.run_path(str(COLLECTOR), run_name="keybinds_collector_test")
     priority = collector_globals["PRIORITY"]
     rank = collector_globals["rank"]
@@ -59,7 +37,8 @@ def main() -> None:
         r"\{ rank: \d+, re: /((?:\\.|[^/])*)/i \}", qml)]
     assert tuple(qml_priority) == priority, \
         "QML and collector priority ladders differ in content or order"
-    descriptions = conf_descriptions(conf)
+    descriptions = [row["description"] for row in collector_globals["replay"](
+        None, HYPR / "conf/keybindings.lua", HYPR) if row.get("description")]
     unmatched = sorted({description for description in descriptions
                         if rank(description) == 999})
     assert not unmatched, f"repository descriptions missing priority rules: {unmatched}"
@@ -77,18 +56,6 @@ def main() -> None:
         assert all(rank(description) != 999 for description in matches), family
     print(f"ok: identical priority ladders rank all {len(set(descriptions))} "
           "repository descriptions")
-
-    keywords = re.findall(r"^\s*(bind[a-z]*)\s*=", conf, re.MULTILINE)
-    valid_flags = set("lrcgoenmtisdpuw")
-    invalid_keywords = sorted({keyword for keyword in keywords
-                               if not set(keyword.removeprefix("bind")) <= valid_flags})
-    assert not invalid_keywords, f"invalid Hyprland bind keywords: {invalid_keywords}"
-    described_repeat_lines = [line for line in conf.splitlines()
-                              if re.match(r"^\s*bind(?=[a-z]*d)(?=[a-z]*[el])[a-z]*\s*=", line)]
-    assert all(re.search(r",\s*[^,]+,\s*(?:exec|resizeactive)\s*,", line)
-               for line in described_repeat_lines), \
-        "described repeat/locked binds must retain description and dispatcher columns"
-    print(f"ok: all {len(keywords)} bind keywords use documented flags and retain descriptions")
 
     lua_activation = re.search(
         r'else if \(r\.dispatcher === "lua"\) \{\s*'
@@ -239,8 +206,6 @@ bind("SUPER + Q", "close window", hl.dsp.window.close())
         print("--- first 30 prioritized fixture rows ---")
         print(dry_run.stdout, end="")
 
-        # Feed the real keybinding.conf descriptions through the complete
-        # collector for a useful ordering artifact.
         actual_config = REPO / "hypr/.config/hypr"
         repository_binds = []
         for index, description in enumerate(descriptions, 1000):

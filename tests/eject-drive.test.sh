@@ -17,11 +17,6 @@ command -v jq >/dev/null 2>&1 || {
 }
 
 
-# Keybind pair stays in sync across both config dialects.
-# shellcheck disable=SC2016
-grep -Fq '$scriptsDir/eject-drive.sh' \
-  "$repo_root/hypr/.config/hypr/conf/keybinding.conf" ||
-  fail 'legacy keybinding does not run eject-drive.sh'
 grep -Fq 'cfg.scripts_dir .. "/eject-drive.sh"' \
   "$repo_root/hypr/.config/hypr/conf/keybindings.lua" ||
   fail 'Lua keybinding does not run eject-drive.sh'

@@ -7,8 +7,7 @@ details, no decisions, no plans. Those live in the wiki.
 
 **Shell** — the Quickshell process. It is the bar, the panels, the notification
 daemon, the clipboard browser, the theme picker, and the on-screen displays.
-There is exactly one. Waybar, SwayNC and Noctalia are retired; editing them
-changes nothing visible.
+There is exactly one. Waybar, SwayNC and Noctalia are retired.
 
 **Bar** — the reserved strip along the top of each screen. The strip paints
 nothing and is transparent; it reserves height so windows tile below it, and it
@@ -47,7 +46,7 @@ the output.
 top-level directory except `tests/` and `system/` is one.
 
 **Package path** — the in-repo path of a file, such as
-`hypr/.config/hypr/hyprland.conf`. The authoritative copy. The live path under
+`hypr/.config/hypr/hyprland.lua`. The authoritative copy. The live path under
 `~/.config` is a symlink to it and is never edited directly.
 
 **Fixture test** — a test in `tests/` that exercises a script or QML component
