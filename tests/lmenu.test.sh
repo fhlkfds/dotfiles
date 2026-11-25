@@ -593,4 +593,35 @@ pkill -P "$stranger" 2>/dev/null || true
 kill "$stranger" 2>/dev/null || true
 printf 'ok: toggling closes rofi with the menu, and a stale pid is left alone\n'
 
+# Live captions: the installer shows until the model is there, then a toggle
+# that is ticked while the daemon's control FIFO exists. The menu guard names
+# the model directory, so it must match the one voice-captions installs.
+model_name=$(sed -n 's/^MODEL_NAME = "\(.*\)"$/\1/p' "$repo_root/systemd/.local/bin/voice-captions")
+[[ -n $model_name ]] || fail 'could not read MODEL_NAME from voice-captions'
+grep -Fq "voice-captions/models/$model_name/tokens.txt" "$menu" ||
+  fail "the live captions guards do not name the installed model $model_name"
+(
+export HOME="$test_root/captions-home" XDG_RUNTIME_DIR="$test_root/captions-run"
+mkdir -p "$HOME/.local/bin" "$XDG_RUNTIME_DIR"
+printf '#!/bin/bash\nexit 0\n' >"$HOME/.local/bin/voice-captions"
+chmod +x "$HOME/.local/bin/voice-captions"
+captions_rows() {
+  LMENU_MENU="$menu" LMENU_EXTENSIONS=/nonexistent python3 "$parser" --dry-run setup.voice-dictation |
+    grep -F 'captions'
+}
+rows=$(captions_rows)
+grep -Fq 'Install live captions' <<<"$rows" || fail 'the captions installer is not offered before install'
+grep -Fq 'setup.voice-dictation.live-captions' <<<"$rows" && fail 'the captions toggle shows before install'
+mkdir -p "$HOME/.local/share/voice-captions/models/$model_name"
+: >"$HOME/.local/share/voice-captions/models/$model_name/tokens.txt"
+rows=$(captions_rows)
+grep -Fq 'Install live captions' <<<"$rows" && fail 'the captions installer still shows after install'
+grep -Fq 'setup.voice-dictation.live-captions' <<<"$rows" || fail 'the captions toggle is missing after install'
+grep -Pq 'Live captions\t✓' <<<"$rows" && fail 'live captions are ticked with no daemon'
+mkdir -p "$XDG_RUNTIME_DIR/voice-captions" && mkfifo "$XDG_RUNTIME_DIR/voice-captions/control"
+grep -Pq 'Live captions\t✓' <<<"$(captions_rows)" ||
+  fail 'live captions are not ticked while the daemon runs'
+)
+printf 'ok: live captions menu follows install and daemon state\n'
+
 printf 'ok\n'

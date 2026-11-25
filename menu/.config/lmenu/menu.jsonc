@@ -657,6 +657,24 @@
     "action": "~/.config/hypr/scripts/voice-dictation use-typing"
   },
   {
+    "id": "setup.voice-dictation.live-captions",
+    "icon": "󰅨",
+    "label": "Live captions",
+    "description": "Shows your words at the bottom of the screen while you dictate, offline",
+    "aliases": ["captions", "live-captions"],
+    "when": "[[ -f ~/.local/share/voice-captions/models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25/tokens.txt ]]",
+    "checked": "[[ -p ${XDG_RUNTIME_DIR:-/run/user/$UID}/voice-captions/control ]]",
+    "action": "if systemctl --user is-active -q voice-captions.service; then systemctl --user disable --now voice-captions.service; else systemctl --user enable --now voice-captions.service; fi"
+  },
+  {
+    "id": "setup.voice-dictation.install-captions",
+    "icon": "󰅨",
+    "label": "Install live captions…",
+    "description": "Downloads the offline speech model once (about 460 MB), then turns captions on",
+    "when": "[[ -x ~/.local/bin/voice-captions && ! -f ~/.local/share/voice-captions/models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25/tokens.txt ]]",
+    "action": "kitty -e bash -c '~/.local/bin/voice-captions install && systemctl --user daemon-reload && systemctl --user enable --now voice-captions.service; read -rp \"Press Enter to close\"'"
+  },
+  {
     "id": "setup.voice-dictation.configure",
     "icon": "󰒓",
     "label": "Configure Hyprvoice…",

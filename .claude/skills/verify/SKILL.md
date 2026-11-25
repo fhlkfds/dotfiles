@@ -102,6 +102,7 @@ stand-ins called, the processes seen, and the file count changed.
 | A smoke in fixture mode | `$V smoke Battery --env BATTERY_SMOKE_TEST=1 --expect 'ok: BatteryState logic'` |
 | A smoke that never quits | `$V smoke OmakubBar --expect 'omakub bar smoke: ok' --timeout 5` |
 | A panel, clicked and pictured | `$V shot battery-panel` or `$V shot timer`. Frames and extra env: `$V shot timer --env TIMER_SHOT_FRAMES=1` |
+| The voice caption pill, pictured | `$V shot voice-caption` (five states, one PNG each) |
 | An lmenu view | `$V lmenu style.bar` lists rows with their fields. `$V lmenu style.bar --display` prints the exact lines Rofi would get. No route means the root. |
 | A script's dry-run | `$V run --label night-light-dry -- hypr/.config/hypr/scripts/night-light.sh --dry-run on` |
 | A fixture test | `$V run --label battery-test -- bash tests/battery-widget.test.sh` |
@@ -197,8 +198,8 @@ All three are executable, live in `bin/`, and pass `shellcheck`:
 - `bin/sandbox-probe` is called by `verify doctor`. It prints one word for
   each isolation property.
 
-`harness/BatteryPanelShot.qml` and `harness/TimerShot.qml` are the shot
-harnesses. `verify shot` copies
+`harness/BatteryPanelShot.qml`, `harness/VoiceCaptionShot.qml` and
+`harness/TimerShot.qml` are the shot harnesses. `verify shot` copies
 `quickshell/.config/quickshell/` from the working tree into `sandbox/shell/`,
 puts the harness beside it, and runs it there. The copy is needed because
 Quickshell resolves components and singletons from the loaded file's

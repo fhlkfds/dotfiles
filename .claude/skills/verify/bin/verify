@@ -19,8 +19,10 @@ usage: verify <command> [options]
                                run quickshell/.config/quickshell/<NAME>Smoke.qml offscreen
   shot NAME [--env KEY=VALUE]... [--timeout SECONDS]
                                drive a shot harness and save PNGs. NAME is battery-panel
-                               (click the real BatteryIcon, save icon + panel PNGs) or timer
-                               (the whole timer journey; --env TIMER_SHOT_FRAMES=1 adds frames/)
+                               (click the real BatteryIcon, save icon + panel PNGs),
+                               voice-caption (the caption pill in five states, one PNG each)
+                               or timer (the whole timer journey; --env TIMER_SHOT_FRAMES=1
+                               adds frames/)
   lmenu ROUTE [--display]      lmenu --dry-run (or --dry-run-display) against the repo menu
   evidence                     print the evidence directory and its index
   cleanup                      delete the sandbox, keep the evidence
@@ -350,10 +352,13 @@ cmd_shot() {
     battery-panel)
       harness=BatteryPanelShot ok_line='ok: battery panel shots'
       passed='clicked icon opened panel, Escape closed it' ;;
+    voice-caption)
+      harness=VoiceCaptionShot ok_line='ok: voice caption shots' pngs_wanted=5
+      passed='pill rendered in five states' ;;
     timer)
       harness=TimerShot ok_line='ok: timer shots' timeout=120
       passed='typed 7m30s, started, counted down, rang and was dismissed' ;;
-    *) die 'shot: harnesses are battery-panel and timer' 2 ;;
+    *) die 'shot: harnesses are battery-panel, voice-caption and timer' 2 ;;
   esac
   shift
   local -a envs=()
