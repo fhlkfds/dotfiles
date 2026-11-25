@@ -1,0 +1,21 @@
+# Live captions for voice dictation (voice-captions serve). Install the engine
+# and model first with voice-captions install. AF_UNIX only: the kernel keeps
+# it offline, and PipeWire and the shell are both reached over unix sockets.
+[Unit]
+Description=Live captions for voice dictation
+PartOf=graphical-session.target
+After=graphical-session.target pipewire.service
+
+[Service]
+Type=exec
+ExecStart=%h/.local/share/voice-captions/venv/bin/python %h/.local/bin/voice-captions serve
+Environment=PATH=%h/.local/libexec/hyprvoice-gpu:%h/.local/bin:/usr/local/bin:/usr/bin
+Restart=on-failure
+RestartSec=3
+Nice=5
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=2G
+
+[Install]
+WantedBy=graphical-session.target
