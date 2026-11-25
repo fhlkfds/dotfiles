@@ -75,8 +75,8 @@ function display(state, maxChars) {
     if (settled !== "") settled = "…" + settled
     else pending = "…" + pending
   }
-  var hint = HINTS.hasOwnProperty(state.note) ? HINTS[state.note] : (full === "" ? PLACEHOLDER : "")
   var shown = state.phase !== "idle"
+  var hint = !shown ? "" : HINTS.hasOwnProperty(state.note) ? HINTS[state.note] : (full === "" ? PLACEHOLDER : "")
   return { visible: shown, phase: state.phase, settled: settled, pending: pending, hint: hint }
 }
 

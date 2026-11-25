@@ -15,7 +15,9 @@ const feed = (lines, from = logic.initialState()) => lines.reduce((state, l) => 
 
 {
   const idle = logic.initialState();
-  assert.equal(logic.display(idle, 100).visible, false, "idle shows nothing");
+  const view = logic.display(idle, 100);
+  assert.equal(view.visible, false, "idle shows nothing");
+  assert.equal(view.hint, "", "idle has no placeholder");
 }
 
 {
