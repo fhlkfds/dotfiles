@@ -25,6 +25,9 @@ hl.on("hyprland.start", function()
     start("systemctl --user start --no-block location-detect.service")
     -- Wallpaper sync between machines through the dotfiles repository.
     start("systemctl --user start wallpaper-sync.timer wallpaper-sync.path")
+    -- Live dictation captions, only when turned on in the menu (enabled).
+    -- Enabling wants graphical-session.target, which this session never reaches.
+    start("systemctl --user -q is-enabled voice-captions.service && systemctl --user start --no-block voice-captions.service")
     start("helium-browser", { workspace = "2 silent" })
     start("spotify", { workspace = "9 silent" })
     start("virt-manager", { workspace = "6 silent" })

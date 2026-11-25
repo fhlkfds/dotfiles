@@ -101,7 +101,8 @@ stand-ins called, the processes seen, and the file count changed.
 | A Quickshell smoke | `$V smoke Battery --expect 'ok: Battery widget projections'` runs `quickshell/.config/quickshell/BatterySmoke.qml` |
 | A smoke in fixture mode | `$V smoke Battery --env BATTERY_SMOKE_TEST=1 --expect 'ok: BatteryState logic'` |
 | A smoke that never quits | `$V smoke OmakubBar --expect 'omakub bar smoke: ok' --timeout 5` |
-| A panel, clicked and pictured | `$V shot battery-panel` (the only shot harness so far) |
+| A panel, clicked and pictured | `$V shot battery-panel` |
+| The voice caption pill, pictured | `$V shot voice-caption` (five states, one PNG each) |
 | An lmenu view | `$V lmenu style.bar` lists rows with their fields. `$V lmenu style.bar --display` prints the exact lines Rofi would get. No route means the root. |
 | A script's dry-run | `$V run --label night-light-dry -- hypr/.config/hypr/scripts/night-light.sh --dry-run on` |
 | A fixture test | `$V run --label battery-test -- bash tests/battery-widget.test.sh` |

@@ -145,6 +145,8 @@ export VOICE_DICTATION_NOTIFICATIONS="$notifications"
 export HYPRVOICE_STATE="$test_root/hyprvoice-state" VOICE_DICTATION_TARGET="$test_root/target"
 export HYPRVOICE_SEQUENCE="$test_root/sequence"
 export MEDIA_STATE_DIR="$test_root/media"
+# Never write to a live voice-captions daemon's FIFO.
+export VOICE_CAPTIONS_CONTROL="$test_root/no-captions"
 export JOURNAL_CALLS="$test_root/journal-calls" VOICE_DICTATION_LAST="$test_root/state/voice-dictation/last.txt"
 mkdir -p "$MEDIA_STATE_DIR"
 
@@ -743,6 +745,100 @@ HOME="$test_root/home" LMENU_MENU="$test_root/home/menu/menu.jsonc" LMENU_EXTENS
     "~/.config/hypr/scripts/voice-dictation use-clipboard", "~/.config/hypr/scripts/voice-dictation use-typing"]' >/dev/null ||
   fail 'the menu entries call the wrong subcommands'
 export HYPRVOICE_CONFIG=$hyprvoice_config
+
+# Caption reports: the FIFO is held open here the way the daemon holds it.
+"$script" use-source alsa_input.webcam
+captions=$test_root/captions
+mkfifo "$captions"
+export VOICE_DICTATION_FDFLAGS=${VOICE_DICTATION_FDFLAGS:-/usr/lib/bash/fdflags}
+if ! bash -c 'enable -f "$1" fdflags' _ "$VOICE_DICTATION_FDFLAGS" 2>/dev/null; then
+  printf 'skip: bash fdflags loadable not installed, caption reports not checked\n'
+else
+exec 7<>"$captions"
+reports() {
+  local line
+  report_lines=()
+  while read -r -t 0 -u 7; do
+    IFS= read -r -u 7 line
+    report_lines+=("$line")
+  done
+  printf '%s\n' "${report_lines[@]}"
+}
+for out in with without; do
+  printf idle >"$HYPRVOICE_STATE"
+  : >"$calls"
+  if [[ $out == with ]]; then control=$captions; else control=$test_root/no-captions; fi
+  VOICE_CAPTIONS_CONTROL=$control HYPR_ACTIVE=0xaaa "$script" toggle >"$test_root/$out.start.out" 2>&1
+  if [[ $out == with ]]; then
+    started_id=$(<"$VOICE_DICTATION_TARGET.started")
+    start_reports=$(reports)
+  fi
+  VOICE_CAPTIONS_CONTROL=$control HYPR_ACTIVE=0xbbb "$script" toggle >"$test_root/$out.stop.out" 2>&1
+  [[ $out != with ]] || stop_reports=$(reports)
+  cat "$calls" >>"$test_root/$out.stop.out"
+done
+id_pattern='^[0-9]+\.[0-9]{6}$'
+[[ $started_id =~ $id_pattern ]] || fail "the dictation start time is not a caption id: $started_id"
+[[ $start_reports == "$started_id armed"$'\n'"$started_id listening alsa_input.webcam" ]] ||
+  fail "start did not report armed then listening: $start_reports"
+[[ $stop_reports == "$started_id typing"$'\n'"$started_id idle" ]] || fail "stop did not report typing then idle: $stop_reports"
+for half in start stop; do
+  cmp -s "$test_root/with.$half.out" "$test_root/without.$half.out" ||
+    fail "captions changed what dictation $half does or prints"
+done
+
+printf idle >"$HYPRVOICE_STATE"
+if VOICE_CAPTIONS_CONTROL=$captions HYPRVOICE_TOGGLE_FAIL=1 HYPR_ACTIVE=0xaaa "$script" toggle 2>/dev/null; then
+  fail 'failed start reported success'
+fi
+failed=$(reports)
+[[ $failed =~ ^([0-9.]+)\ armed$'\n'([0-9.]+)\ idle$ && ${BASH_REMATCH[1]} == "${BASH_REMATCH[2]}" ]] ||
+  fail "failed start did not report armed then idle: $failed"
+
+printf '{"mode":"source","source":"unplugged.microphone"}\n' >"$config"
+printf idle >"$HYPRVOICE_STATE"
+if VOICE_CAPTIONS_CONTROL=$captions "$script" toggle 2>/dev/null; then fail 'missing microphone started dictation'; fi
+[[ $(reports) =~ ^[0-9.]+\ armed$'\n'[0-9.]+\ idle$ ]] || fail 'a start that died resolving the microphone left the caption armed'
+"$script" use-source alsa_input.webcam
+
+printf transcribing >"$HYPRVOICE_STATE"
+printf '%s\n' 42.5 >"$VOICE_DICTATION_TARGET.started"
+if VOICE_CAPTIONS_CONTROL=$captions HYPRVOICE_TOGGLE_FAIL=1 HYPRVOICE_FAILURE_STATE=status-error "$script" toggle 2>/dev/null; then
+  fail 'failed stop reported success'
+fi
+[[ $(reports) == '42.5 idle' ]] || fail 'a stop whose Hyprvoice failed did not report idle'
+printf transcribing >"$HYPRVOICE_STATE"
+printf '%s\n' 43.5 >"$VOICE_DICTATION_TARGET.started"
+VOICE_CAPTIONS_CONTROL=$captions HYPRVOICE_TOGGLE_FAIL=1 "$script" toggle 2>/dev/null || true
+[[ -z $(reports) ]] || fail 'a stop that left Hyprvoice listening reported a phase'
+
+# A daemon that stops reading lets the FIFO fill; reports are then dropped
+# instead of blocking the keypress.
+python3 -c '
+import fcntl, os
+fcntl.fcntl(7, fcntl.F_SETFL, os.O_NONBLOCK)
+try:
+    while True: os.write(7, b"x" * 4096)
+except BlockingIOError:
+    pass
+'
+printf idle >"$HYPRVOICE_STATE"
+status=0
+VOICE_CAPTIONS_CONTROL=$captions HYPR_ACTIVE=0xaaa timeout 5 "$script" toggle >"$test_root/full.out" 2>&1 || status=$?
+[[ $status == 0 ]] || fail "dictation with a full captions FIFO exited $status (124 means it hung)"
+cmp -s "$test_root/full.out" "$test_root/with.start.out" || fail 'a full captions FIFO changed what dictation prints'
+exec 7>&-
+fi
+
+[[ $(VOICE_CAPTIONS_CONTROL=$captions "$script" toggle --dry-run | tail -n1) == captions=on ]] ||
+  fail 'dry-run does not say captions are on'
+[[ $("$script" toggle --dry-run | tail -n1) == captions=off ]] || fail 'dry-run does not say captions are off'
+
+for step in start stop; do
+  status=0
+  VOICE_CAPTIONS_CONTROL=$captions HYPR_ACTIVE=0xaaa timeout 2 "$script" toggle >/dev/null 2>&1 || status=$?
+  [[ $status == 0 ]] || fail "$step with an orphan captions FIFO exited $status"
+done
 
 grep -Fq 'cfg.scripts_dir .. "/voice-dictation toggle"' "$lua" || fail 'Lua binding bypasses microphone resolution'
 grep -Fq 'setup.voice-dictation' "$menu" || fail 'Setup menu lacks voice dictation settings'

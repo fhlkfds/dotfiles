@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Run every test in the repository; exit non-zero if any fails.
 # RUN_ALL_STRICT=1 (set by CI) also fails on skipped checks, except those that
-# cannot run headless (Quickshell UI smoke tests, Wayland, Docker) or need the
-# AUR-only Hyprvoice daemon.
+# cannot run headless (Quickshell UI smoke tests, Wayland, Docker), need the
+# AUR-only Hyprvoice daemon, or need the 460 MB live-captions speech model.
 set -uo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." || exit
 export LC_ALL=C.UTF-8 # menu tests compare multibyte glyphs
 
-allowed_skips='quickshell|Wayland|docker|hyprvoice not installed'
+allowed_skips='quickshell|Wayland|docker|hyprvoice not installed|real speech model'
 failed=() skipped=()
 
 run() {

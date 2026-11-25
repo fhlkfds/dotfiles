@@ -23,6 +23,10 @@ restore_delay=${VOICE_DICTATION_RESTORE_DELAY:-0.3}
 target_file=${VOICE_DICTATION_TARGET:-"${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/voice-dictation-target"}
 paused_media_file="$target_file.media"
 started_file="$target_file.started"
+captions_control=${VOICE_CAPTIONS_CONTROL:-"${XDG_RUNTIME_DIR:-/nonexistent}/voice-captions/control"}
+fdflags_loadable=${VOICE_DICTATION_FDFLAGS:-/usr/lib/bash/fdflags}
+caption_id=
+caption_writer=
 
 resolved_source=
 resolved_label=
@@ -30,6 +34,27 @@ used_fallback=false
 
 die() { printf 'voice-dictation: %s\n' "$*" >&2; exit 1; }
 valid_name() { [[ $1 =~ ^[[:alnum:]_.:-]+$ ]]; }
+
+# Report the dictation phase to the voice-captions daemon: armed, listening
+# SOURCE, typing or idle. Builtins only, so it adds no process to the keypress
+# path. A FIFO opened read-write never blocks on open, and with no daemon
+# holding it the line is dropped. A write still blocks once a stuck daemon lets
+# the 64 KiB buffer fill, so bash's loadable fdflags makes it nonblocking and a
+# full FIFO drops the report. Without fdflags, captions stay off.
+caption() {
+  [[ -n $caption_id && -p $captions_control ]] || return 0
+  if [[ -z $caption_writer ]]; then
+    caption_writer=off
+    enable -f "$fdflags_loadable" fdflags 2>/dev/null && caption_writer=on
+  fi
+  [[ $caption_writer == on ]] || return 0
+  local fd
+  { exec {fd}<>"$captions_control"; } 2>/dev/null || return 0
+  if fdflags -s +nonblock "$fd" 2>/dev/null; then
+    printf '%s %s\n' "$caption_id" "$*" 1>&"$fd" 2>/dev/null || true
+  fi
+  exec {fd}>&-
+}
 
 mode() {
   [[ -r $config ]] || { printf 'default-output'; return; }
@@ -357,6 +382,7 @@ stop_listening() {
   if (( status != 0 )) && [[ $(hyprvoice_status || true) == transcribing ]]; then
     return "$status"
   fi
+  if (( status == 0 )); then caption typing; else caption idle; fi
   resume_media
   rm -f -- "$target_file"
   return "$status"
@@ -370,8 +396,7 @@ start_dictation() {
   start_interrupted=false
   start_requested=false
   rm -f -- "$paused_media_file" 2>/dev/null || true
-  # Some locales give EPOCHREALTIME a decimal comma.
-  [[ -L $started_file ]] || printf '%s\n' "${EPOCHREALTIME/,/.}" >"$started_file" || true
+  [[ -L $started_file ]] || printf '%s\n' "$caption_id" >"$started_file" || true
   tmp=$(mktemp "$target_file.XXXXXX") || exec "$hyprvoice_bin" toggle
   active_window >"$tmp" || true
   mv -fT -- "$tmp" "$target_file" || rm -f -- "$tmp"
@@ -379,6 +404,7 @@ start_dictation() {
     if [[ $start_requested == false || $(hyprvoice_status || true) != transcribing ]]; then
       resume_media
       rm -f -- "$target_file" "$started_file"
+      caption idle
     fi
   ' EXIT
   # Defer exit until a successful pause has been recorded for cleanup.
@@ -389,6 +415,7 @@ start_dictation() {
   "$hyprvoice_bin" toggle
   [[ $start_interrupted == false ]] || exit 1
   trap - EXIT INT TERM HUP
+  caption listening "$resolved_source"
 }
 
 # Hyprvoice types into whatever has keyboard focus, and follow_mouse hands
@@ -401,6 +428,7 @@ finish_dictation() {
     ! follow=$(option_value input:follow_mouse) || ! warps=$(option_value cursor:no_warps); then
     stop_listening
     wait_until_idle
+    caption idle
     capture_transcript
     exit
   fi
@@ -412,6 +440,7 @@ finish_dictation() {
   focus_window "$target"
   stop_listening
   wait_until_idle
+  caption idle
   restore_focus
   trap - EXIT
   capture_transcript
@@ -538,6 +567,7 @@ toggle() {
     resolve_source
     printf 'action=would-toggle device=%s\n' "$resolved_source"
     [[ $used_fallback == false ]] || printf 'notification=Using %s microphone\n' "$resolved_label"
+    if [[ -p $captions_control ]]; then printf 'captions=on\n'; else printf 'captions=off\n'; fi
     return
   fi
   command -v "$hyprvoice_bin" >/dev/null 2>&1 ||
@@ -550,13 +580,21 @@ toggle() {
   # While listening Hyprvoice reports "transcribing"; a toggle then types it.
   case $(hyprvoice_status) in
     idle)
+      # The caption id is also the journal start time in $started_file. Some
+      # locales give EPOCHREALTIME a decimal comma.
+      caption_id=${EPOCHREALTIME/,/.}
+      caption armed
+      trap 'caption idle' EXIT
       # Stopping must still work if the selected microphone was unplugged.
       resolve_source
       sync_hyprvoice_config "$resolved_source"
       [[ $used_fallback == false ]] || notify "Using $resolved_label microphone"
       start_dictation
       ;;
-    transcribing) finish_dictation ;;
+    transcribing)
+      [[ ! -p $captions_control ]] || read -r caption_id 2>/dev/null <"$started_file" || true
+      finish_dictation
+      ;;
     processing|injecting) return 0 ;;
     *) exec "$hyprvoice_bin" toggle ;;
   esac
