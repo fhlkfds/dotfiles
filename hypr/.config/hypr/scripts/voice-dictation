@@ -24,9 +24,11 @@ target_file=${VOICE_DICTATION_TARGET:-"${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOM
 paused_media_file="$target_file.media"
 started_file="$target_file.started"
 captions_control=${VOICE_CAPTIONS_CONTROL:-"${XDG_RUNTIME_DIR:-/nonexistent}/voice-captions/control"}
+captions_reply=${VOICE_CAPTIONS_REPLY:-"${captions_control%/*}/reply"}
 fdflags_loadable=${VOICE_DICTATION_FDFLAGS:-/usr/lib/bash/fdflags}
 caption_id=
 caption_writer=
+caption_sent=false
 
 resolved_source=
 resolved_label=
@@ -36,12 +38,14 @@ die() { printf 'voice-dictation: %s\n' "$*" >&2; exit 1; }
 valid_name() { [[ $1 =~ ^[[:alnum:]_.:-]+$ ]]; }
 
 # Report the dictation phase to the voice-captions daemon: armed, listening
-# SOURCE, typing or idle. Builtins only, so it adds no process to the keypress
-# path. A FIFO opened read-write never blocks on open, and with no daemon
-# holding it the line is dropped. A write still blocks once a stuck daemon lets
-# the 64 KiB buffer fill, so bash's loadable fdflags makes it nonblocking and a
-# full FIFO drops the report. Without fdflags, captions stay off.
+# SOURCE [TARGET], typing or idle. Builtins only, so it adds no process to the
+# keypress path. A FIFO opened read-write never blocks on open, and with no
+# daemon holding it the line is dropped. A write still blocks once a stuck
+# daemon lets the 64 KiB buffer fill, so bash's loadable fdflags makes it
+# nonblocking and a full FIFO drops the report. Without fdflags, captions stay
+# off. caption_sent says whether the line was written.
 caption() {
+  caption_sent=false
   [[ -n $caption_id && -p $captions_control ]] || return 0
   if [[ -z $caption_writer ]]; then
     caption_writer=off
@@ -51,7 +55,7 @@ caption() {
   local fd
   { exec {fd}<>"$captions_control"; } 2>/dev/null || return 0
   if fdflags -s +nonblock "$fd" 2>/dev/null; then
-    printf '%s %s\n' "$caption_id" "$*" 1>&"$fd" 2>/dev/null || true
+    ! printf '%s %s\n' "$caption_id" "$*" 1>&"$fd" 2>/dev/null || caption_sent=true
   fi
   exec {fd}>&-
 }
@@ -375,14 +379,39 @@ resume_media() {
   rm -f -- "$paused_media_file" || true
 }
 
-# A failed stop that is still listening must stay quiet and remain retryable.
+# The daemon typed its live words into the text box. Report typing, then wait
+# until it says it erased them, so Hyprvoice's text does not land behind them.
+# The reply FIFO is opened before the report, so the answer cannot be missed.
+# Builtins only, and never longer than 1.5 s: with no daemon there is no reply
+# FIFO and no wait, and a stuck daemon costs the wait once per stop.
+erase_live_words() {
+  local fd line now deadline left
+  if [[ -z $caption_id || ! -p $captions_reply ]] || ! { exec {fd}<>"$captions_reply"; } 2>/dev/null; then
+    caption typing
+    return 0
+  fi
+  caption typing
+  if [[ $caption_sent == true ]]; then
+    deadline=$(( ${EPOCHREALTIME/[.,]/} + 1500000 ))
+    while now=${EPOCHREALTIME/[.,]/}; (( now < deadline )); do
+      printf -v left '%d.%06d' $(( (deadline - now) / 1000000 )) $(( (deadline - now) % 1000000 ))
+      IFS= read -r -t "$left" -u "$fd" line || break
+      # An answer nobody read, from an earlier dictation, may come first.
+      [[ $line != "$caption_id erased" ]] || break
+    done
+  fi
+  exec {fd}>&-
+}
+
+# A failed stop that is still listening must remain retryable.
 stop_listening() {
   local status=0
+  erase_live_words
   "$hyprvoice_bin" toggle || status=$?
   if (( status != 0 )) && [[ $(hyprvoice_status || true) == transcribing ]]; then
     return "$status"
   fi
-  if (( status == 0 )); then caption typing; else caption idle; fi
+  (( status == 0 )) || caption idle
   resume_media
   rm -f -- "$target_file"
   return "$status"
@@ -391,7 +420,7 @@ stop_listening() {
 # Remember the window holding the text box, so the mouse is free to wander
 # while speaking.
 start_dictation() {
-  local tmp
+  local tmp target=
   # EXIT on errexit runs after Bash has unwound function-local variables.
   start_interrupted=false
   start_requested=false
@@ -415,7 +444,10 @@ start_dictation() {
   "$hyprvoice_bin" toggle
   [[ $start_interrupted == false ]] || exit 1
   trap - EXIT INT TERM HUP
-  caption listening "$resolved_source"
+  # The daemon types live words into this window and nowhere else.
+  read -r target 2>/dev/null <"$target_file" || true
+  [[ $target =~ ^0x[[:xdigit:]]+$ ]] || target=
+  caption listening "$resolved_source${target:+ $target}"
 }
 
 # Hyprvoice types into whatever has keyboard focus, and follow_mouse hands
