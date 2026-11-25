@@ -126,12 +126,12 @@ Scope {
 
   function advance() { shot.fakeNow += shot.frameMs; TimerState.tick() }
   // keyClick reads a numeric string as a key code, so characters go in as keys.
-  function press(key) {
+  function press(key, modifiers) {
     const code = typeof key === "string" ? key.charCodeAt(0) : -1
     const resolved = code >= 48 && code <= 57 ? Qt.Key_0 + code - 48
       : code >= 97 && code <= 122 ? Qt.Key_A + code - 97
       : typeof key === "string" ? Qt.Key_Colon : key
-    input.keyClick(resolved, Qt.NoModifier, -1)
+    input.keyClick(resolved, modifiers || Qt.NoModifier, -1)
   }
   function clickPill() { input.mouseClick(timerIcon, timerIcon.width / 2, timerIcon.height / 2, Qt.LeftButton, Qt.NoModifier, -1) }
   function typeText(text, done) { shot.hold(text.length, k => shot.press(text[k]), done) }
@@ -141,16 +141,16 @@ Scope {
     TimerState.togglePanel("shot")
     shot.quiet(150, () => {
       shot.check("preflight: the panel opens with an empty box", card.visible && content.inputText === "")
-      shot.press("2")
-      shot.check("preflight: key 2 on an empty box starts the 10 minute preset",
+      shot.press("2", Qt.AltModifier)
+      shot.check("preflight: Alt+2 starts the 10 minute preset",
                  TimerState.phase === "running" && TimerState.current.durationMs === 600000)
       shot.check("preflight: starting closes the panel", !card.visible)
       TimerState.cancel()
       TimerState.togglePanel("shot")
       shot.quiet(150, () => {
-        shot.press("0"); shot.press("1"); shot.press("h")
-        shot.check("preflight: a time starting with 0 is typed, not picked", content.inputText === "01h" && TimerState.phase === "idle")
-        shot.check("preflight: and previews as 1 h", content.liveText.indexOf("→ 1 h · rings at 15:55:00") === 0)
+        shot.press("1"); shot.press("0")
+        shot.check("preflight: a bare 1 types instead of picking a preset", content.inputText === "10" && TimerState.phase === "idle")
+        shot.check("preflight: and previews as 10 min", content.liveText.indexOf("→ 10 min · rings at 15:05:00") === 0)
         shot.press(Qt.Key_Escape)
         shot.check("preflight: Escape in the box closes the panel", !card.visible)
         shot.fakeNow = shot.base

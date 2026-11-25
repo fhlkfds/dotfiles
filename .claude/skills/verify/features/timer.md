@@ -9,7 +9,7 @@ Done pill is the only sign. One timer runs at a time.
 ## Sub-features
 
 - `timer-open`: SUPER+ALT+Z, the bar pill or lmenu opens the panel; Escape, a click outside, the key again and SUPER+Q close it.
-- `timer-start`: a preset chip or number key 1 to 4, or a typed time (`7m30s`, `90s`, `1h`, `10`, `7:30`) with Enter. The live line shows the length and the clock time it rings.
+- `timer-start`: a preset chip or Alt+1 to Alt+4, or a typed time (`7m30s`, `90s`, `1h`, `10`, `7:30`) with Enter. The live line shows the length and the clock time it rings.
 - `timer-pill`: accent pill with the remaining time while running, pulsing critical pill reading Done once it rings. Click: panel while running, dismiss when done.
 - `timer-adjust`: `+1 min` and `Cancel` in the running panel.
 - `timer-alert`: one notification and one chime at zero. None under do-not-disturb.
@@ -76,9 +76,8 @@ Preconditions:
   (`No PanelWindow backend loaded`). The shot places the real
   `TimerPanelContent` under the real clock instead, so `TimerPanel.qml`, the
   `GlobalShortcut` and `SUPER+Q` stay unverified without a Wayland session.
-- Number keys pick a preset only while the box is empty. The shot checks that
-  `2` starts 10 minutes and that `01h` types as a time. A time starting with
-  1 to 4 needs a leading 0.
+- Presets sit on Alt+1 to Alt+4, so a bare digit always types. The shot checks
+  that Alt+2 starts 10 minutes and that `10` types as a time.
 - The clock in the pictures is the machine's real time. Only the timer's own
   clock is fake, so `rings at 15:02:30` is stable and the bar clock is not.
 - `$V shot` copies `quickshell/.config/quickshell/` when the shot runs. Re-run

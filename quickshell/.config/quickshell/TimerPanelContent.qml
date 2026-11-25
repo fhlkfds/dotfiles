@@ -17,8 +17,8 @@ Item {
     : parsed.error !== undefined ? parsed.error
     : "→ " + TimerLogic.describe(parsed.ms) + " · rings at "
       + TimerLogic.clockTime(timerState.clock() + parsed.ms)
-  readonly property string hintText: (presets.length > 1 ? "1–" + presets.length : "1")
-    + " pick a preset · Enter start · Esc close"
+  readonly property string hintText: "Alt+" + (presets.length > 1 ? "1–" + presets.length : "1")
+    + " preset · Enter start · Esc close"
   readonly property string runningLabel: timerState.current.label
     || TimerLogic.describe(timerState.current.durationMs) + " timer"
   property alias inputText: input.text
@@ -28,8 +28,7 @@ Item {
   focus: true
   Keys.onEscapePressed: root.closeRequested()
 
-  // Number keys work only while the box is empty, so they never steal a digit
-  // from a time being typed. Start such a time with 0 (010 is ten minutes).
+  // Presets sit on Alt+digit so a bare digit always types: "10" is ten minutes.
   function pickPreset(index) {
     if (index < 0 || index >= presets.length) return false
     timerState.start(presets[index] * TimerLogic.MINUTE_MS, "")
@@ -118,7 +117,7 @@ Item {
               }
               Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: String(chip.index + 1)
+                text: "Alt+" + (chip.index + 1)
                 color: Theme.textMuted
                 font.pixelSize: Theme.fs(10)
               }
@@ -156,8 +155,8 @@ Item {
           Keys.onEscapePressed: root.closeRequested()
           Keys.onPressed: event => {
             const number = event.key - Qt.Key_1
-            if (input.text === "" && number >= 0 && number < 9
-                && (event.modifiers & ~Qt.KeypadModifier) === 0
+            if (number >= 0 && number < 9
+                && (event.modifiers & ~Qt.KeypadModifier) === Qt.AltModifier
                 && root.pickPreset(number))
               event.accepted = true
           }
@@ -247,6 +246,7 @@ Item {
           width: (runView.width - Theme.gapS) / 2
           label: "Cancel"
           labelColor: Theme.critical
+          fill: Theme.surfaceAlt
           onClicked: root.timerState.cancel()
         }
       }

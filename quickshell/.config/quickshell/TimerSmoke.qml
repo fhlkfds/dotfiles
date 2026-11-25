@@ -58,7 +58,7 @@ Scope {
     check("starts idle with no pill", TimerState.phase === "idle" && !icon.visible)
     check("the idle tick is off", !TimerState.ticking)
     check("the shipped presets load", JSON.stringify(content.presets) === "[5,10,25,60]")
-    check("the hint counts the presets", content.hintText === "1–4 pick a preset · Enter start · Esc close")
+    check("the hint counts the presets", content.hintText === "Alt+1–4 preset · Enter start · Esc close")
     check("the panel shows the idle view", !content.running && content.liveText === "")
 
     content.inputText = "abc"

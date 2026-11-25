@@ -315,12 +315,11 @@ unofficial API, not a script failure.
 A countdown that shows in the bar, left of the clock, and rings when it ends.
 One timer runs at a time.
 
-- **Keys:** `SUPER+ALT+Z` opens the panel on the focused monitor. Press `1` to
-  `4` for the presets (5, 10, 25 and 60 minutes, set in
+- **Keys:** `SUPER+ALT+Z` opens the panel on the focused monitor. Press `Alt+1` to
+  `Alt+4` for the presets (5, 10, 25 and 60 minutes, set in
   `quickshell/.config/quickshell/timer/config.json`), or type a time and press
-  Enter. Number keys pick a preset only while the box is empty, so start a time
-  that begins with a preset number (1 to 4) with a 0: `01h30m`, `045`. Escape, a click
-  outside, `SUPER+ALT+Z` again and `SUPER+Q` close the panel.
+  Enter. Escape, a click outside, `SUPER+ALT+Z` again and `SUPER+Q` close the
+  panel.
 - **Menu:** lmenu (`SUPER+SHIFT+A`), Trigger → Timer: 5, 10, 25 or 60 minutes,
   or Custom time… to open the panel. Scripts can run
   `quickshell ipc call timer start 7m30s`.
