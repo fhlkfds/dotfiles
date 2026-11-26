@@ -29,6 +29,7 @@ case "${1:-} ${2:-}" in
   "tab list") cat "$d/tabs.json" ;;
   "pane list") cat "$d/panes.json" ;;
   "pane process-info")
+    printf '%s\n' "$4" >>"$d/polls"
     group=1
     [[ -e "$d/busy/$4" ]] && group=2
     if [[ -s "$d/starting/$4" ]]; then
@@ -123,10 +124,11 @@ herdr_up --no-attach >/dev/null
 expect_calls 'pane run w1:p7 sshpersist hubble' 'pane run w1:p9 sshpersist hermes'
 
 reset_session
-echo 1 >"$stub/shell-age"
+echo 0 >"$stub/shell-age"
 touch "$stub/busy/w1:p7"
-HERDR_UP_WAIT_SECONDS=1 herdr_up --no-attach >/dev/null
+HERDR_UP_WAIT_SECONDS=2 herdr_up --no-attach >/dev/null
 expect_calls 'pane run w1:p9 sshpersist hermes'
+(($(grep -cx 'w1:p7' "$stub/polls") >= 3)) || fail 'gave up on a starting shell before the deadline'
 
 reset_session
 jq '.result.tabs |= map(select(.label != "Hermes"))' "$stub/tabs.json" >"$stub/tabs.tmp"
