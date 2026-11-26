@@ -29,7 +29,13 @@ case "${1:-} ${2:-}" in
   "tab list") cat "$d/tabs.json" ;;
   "pane list") cat "$d/panes.json" ;;
   "pane process-info")
-    if [[ -e "$d/busy/$4" ]]; then group=2; else group=1; fi
+    group=1
+    [[ -e "$d/busy/$4" ]] && group=2
+    if [[ -s "$d/starting/$4" ]]; then
+      left=$(<"$d/starting/$4")
+      ((left > 0)) && group=2
+      echo $((left - 1)) >"$d/starting/$4"
+    fi
     printf '{"result":{"process_info":{"foreground_process_group_id":%s,"shell_pid":1}}}\n' "$group" ;;
   "tab create")
     printf '%s\n' "$*" >>"$d/calls"
@@ -43,11 +49,19 @@ esac
 SH
 chmod +x "$test_root/bin/herdr"
 
+# Seconds since the pane's shell started; long-running unless a case says so.
+cat >"$test_root/bin/ps" <<'SH'
+#!/usr/bin/env bash
+cat "$HERDR_STUB_DIR/shell-age"
+SH
+chmod +x "$test_root/bin/ps"
+
 # Herdr as it comes back after a reboot: both SSH tabs are idle local shells.
 reset_session() {
   stub=$test_root/stub
   rm -rf -- "$stub"
-  mkdir -p "$stub/busy"
+  mkdir -p "$stub/busy" "$stub/starting"
+  echo 3600 >"$stub/shell-age"
   : >"$stub/calls"
   printf '{"result":{"workspaces":[{"workspace_id":"w1"}]}}\n' >"$stub/workspaces.json"
   cat >"$stub/tabs.json" <<'JSON'
@@ -97,7 +111,21 @@ expect_calls 'pane run w1:p7 sshpersist hubble' 'pane run w1:p9 sshpersist herme
 
 reset_session
 touch "$stub/busy/w1:p7"
+started=$SECONDS
 herdr_up --no-attach >/dev/null
+expect_calls 'pane run w1:p9 sshpersist hermes'
+((SECONDS - started < 2)) || fail 'waited on a tab that has been busy for an hour'
+
+reset_session
+echo 1 >"$stub/shell-age"
+echo 3 >"$stub/starting/w1:p7"
+herdr_up --no-attach >/dev/null
+expect_calls 'pane run w1:p7 sshpersist hubble' 'pane run w1:p9 sshpersist hermes'
+
+reset_session
+echo 1 >"$stub/shell-age"
+touch "$stub/busy/w1:p7"
+HERDR_UP_WAIT_SECONDS=1 herdr_up --no-attach >/dev/null
 expect_calls 'pane run w1:p9 sshpersist hermes'
 
 reset_session

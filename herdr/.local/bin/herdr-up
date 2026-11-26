@@ -9,6 +9,7 @@
 set -euo pipefail
 
 herdr_command=${HERDR_UP_HERDR:-herdr}
+ps_command=${HERDR_UP_PS:-ps}
 connect_command=${HERDR_UP_CONNECT:-sshpersist}
 targets=${HERDR_UP_TARGETS:-hubble=hubble,Hermes=hermes}
 session=${HERDR_UP_SESSION:-}
@@ -59,9 +60,19 @@ wait_for_workspace() {
   done
 }
 
-shell_is_idle() {
-  h pane process-info --pane "$1" \
-    | jq -e '.result.process_info | .foreground_process_group_id == .shell_pid' >/dev/null
+# A shell restored after a reboot runs .zshrc's banner in the foreground before
+# its first prompt, so a young shell gets until the deadline to reach it. A
+# busy shell older than that is in use and is left alone.
+wait_for_prompt() {
+  local info age deadline=$((SECONDS + wait_seconds))
+  while :; do
+    info=$(h pane process-info --pane "$1") || return 1
+    jq -e '.result.process_info | .foreground_process_group_id == .shell_pid' <<<"$info" >/dev/null \
+      && return 0
+    age=$("$ps_command" -o etimes= -p "$(jq -r '.result.process_info.shell_pid' <<<"$info")") || return 1
+    ((age < wait_seconds && SECONDS < deadline)) || return 1
+    sleep 0.2
+  done
 }
 
 connect_tab() {
@@ -83,7 +94,7 @@ connect_tab() {
   else
     pane_id=$(jq -r --arg tab "$tab_id" \
       'first(.result.panes[] | select(.tab_id == $tab) | .pane_id) // empty' <<<"$panes")
-    if [[ -z $pane_id ]] || ! shell_is_idle "$pane_id"; then
+    if [[ -z $pane_id ]] || ! wait_for_prompt "$pane_id"; then
       printf '%s: busy, left alone\n' "$label"
       return
     fi
