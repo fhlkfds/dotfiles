@@ -43,7 +43,10 @@ local function app_exec(keys, description, command, flags)
 end
 
 -- Core desktop and helper commands.
-app_exec(mod .. " + Return", "terminal", cfg.terminal)
+-- The terminal opens Herdr with its SSH tabs reconnected (herdr-up); the
+-- drop-down terminal stays a plain shell.
+app_exec(mod .. " + Return", "terminal",
+    cfg.terminal .. " -e " .. cfg.scripts_dir .. "/run-if-deployed.sh herdr herdr-up")
 exec(mod .. " + SHIFT + Return", "drop-down terminal", cfg.scripts_dir .. "/Dropterminal.sh kitty")
 shell(mod .. " + Q", "close window", "close-window")
 exec("CTRL + ALT + Delete", "close all windows", cfg.scripts_dir .. "/close-all-windows.sh")

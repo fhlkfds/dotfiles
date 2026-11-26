@@ -178,8 +178,10 @@ if command -v lua >/dev/null 2>&1; then
               'share with LocalSend:localsend' 'terminal:kitty'; do
     description=${pair%%:*} command=${pair#*:}
     grep -Fq "\"description\":\"$description\",\"key\"" <<<"$binds" || fail "the $description bind lost its description"
-    grep -Fq "/run-or-install $command\"" <<<"$binds" || fail "the $description bind is not wrapped"
+    grep -Eq "/run-or-install $command( |\")" <<<"$binds" || fail "the $description bind is not wrapped"
   done
+  grep -Fq '/run-or-install kitty -e ' <<<"$binds" && grep -Fq 'run-if-deployed.sh herdr herdr-up' <<<"$binds" ||
+    fail 'the terminal bind does not open herdr-up'
 fi
 
 printf 'ok: run-or-install\n'
