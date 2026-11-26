@@ -209,7 +209,7 @@ check("batch: the longest batch fits one socket write",
 
 
 
-def press(count, script):
+def press(count, script, stop_deadline=math.inf):
     """Run Daemon.press against a stand-in hyprctl; returns (keys taken, batch sizes)."""
     with tempfile.TemporaryDirectory() as tmp:
         stub = Path(tmp) / "hyprctl"
@@ -218,8 +218,14 @@ def press(count, script):
         stub.chmod(0o700)
         daemon = object.__new__(vc.Daemon)
         daemon.cfg, daemon.keyboard = SimpleNamespace(hyprctl=str(stub)), asyncio.Lock()
-        taken = asyncio.run(daemon.press(BOX, (vc.BACKSPACE,) * count))
-        return taken, [int(size) for size in (Path(tmp) / "sizes").read_text().split()]
+        daemon.helpers, daemon.stop_deadline = set(), stop_deadline
+
+        async def run():
+            daemon.loop = asyncio.get_running_loop()
+            return await daemon.press(BOX, (vc.BACKSPACE,) * count)
+        taken = asyncio.run(run())
+        sizes = Path(tmp) / "sizes"
+        return taken, [int(size) for size in sizes.read_text().split()] if sizes.exists() else []
 
 
 ok_each = "printf 'ok\\n\\n\\n%.0s' \"${commands[@]}\""
@@ -228,6 +234,8 @@ check("press: a long erase goes out in batches Hyprland reads whole", press(600,
 check("press: only the keys Hyprland took count, and a refusal ends the run",
       press(600, "printf 'ok\\n\\n\\nok\\n\\n\\nerror: key not found'") == (2, [256]))
 check("press: a hyprctl that fails outright sent nothing", press(3, "exit 1") == (0, [3]))
+check("press: once the stop budget is spent, no batch starts",
+      press(3, ok_each, stop_deadline=-math.inf) == (0, []))
 
 custom = {"armed": 1.0, "listening": 2.0, "typing": 3.0}
 state, _ = vc.step(State(), Report("1", "armed"), 0, custom)
