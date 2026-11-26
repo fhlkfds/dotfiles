@@ -14,7 +14,7 @@ Scope {
   readonly property var osdState: OsdState
   // Restores a running timer and ticks it even when no bar pill is on screen.
   readonly property var timerState: TimerState
-  // Live dictation captions: the singleton owns the daemon socket.
+  // The dictation pill: the singleton owns the caption daemon's socket.
   readonly property var voiceCaptionState: VoiceCaptionState
 
   // Wallpaper transitions. Declared first: its Bottom-layer windows must be
@@ -56,7 +56,7 @@ Scope {
       output: modelData
     }
   }
-  // Live dictation caption, above the OSD slot. Shown only on the focused screen.
+  // The dictation pill, above the OSD slot. Shown only on the focused screen.
   Variants {
     model: Quickshell.screens
 

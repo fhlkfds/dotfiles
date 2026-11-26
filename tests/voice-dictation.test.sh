@@ -5,8 +5,15 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 script=${VOICE_DICTATION_SCRIPT:-"$repo_root/hypr/.config/hypr/scripts/voice-dictation"}
 menu="$repo_root/menu/.config/lmenu/menu.jsonc"
 lua="$repo_root/hypr/.config/hypr/conf/keybindings.lua"
+daemon="$repo_root/systemd/.local/bin/voice-captions"
 test_root=$(mktemp -d -t voice-dictation-test.XXXXXX)
-trap 'rm -rf "$test_root"' EXIT
+daemon_pid=
+cleanup() {
+  [[ -z $daemon_pid ]] || kill "$daemon_pid" 2>/dev/null || true
+  wait 2>/dev/null || true
+  rm -rf "$test_root"
+}
+trap cleanup EXIT
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
@@ -66,8 +73,11 @@ esac
 SH
 cat >"$test_root/bin/hyprctl" <<'SH'
 #!/usr/bin/env bash
+# HYPR_ACTIVE_FILE holds the focused window when a focus dispatch must move it.
 case "$*" in
-  '-j activewindow') printf '{"address":"%s"}\n' "${HYPR_ACTIVE:-}" ;;
+  '-j activewindow')
+    [[ -z ${HYPR_ACTIVE_FILE:-} ]] || HYPR_ACTIVE=$(<"$HYPR_ACTIVE_FILE")
+    printf '{"address":"%s"}\n' "${HYPR_ACTIVE:-}" ;;
   '-j clients')
     if [[ -n ${HYPR_CLIENTS:-} ]]; then printf '%s\n' "$HYPR_CLIENTS";
     else printf '[{"address":"0xaaa"},{"address":"0xbbb"}]\n'; fi ;;
@@ -75,10 +85,23 @@ case "$*" in
   'getoption cursor:no_warps -j')
     if [[ -n ${HYPR_WARPS_JSON:-} ]]; then printf '%s\n' "$HYPR_WARPS_JSON";
     else printf '{"bool":false}\n'; fi ;;
+  --batch\ *)
+    # The caption daemon's keys: Hyprland answers ok for each command. An
+    # erase takes HYPR_ERASE_DELAY_FILE's seconds, waited with a builtin so a
+    # killed stub leaves no child holding its output open.
+    if [[ $2 == *BackSpace* && -s ${HYPR_ERASE_DELAY_FILE:-/nonexistent} ]]; then
+      read -r delay <"$HYPR_ERASE_DELAY_FILE"
+      read -r -t "$delay" _ <>"$HYPR_ERASE_DELAY_FILE.fifo" || true
+    fi
+    printf '%s\n' "$*" >>"$VOICE_DICTATION_CALLS"
+    IFS=';' read -ra commands <<<"$2"
+    printf 'ok\n\n\n%.0s' "${commands[@]}" ;;
   -q\ *)
     shift
     printf '%s\n' "$*" >>"$VOICE_DICTATION_CALLS"
     [[ -z ${HYPR_FAIL_MATCH:-} || $* != *"$HYPR_FAIL_MATCH"* ]] || exit 1
+    [[ -z ${HYPR_ACTIVE_FILE:-} || ! $* =~ ^dispatch\ hl\.dsp\.focus.*address:(0x[0-9a-f]+) ]] ||
+      printf '%s' "${BASH_REMATCH[1]}" >"$HYPR_ACTIVE_FILE"
     ;;
   *) exit 1 ;;
 esac
@@ -779,9 +802,10 @@ for out in with without; do
 done
 id_pattern='^[0-9]+\.[0-9]{6}$'
 [[ $started_id =~ $id_pattern ]] || fail "the dictation start time is not a caption id: $started_id"
-[[ $start_reports == "$started_id armed"$'\n'"$started_id listening alsa_input.webcam" ]] ||
-  fail "start did not report armed then listening: $start_reports"
-[[ $stop_reports == "$started_id typing"$'\n'"$started_id idle" ]] || fail "stop did not report typing then idle: $stop_reports"
+[[ $start_reports == "$started_id armed"$'\n'"$started_id listening alsa_input.webcam 0xaaa" ]] ||
+  fail "start did not report armed, then listening with the window to type into: $start_reports"
+stop_pattern="^${started_id//./\\.} typing [0-9]+\.[0-9]{6}"$'\n'"${started_id//./\\.} idle\$"
+[[ $stop_reports =~ $stop_pattern ]] || fail "stop did not report typing with its send time, then idle: $stop_reports"
 for half in start stop; do
   cmp -s "$test_root/with.$half.out" "$test_root/without.$half.out" ||
     fail "captions changed what dictation $half does or prints"
@@ -806,11 +830,41 @@ printf '%s\n' 42.5 >"$VOICE_DICTATION_TARGET.started"
 if VOICE_CAPTIONS_CONTROL=$captions HYPRVOICE_TOGGLE_FAIL=1 HYPRVOICE_FAILURE_STATE=status-error "$script" toggle 2>/dev/null; then
   fail 'failed stop reported success'
 fi
-[[ $(reports) == '42.5 idle' ]] || fail 'a stop whose Hyprvoice failed did not report idle'
+[[ $(reports) =~ ^42\.5\ typing\ [0-9]+\.[0-9]{6}$'\n'42\.5\ idle$ ]] ||
+  fail 'a stop whose Hyprvoice failed did not report typing then idle'
 printf transcribing >"$HYPRVOICE_STATE"
 printf '%s\n' 43.5 >"$VOICE_DICTATION_TARGET.started"
 VOICE_CAPTIONS_CONTROL=$captions HYPRVOICE_TOGGLE_FAIL=1 "$script" toggle 2>/dev/null || true
-[[ -z $(reports) ]] || fail 'a stop that left Hyprvoice listening reported a phase'
+[[ $(reports) =~ ^43\.5\ typing\ [0-9]+\.[0-9]{6}$ ]] || fail 'a stop that left Hyprvoice listening reported more than typing'
+
+# The stop waits for the daemon to say the live words are erased: not at all
+# with no reply FIFO, until the answer for this dictation, and 1.5 s at most.
+journal_done=$test_root/journal-done
+printf '%s\n' '2026/11/20 10:00:05 Pipeline: Final transcription text: done' \
+  '2026/11/20 10:00:06 Pipeline: Text injection completed successfully' >"$journal_done"
+stop_ms() {
+  local started
+  printf transcribing >"$HYPRVOICE_STATE"
+  printf '%s\n' "$1" >"$VOICE_DICTATION_TARGET.started"
+  : >"$calls"
+  started=${EPOCHREALTIME/[.,]/}
+  VOICE_CAPTIONS_CONTROL=$captions JOURNAL_FIXTURE=$journal_done "$script" toggle >/dev/null 2>&1
+  printf '%s\n' $(((${EPOCHREALTIME/[.,]/} - started) / 1000))
+}
+plain=$(stop_ms 44.5)
+mkfifo "$test_root/reply"
+exec 6<>"$test_root/reply"
+printf '45.5 erased\n' >&6
+answered=$(stop_ms 45.5)
+((answered - plain < 700)) || fail "an answered stop took $answered ms, against $plain ms with no reply FIFO"
+printf '1.5 erased\n' >&6
+unanswered=$(stop_ms 46.5)
+((unanswered - plain >= 1300 && unanswered - plain < 2300)) ||
+  fail "an unanswered stop took $unanswered ms, against $plain ms: the wait is not 1.5 s"
+grep -Fxq toggle "$calls" || fail 'an unanswered stop did not stop Hyprvoice'
+[[ $(reports | grep -cE ' typing [0-9]+\.[0-9]{6}$') == 3 ]] || fail 'a stop did not report typing before it waited'
+exec 6>&-
+rm -f -- "$test_root/reply"
 
 # A daemon that stops reading lets the FIFO fill; reports are then dropped
 # instead of blocking the keypress.
@@ -828,6 +882,123 @@ VOICE_CAPTIONS_CONTROL=$captions HYPR_ACTIVE=0xaaa timeout 5 "$script" toggle >"
 [[ $status == 0 ]] || fail "dictation with a full captions FIFO exited $status (124 means it hung)"
 cmp -s "$test_root/full.out" "$test_root/with.start.out" || fail 'a full captions FIFO changed what dictation prints'
 exec 7>&-
+
+# Live words, with the real daemon: sent as keys to the window dictation
+# started in, erased there once the script has focused it again, and only then
+# does Hyprvoice get the toggle that makes it type. The daemon never runs
+# wtype, whose keys Hyprland would run as keybinds while SUPER is held.
+live=$test_root/live
+mkdir -p "$live"
+cat >"$test_root/bin/live-recorder" <<'SH'
+#!/usr/bin/env bash
+exec python3 -c '
+import sys, time
+while True:
+    sys.stdout.buffer.write(b"\x00\x10" * 1600)
+    sys.stdout.buffer.flush()
+    time.sleep(0.05)
+'
+SH
+cat >"$test_root/bin/wtype" <<'SH'
+#!/usr/bin/env bash
+printf 'wtype %s\n' "$*" >>"$VOICE_DICTATION_CALLS"
+SH
+chmod +x "$test_root/bin/live-recorder" "$test_root/bin/wtype"
+export HYPR_ACTIVE_FILE=$test_root/active
+printf 0xaaa >"$HYPR_ACTIVE_FILE"
+export HYPR_ERASE_DELAY_FILE=$live/erase-delay
+: >"$HYPR_ERASE_DELAY_FILE"
+mkfifo "$HYPR_ERASE_DELAY_FILE.fifo"
+VOICE_CAPTIONS_CONTROL=$live/control VOICE_CAPTIONS_EVENTS=$live/events.sock VOICE_CAPTIONS_ENGINE=fake \
+  VOICE_CAPTIONS_RECORDER=$test_root/bin/live-recorder VOICE_CAPTIONS_HYPRCTL=$test_root/bin/hyprctl \
+  PYTHONDONTWRITEBYTECODE=1 python3 "$daemon" serve 2>"$live/log" &
+daemon_pid=$!
+for _ in {1..400}; do
+  grep -q 'listening on' "$live/log" && break
+  kill -0 "$daemon_pid" 2>/dev/null || fail "the caption daemon exited: $(<"$live/log")"
+  sleep 0.025
+done
+[[ -p $live/control && -p $live/reply ]] || fail 'the caption daemon made no control or reply FIFO'
+captions=$live/control
+printf idle >"$HYPRVOICE_STATE"
+"$script" use-source alsa_input.webcam
+: >"$calls"
+VOICE_CAPTIONS_CONTROL=$captions "$script" toggle >/dev/null 2>&1
+# The fake engine says "wörd3 "; the US key table has no ö.
+third_word='key = "d", window = "address:0xaaa" }) ; dispatch hl.dsp.send_shortcut({ mods = "", key = "3", '
+for _ in {1..400}; do
+  grep -Fq -- "$third_word" "$calls" && break
+  sleep 0.025
+done
+grep -Fq -- "$third_word" "$calls" || fail "live words were not sent to the window: $(<"$calls")"
+printf 0xbbb >"$HYPR_ACTIVE_FILE"
+VOICE_CAPTIONS_CONTROL=$captions JOURNAL_FIXTURE=$journal_done "$script" toggle >/dev/null 2>&1
+python3 - "$calls" <<'PY' || fail "the live words were not erased before Hyprvoice typed: $(<"$calls")"
+import re, sys
+calls = open(sys.argv[1], encoding="utf-8").read().splitlines()
+assert not any(call.startswith("wtype") for call in calls), "wtype ran"
+start, stop = (i for i, call in enumerate(calls) if call == "toggle")
+focus = calls.index('dispatch hl.dsp.focus({ window = "address:0xaaa" })')
+command = re.compile(r'dispatch hl\.dsp\.send_shortcut\(\{ mods = "", key = "(\w+)", window = "address:0xaaa" \}\)')
+batches = {i: call.removeprefix("--batch ").split(" ; ") for i, call in enumerate(calls) if call.startswith("--batch ")}
+*typing, erase = batches
+assert start < focus < erase < stop, "the order is not focus, erase, toggle"
+keys = [command.fullmatch(key)[1] for i in typing for key in batches[i]]
+text = "".join(" " if key == "space" else key for key in keys)
+assert re.fullmatch(r"(wrd\d+ )+", text), text
+assert [command.fullmatch(key)[1] for key in batches[erase]] == ["BackSpace"] * len(keys), (batches[erase], text)
+PY
+
+# An erase slower than the script's 1.5 s wait but quicker than the daemon's
+# helper timeout: the daemon gives up at its stop budget, so no BackSpace
+# lands after Hyprvoice was told to type.
+printf 1.8 >"$HYPR_ERASE_DELAY_FILE"
+printf 0xaaa >"$HYPR_ACTIVE_FILE"
+: >"$calls"
+VOICE_CAPTIONS_CONTROL=$captions "$script" toggle >/dev/null 2>&1
+for _ in {1..400}; do
+  grep -Fq -- "$third_word" "$calls" && break
+  sleep 0.025
+done
+grep -Fq -- "$third_word" "$calls" || fail "live words were not sent before the slow erase: $(<"$calls")"
+printf 0xbbb >"$HYPR_ACTIVE_FILE"
+stop_started=${EPOCHREALTIME/[.,]/}
+VOICE_CAPTIONS_CONTROL=$captions JOURNAL_FIXTURE=$journal_done "$script" toggle >/dev/null 2>&1
+grep -qx toggle "$calls" || fail 'the slow erase kept Hyprvoice from typing'
+while (( ${EPOCHREALTIME/[.,]/} - stop_started < 2500000 )); do sleep 0.05; done
+! grep -Fq BackSpace "$calls" || fail "a BackSpace landed after Hyprvoice typed: $(<"$calls")"
+grep -Fq 'stop budget spent' "$live/log" || grep -Fq 'Hyprland took 0 of' "$live/log" ||
+  fail "the daemon did not give up the slow erase: $(<"$live/log")"
+: >"$HYPR_ERASE_DELAY_FILE"
+
+# A daemon paused through the whole stop reads the typing report only after
+# the script gave up waiting and let Hyprvoice type. The report says when it
+# was sent, so the resumed daemon finds its budget spent and sends no keys.
+printf 0xaaa >"$HYPR_ACTIVE_FILE"
+: >"$calls"
+VOICE_CAPTIONS_CONTROL=$captions "$script" toggle >/dev/null 2>&1
+for _ in {1..400}; do
+  grep -Fq -- "$third_word" "$calls" && break
+  sleep 0.025
+done
+grep -Fq -- "$third_word" "$calls" || fail "live words were not sent before the pause: $(<"$calls")"
+printf 0xbbb >"$HYPR_ACTIVE_FILE"
+kill -STOP "$daemon_pid"
+VOICE_CAPTIONS_CONTROL=$captions JOURNAL_FIXTURE=$journal_done "$script" toggle >/dev/null 2>&1
+grep -qx toggle "$calls" || fail 'a paused daemon kept Hyprvoice from typing'
+kill -CONT "$daemon_pid"
+resumed=${EPOCHREALTIME/[.,]/}
+for _ in {1..400}; do
+  grep -Fq 'stop budget spent' "$live/log" && break
+  sleep 0.025
+done
+while (( ${EPOCHREALTIME/[.,]/} - resumed < 1000000 )); do sleep 0.05; done
+! grep -Fq BackSpace "$calls" || fail "a resumed daemon erased after Hyprvoice typed: $(<"$calls")"
+unset HYPR_ACTIVE_FILE HYPR_ERASE_DELAY_FILE
+kill -TERM "$daemon_pid"
+wait "$daemon_pid" || fail 'the caption daemon did not exit cleanly'
+daemon_pid=
+captions=$test_root/captions
 fi
 
 [[ $(VOICE_CAPTIONS_CONTROL=$captions "$script" toggle --dry-run | tail -n1) == captions=on ]] ||

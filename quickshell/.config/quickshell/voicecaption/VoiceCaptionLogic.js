@@ -1,10 +1,12 @@
 .pragma library
 
-// Reduces the caption daemon's NDJSON events to what the pill shows. A state
-// event is the whole state, so there is nothing to merge: a line either
-// replaces the state or is ignored. A level event only moves the mic meter of
-// the current listening session. Pure and clockless; the daemon owns every
-// deadline.
+// Reduces the caption daemon's NDJSON events to what the pill shows: whether
+// dictation is on, a hint when live words cannot work, and the mic level. The
+// words are typed into the text box by the daemon, so their text in a state
+// event is ignored here. A state event is the whole state, so there is nothing
+// to merge: a line either replaces the state or is ignored. A level event only
+// moves the mic meter of the current listening session. Pure and clockless;
+// the daemon owns every deadline.
 
 var PHASES = { idle: true, armed: true, listening: true, typing: true }
 
@@ -13,14 +15,9 @@ var HINTS = {
   "no-audio": "No microphone audio",
   "engine-failed": "Live captions unavailable"
 }
-var PLACEHOLDER = "Listening…"
 
 function initialState() {
-  return { phase: "idle", id: "", seq: -1, committed: "", tentative: "", note: "", level: 0 }
-}
-
-function text(value) {
-  return typeof value === "string" ? value : ""
+  return { phase: "idle", id: "", seq: -1, note: "", level: 0 }
 }
 
 function receive(state, line) {
@@ -35,14 +32,12 @@ function receive(state, line) {
   if (event.type !== "state") return state
   if (typeof event.seq !== "number" || !isFinite(event.seq) || event.seq <= state.seq) return state
   if (typeof event.phase !== "string" || !PHASES.hasOwnProperty(event.phase)) return state
-  var id = text(event.id)
+  var id = typeof event.id === "string" ? event.id : ""
   return {
     phase: event.phase,
     id: id,
     seq: event.seq,
-    committed: text(event.committed),
-    tentative: text(event.tentative),
-    note: text(event.note),
+    note: typeof event.note === "string" ? event.note : "",
     level: event.phase === "listening" && id === state.id ? state.level : 0
   }
 }
@@ -63,38 +58,14 @@ function disconnected(state) {
   return initialState()
 }
 
-function isSpace(ch) {
-  return ch === " " || ch === "\n" || ch === "\t"
-}
-
-function display(state, maxChars) {
-  var committed = state.committed
-  var tentative = state.tentative
-  var gap = committed !== "" && tentative !== "" && !isSpace(committed.charAt(committed.length - 1)) && !isSpace(tentative.charAt(0)) ? " " : ""
-  var full = committed + gap + tentative
-  var limit = Math.max(1, maxChars | 0)
-  var start = 0
-  if (full.length > limit) {
-    start = full.length - limit
-    if (!isSpace(full.charAt(start - 1))) {
-      var space = start
-      while (space < full.length && !isSpace(full.charAt(space))) space++
-      // A single word longer than the limit has no boundary to cut at.
-      if (space < full.length - 1) start = space + 1
-    }
-  }
-  var cutAt = committed.length
-  var settled = start < cutAt ? committed.slice(start) : ""
-  var pending = full.slice(Math.max(start, cutAt + gap.length))
-  if (gap !== "" && settled !== "" && pending !== "") settled += gap
-  if (start > 0) {
-    if (settled !== "") settled = "…" + settled
-    else pending = "…" + pending
-  }
+function display(state) {
   var shown = state.phase !== "idle"
-  var hint = !shown ? "" : HINTS.hasOwnProperty(state.note) ? HINTS[state.note] : (full === "" ? PLACEHOLDER : "")
-  var level = state.phase === "listening" ? state.level : 0
-  return { visible: shown, phase: state.phase, settled: settled, pending: pending, hint: hint, level: level }
+  return {
+    visible: shown,
+    phase: state.phase,
+    hint: shown && HINTS.hasOwnProperty(state.note) ? HINTS[state.note] : "",
+    level: state.phase === "listening" ? state.level : 0
+  }
 }
 
 if (typeof module !== "undefined" && module.exports) {

@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Live captions for voice dictation, fully offline.
+"""Live words for voice dictation, fully offline.
 
 Hyprvoice has no live text, so this resident daemon runs its own recorder on
-the dictation microphone through a streaming recogniser and publishes the
-caption for the shell to draw. voice-dictation reports each dictation's phase
-into a FIFO with a bash builtin; the daemon answers with whole-state NDJSON
-snapshots on a unix socket. Captions sit outside the dictation path: with the
-daemon down, dictation behaves exactly as before and only the caption is
-missing. Transcript text is never logged or stored.
+the dictation microphone through a streaming recogniser and types the words
+into the window being dictated into as they settle. voice-dictation reports
+each dictation's phase into a FIFO with a bash builtin; the daemon publishes
+whole-state NDJSON snapshots on a unix socket for the shell's pill. When
+dictation stops it erases what it typed and says so on a reply FIFO, so
+Hyprvoice's final text takes its place. With the daemon down, dictation
+behaves exactly as before and only the live words are missing. Transcript text
+is never logged or stored.
 """
 import argparse
+import asyncio
 import json
 import math
 import os
@@ -40,6 +43,14 @@ CONTROL_LINE_MAX = 4096
 FAKE_WORD_BYTES = BYTES_PER_SECOND // 10
 LEVEL_INTERVAL = 0.05
 LEVEL_BYTES = int(LEVEL_INTERVAL * BYTES_PER_SECOND)
+HELPER_TIMEOUT = 2.0
+# A stop is answered within this long, before voice-dictation's 1.5 s wait
+# ends and Hyprvoice types. Keys still unsent then are dropped: a BackSpace
+# that landed after Hyprvoice's text would delete it.
+STOP_BUDGET = 1.0
+# Hyprland reads a request until its socket runs dry, so a very long request
+# can arrive cut short. A 256-key batch (at most 29 KiB) lands whole.
+BATCH_KEYS = 256
 
 SHERPA_VERSION = "2.0.3"
 MODEL_NAME = "sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25"
@@ -70,17 +81,23 @@ class Report:
     id: str
     phase: str
     source: str = ""
+    target: str = ""  # the window being dictated into, as a Hyprland address
+    sent: str = ""  # when voice-dictation sent a typing report, in epoch seconds
 
 
 REPORT_LINE = re.compile(
-    r"([0-9]{1,20}(?:\.[0-9]{1,9})?) (armed|typing|idle|listening ([A-Za-z0-9_.:-]{1,255}))")
+    r"(?P<id>[0-9]{1,20}(?:\.[0-9]{1,9})?) (?:"
+    r"(?P<phase>armed|idle)"
+    r"|(?P<typing>typing)(?: (?P<sent>[0-9]{1,20}\.[0-9]{1,9}))?"
+    r"|(?P<listening>listening) (?P<source>[A-Za-z0-9_.:-]{1,255})(?: (?P<target>0x[0-9a-fA-F]{1,16}))?)")
 
 
 def parse_report(line: str) -> "Report | None":
     match = REPORT_LINE.fullmatch(line)
     if not match:
         return None
-    return Report(match[1], match[2].split(" ", 1)[0], match[3] or "")
+    phase = match["phase"] or match["typing"] or match["listening"]
+    return Report(match["id"], phase, match["source"] or "", match["target"] or "", match["sent"] or "")
 
 
 @dataclass(frozen=True)
@@ -126,6 +143,27 @@ class RecorderExited:
 
 
 @dataclass(frozen=True)
+class Typed:
+    """A Type effect ended and Hyprland took all count keys."""
+    id: str
+    count: int
+
+
+@dataclass(frozen=True)
+class TypeFailed:
+    """A Type effect ended early: only count of its keys reached the box."""
+    id: str
+    count: int
+
+
+@dataclass(frozen=True)
+class Erased:
+    """An Erase effect ended after count BackSpaces."""
+    id: str
+    count: int
+
+
+@dataclass(frozen=True)
 class Tick:
     pass
 
@@ -142,7 +180,21 @@ class StopRecorder:
 
 
 @dataclass(frozen=True)
-class Flush:
+class Type:
+    id: str
+    target: str
+    keys: tuple  # of (mods, key)
+
+
+@dataclass(frozen=True)
+class Erase:
+    id: str
+    target: str
+    count: int
+
+
+@dataclass(frozen=True)
+class Ack:
     id: str
 
 
@@ -160,9 +212,48 @@ class State:
     engine: str = "loading"  # loading | ready | failed, for the daemon's lifetime
     no_audio: bool = False
     deadline: float = math.inf
+    # The live typist. Committed text goes into the target window as keys, one
+    # batch at a time: cursor counts the committed codepoints handed over,
+    # typed the keys in the box, inflight the keys in the running batch.
+    target: str = ""
+    cursor: int = 0
+    typed: int = 0
+    inflight: int = 0
+    # Hyprland refused a key: no more live words for this dictation.
+    refused: bool = False
+    # How far the stop has got once phase is typing: draining waits for the
+    # running batch, erasing for the backspaces, acked has answered the script.
+    stop: str = ""
 
 
 LIMITS = {"armed": 5.0, "listening": 600.0, "typing": 60.0}
+
+# What to press for each character on a US layout, as (mods, key). Hyprland
+# looks a key name up at the keyboard's unshifted level, so a shifted
+# character is its base key with SHIFT.
+US_PUNCTUATION = {" ": "space", "`": "grave", "-": "minus", "=": "equal", "[": "bracketleft", "]": "bracketright",
+                  "\\": "backslash", ";": "semicolon", "'": "apostrophe", ",": "comma", ".": "period", "/": "slash"}
+US_SHIFTED = dict(zip('~!@#$%^&*()_+{}|:"<>?', "`1234567890-=[]\\;',./"))
+KEYS = {char: ("", char) for char in "abcdefghijklmnopqrstuvwxyz0123456789"}
+KEYS |= {char: ("", name) for char, name in US_PUNCTUATION.items()}
+KEYS |= {char.upper(): ("SHIFT", char) for char in "abcdefghijklmnopqrstuvwxyz"}
+KEYS |= {char: ("SHIFT", KEYS[base][1]) for char, base in US_SHIFTED.items()}
+BACKSPACE = ("", "BackSpace")
+
+
+def keys_for(text: str) -> tuple:
+    """A character the table lacks is left out, so every key sent is one
+    BackSpace to erase. A line break would press Enter in the box; Hyprvoice
+    types a space too."""
+    chars = (char if char.isprintable() else " " for char in text)
+    return tuple(KEYS[char] for char in chars if char in KEYS)
+
+
+def batch(target: str, keys) -> str:
+    """One hyprctl --batch request. Every name in it comes from KEYS or from
+    the address parse_report checked, so no dictated text reaches Lua."""
+    return " ; ".join(f'dispatch hl.dsp.send_shortcut({{ mods = "{mods}", key = "{key}", window = "address:{target}" }})'
+                      for mods, key in keys)
 
 
 def step(state: State, inp, now: float, limits=LIMITS) -> "tuple[State, list]":
@@ -176,7 +267,13 @@ def step(state: State, inp, now: float, limits=LIMITS) -> "tuple[State, list]":
                 transcript = transcript.apply(update)
             if transcript == state.transcript:
                 return state, []
-            return replace(state, transcript=transcript), [Publish(urgent=False)]
+            return _type(replace(state, transcript=transcript), [Publish(urgent=False)])
+        case Typed(id=id, count=count) if id == state.id and state.inflight:
+            return _typed(replace(state, typed=state.typed + count, inflight=0))
+        case TypeFailed(id=id, count=count) if id == state.id and state.inflight:
+            return _typed(replace(state, typed=state.typed + count, inflight=0, refused=True))
+        case Erased(id=id, count=count) if id == state.id and state.stop == "erasing":
+            return replace(state, typed=state.typed - count, stop="acked"), [Ack(id)]
         case RecorderExited(id=id) if id == state.id and state.phase == "listening" and not state.no_audio:
             return replace(state, no_audio=True), [Publish(urgent=True)]
         case EngineReady() | EngineFailed():
@@ -185,35 +282,58 @@ def step(state: State, inp, now: float, limits=LIMITS) -> "tuple[State, list]":
             return changed, [Publish(urgent=True)] if state.phase != "idle" else []
         case Tick() if now >= state.deadline:
             effects = [StopRecorder()] if state.phase == "listening" else []
-            return _enter(state, "idle", "", now, limits, effects)
+            return _enter(state, Report(state.id, "idle"), now, limits, effects)
     return state, []
 
 
 def _report(state, report, now, limits):
-    """A report states the dictation's phase; anything not newer is a no-op."""
+    """A report states the dictation's phase; anything not newer is a no-op.
+    voice-dictation waits on every typing report, so a repeated or late one is
+    still answered unless its erase is on the way."""
     if state.id:
         old, new = Decimal(state.id), Decimal(report.id)
         if new < old or (new == old and RANK[report.phase] <= RANK[state.phase]):
-            return state, []
-    effects = []
-    if state.phase == "listening":
-        effects.append(StopRecorder())
-        if report.id == state.id and report.phase == "typing":
-            effects.append(Flush(report.id))
+            erasing = report.id == state.id and state.stop in ("draining", "erasing")
+            return state, [Ack(report.id)] if report.phase == "typing" and not erasing else []
+    effects = [StopRecorder()] if state.phase == "listening" else []
     if report.id != state.id:
         state = State(id=report.id, engine=state.engine)
-    return _enter(state, report.phase, report.source, now, limits, effects)
+    return _enter(state, report, now, limits, effects)
 
 
-def _enter(state, phase, source, now, limits, effects):
-    if phase == "listening":
-        effects.append(StartRecorder(state.id, source))
-    if phase == "idle":
-        state = State(id=state.id, engine=state.engine)
-    else:
-        state = replace(state, phase=phase, source=source or state.source,
-                        deadline=now + limits[phase])
+def _enter(state, report, now, limits, effects):
+    """Leaving for idle forgets the session, typed text included: a dictation
+    that times out keeps its live words in the box."""
+    if report.phase == "listening":
+        effects.append(StartRecorder(state.id, report.source))
+    if report.phase == "idle":
+        return State(id=state.id, engine=state.engine), effects + [Publish(urgent=True)]
+    state = replace(state, phase=report.phase, source=report.source or state.source,
+                    target=report.target or state.target, deadline=now + limits[report.phase])
+    if report.phase == "typing":
+        state, effects = (replace(state, stop="draining"), effects) if state.inflight else _erase(state, effects)
     return state, effects + [Publish(urgent=True)]
+
+
+def _type(state, effects):
+    """Type the committed text the box lacks. Tentative text may still change,
+    so it is never typed."""
+    committed = state.transcript.committed
+    if state.phase != "listening" or not state.target or state.refused or state.inflight:
+        return state, effects
+    keys = keys_for(committed[state.cursor:])
+    state = replace(state, cursor=len(committed), inflight=len(keys))
+    return state, effects + ([Type(state.id, state.target, keys)] if keys else [])
+
+
+def _typed(state):
+    return _erase(state, []) if state.stop == "draining" else _type(state, [])
+
+
+def _erase(state, effects):
+    if state.typed:
+        return replace(state, stop="erasing"), effects + [Erase(state.id, state.target, state.typed)]
+    return replace(state, stop="acked"), effects + [Ack(state.id)]
 
 
 def note(state: State) -> str:
@@ -261,7 +381,8 @@ def encode(event: dict) -> bytes:
 
 class FakeEngine:
     """Deterministic stand-in for tests: one word per 0.1 s of audio, the
-    unfinished word tentative, so both update kinds are exercised."""
+    unfinished word tentative, so both update kinds are exercised. The words
+    are not ASCII, so a count in bytes instead of characters shows up."""
 
     def __init__(self):
         self.reset()
@@ -274,8 +395,8 @@ class FakeEngine:
         before = self._bytes // FAKE_WORD_BYTES
         self._bytes += len(pcm)
         done = self._bytes // FAKE_WORD_BYTES
-        updates = [Commit(f"word{n} ") for n in range(before + 1, done + 1)]
-        tentative = f"word{done + 1}" if self._bytes % FAKE_WORD_BYTES else ""
+        updates = [Commit(f"wörd{n} ") for n in range(before + 1, done + 1)]
+        tentative = f"wörd{done + 1}" if self._bytes % FAKE_WORD_BYTES else ""
         if tentative != self._tentative:
             updates.append(Revise(tentative))
             self._tentative = tentative
@@ -361,17 +482,12 @@ class Decoder:
             self._queued += len(pcm)
             self._ready.notify()
 
-    def flush(self, id):
-        with self._ready:
-            self._items.append((id, None))
-            self._ready.notify()
-
     def _next(self):
         with self._ready:
             while not self._items:
                 self._ready.wait()
             id, pcm = self._items.popleft()
-            self._queued -= len(pcm or b"")
+            self._queued -= len(pcm)
             return id, pcm
 
     def _fail(self, error):
@@ -396,7 +512,7 @@ class Decoder:
                 if id != current:
                     engine.reset()
                     current = id
-                updates = engine.feed(pcm) if pcm is not None else engine.flush()
+                updates = engine.feed(pcm)
             except Exception as error:
                 return self._fail(error)
             if updates:
@@ -496,8 +612,15 @@ class Subscriber:
 
 
 class Daemon:
-    def __init__(self, cfg, loop, control_fd, server):
+    def __init__(self, cfg, loop, control_fd, reply_fd, server):
         self.cfg, self.loop, self.control_fd, self.server = cfg, loop, control_fd, server
+        self.reply_fd = reply_fd
+        self.keyboard = asyncio.Lock()
+        self.jobs = set()
+        self.helpers = {}
+        # Each dictation's stop deadline, kept apart from State so a later
+        # report (an idle read in the same burst) cannot lift it.
+        self.stop_deadlines = {}
         self.state = State()
         self.seq = 0
         self.subscribers = {}
@@ -521,7 +644,18 @@ class Daemon:
             pass  # the loop closed while a decode finished
 
     def handle(self, inp):
+        stopping = self.state.id if self.state.stop else None
         self.state, effects = step(self.state, inp, self.loop.time(), self.cfg.limits)
+        if self.state.stop and stopping != self.state.id:
+            # Only a typing report starts a stop. The budget runs from when
+            # voice-dictation sent it, so a report read late, by a daemon that
+            # was paused, finds it already spent and sends no keys.
+            late = time.time() - float(inp.sent) if inp.sent else 0.0
+            now = self.loop.time()
+            deadline = now + STOP_BUDGET - max(late, 0.0)
+            self.stop_deadlines = {id: end for id, end in self.stop_deadlines.items() if end > now - 60}
+            self.stop_deadlines[self.state.id] = deadline
+            self.loop.call_at(deadline, self.cut_helpers, self.state.id)
         for effect in effects:
             self.perform(effect)
         if self.deadline_timer:
@@ -542,10 +676,80 @@ class Daemon:
                                          lambda: self.handle(RecorderExited(id)))
             case StopRecorder():
                 self.stop_recorder()
-            case Flush(id=id):
-                self.decoder.flush(id)
+            case Type(id=id, target=target, keys=keys):
+                self.start(self.type_keys(id, target, keys))
+            case Erase(id=id, target=target, count=count):
+                self.start(self.erase(id, target, count))
+            case Ack(id=id):
+                try:
+                    os.write(self.reply_fd, f"{id} erased\n".encode())
+                except OSError:
+                    pass  # unread answers filled the FIFO; the script's wait is bounded
             case Publish(urgent=urgent):
                 self.publish(urgent)
+
+    def start(self, job):
+        task = self.loop.create_task(job)
+        self.jobs.add(task)
+        task.add_done_callback(self.jobs.discard)
+
+    async def hyprctl(self, id, request, deadline) -> bytes:
+        """Hyprland's answer to a batch, empty when hyprctl did not run or
+        hung. Its exit status says nothing about the keys."""
+        pipe = asyncio.subprocess
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                self.cfg.hyprctl, "--batch", request, stdin=pipe.DEVNULL, stdout=pipe.PIPE)
+        except OSError as error:
+            log(f"{self.cfg.hyprctl} did not start: {error.strerror}")
+            return b""
+        self.helpers[proc] = id
+        try:
+            timeout = min(HELPER_TIMEOUT, deadline - self.loop.time())
+            out, _ = await asyncio.wait_for(proc.communicate(), max(timeout, 0))
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            log(f"{self.cfg.hyprctl} hung")
+            return b""
+        finally:
+            self.helpers.pop(proc, None)
+        return out
+
+    def cut_helpers(self, id):
+        """A stop's budget is spent: end that dictation's batches still running."""
+        for proc, owner in list(self.helpers.items()):
+            if owner == id:
+                proc.kill()
+
+    async def press(self, id, target, keys) -> int:
+        """Press keys in the target window, whichever window has focus and
+        whatever modifiers are held: send_shortcut goes to the window's
+        surface with exactly the mods named and runs no keybind. Returns how
+        many keys Hyprland took, which answers ok for each."""
+        taken = 0
+        async with self.keyboard:
+            for start in range(0, len(keys), BATCH_KEYS):
+                # Typing and erasing alike: once the dictation's stop budget
+                # is spent, no batch starts.
+                deadline = self.stop_deadlines.get(id, math.inf)
+                if self.loop.time() >= deadline:
+                    log(f"stop budget spent after {taken} of {len(keys)} keys")
+                    break
+                part = keys[start:start + BATCH_KEYS]
+                ok = (await self.hyprctl(id, batch(target, part), deadline)).split().count(b"ok")
+                taken += ok
+                if ok < len(part):
+                    log(f"Hyprland took {taken} of {len(keys)} keys")
+                    break
+        return taken
+
+    async def type_keys(self, id, target, keys):
+        taken = await self.press(id, target, keys)
+        self.handle(Typed(id, taken) if taken == len(keys) else TypeFailed(id, taken))
+
+    async def erase(self, id, target, count):
+        self.handle(Erased(id, await self.press(id, target, (BACKSPACE,) * count)))
 
     def on_audio(self, id, pcm):
         self.decoder.audio(id, pcm)
@@ -640,6 +844,7 @@ class Daemon:
             self.drop(fd)
         self.server.close()
         os.close(self.control_fd)
+        os.close(self.reply_fd)
 
 
 def claim_socket_path(path: Path):
@@ -656,26 +861,30 @@ def claim_socket_path(path: Path):
     raise SystemExit(f"voice-captions: another daemon is serving {path}")
 
 
+def open_fifo(path: Path) -> int:
+    if path.exists() or path.is_symlink():
+        path.unlink()
+    os.mkfifo(path, 0o600)
+    # Read-write: the daemon never sees EOF between the control FIFO's writers,
+    # and a write to the reply FIFO needs no reader to be waiting.
+    return os.open(path, os.O_RDWR | os.O_NONBLOCK)
+
+
 def serve(cfg):
-    import asyncio
     if cfg.control is None:
         raise SystemExit("voice-captions: XDG_RUNTIME_DIR is not set")
     os.umask(0o077)
-    for path in (cfg.control, cfg.events):
+    for path in (cfg.control, cfg.reply, cfg.events):
         path.parent.mkdir(parents=True, exist_ok=True)
     claim_socket_path(cfg.events)
-    if cfg.control.exists() or cfg.control.is_symlink():
-        cfg.control.unlink()
-    os.mkfifo(cfg.control, 0o600)
-    # Read-write, so the daemon never sees EOF between writers.
-    control_fd = os.open(cfg.control, os.O_RDWR | os.O_NONBLOCK)
+    control_fd, reply_fd = open_fifo(cfg.control), open_fifo(cfg.reply)
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(str(cfg.events))
     os.chmod(cfg.events, 0o600)
     server.listen(16)
     server.setblocking(False)
     loop = asyncio.new_event_loop()
-    daemon = Daemon(cfg, loop, control_fd, server)
+    daemon = Daemon(cfg, loop, control_fd, reply_fd, server)
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         loop.add_signal_handler(sig, loop.stop)
     log(f"listening on {cfg.control} and {cfg.events}")
@@ -683,7 +892,7 @@ def serve(cfg):
         loop.run_forever()
     finally:
         daemon.close()
-        for path in (cfg.events, cfg.control):
+        for path in (cfg.events, cfg.control, cfg.reply):
             try:
                 path.unlink()
             except FileNotFoundError:
@@ -893,8 +1102,10 @@ def install(cfg, env, dry_run):
 @dataclass(frozen=True)
 class Config:
     control: "Path | None"
+    reply: "Path | None"
     events: "Path | None"
     recorder: str
+    hyprctl: str
     engine: str
     model_dir: Path
     venv: Path
@@ -908,6 +1119,8 @@ def config_from_env(env) -> Config:
     data = home / ".local/share" / "voice-captions"
     runtime = Path(env["XDG_RUNTIME_DIR"]) / "voice-captions" if env.get("XDG_RUNTIME_DIR") else None
     control = env.get("VOICE_CAPTIONS_CONTROL") or (runtime and runtime / "control")
+    # voice-dictation looks for the reply FIFO beside the control FIFO.
+    reply = env.get("VOICE_CAPTIONS_REPLY") or (control and Path(control).parent / "reply")
     events = env.get("VOICE_CAPTIONS_EVENTS") or (runtime and runtime / "events.sock")
     engine = env.get("VOICE_CAPTIONS_ENGINE", "sherpa")
     if engine not in ("sherpa", "fake"):
@@ -922,9 +1135,9 @@ def config_from_env(env) -> Config:
         if not limits[phase] > 0:
             raise ValueError(f"{name} must be positive")
     return Config(
-        control=control and Path(control), events=events and Path(events),
+        control=control and Path(control), reply=reply and Path(reply), events=events and Path(events),
         recorder=env.get("VOICE_CAPTIONS_RECORDER") or str(home / ".local/libexec/hyprvoice-gpu/pw-record"),
-        engine=engine,
+        hyprctl=env.get("VOICE_CAPTIONS_HYPRCTL") or "hyprctl", engine=engine,
         model_dir=Path(env.get("VOICE_CAPTIONS_MODEL_DIR") or data / "models" / MODEL_NAME),
         venv=data / "venv", limits=limits, fake_load=env.get("VOICE_CAPTIONS_FAKE_LOAD", ""))
 
@@ -939,9 +1152,9 @@ def positive_seconds(text):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="voice-captions",
-        description="Live, offline captions for voice dictation.",
-        epilog="Environment: VOICE_CAPTIONS_CONTROL, _EVENTS, _RECORDER, _ENGINE (sherpa|fake), "
-               "_MODEL_DIR, _ARMED_TIMEOUT, _LISTENING_TIMEOUT, _TYPING_TIMEOUT; for install "
+        description="Live, offline words for voice dictation.",
+        epilog="Environment: VOICE_CAPTIONS_CONTROL, _REPLY, _EVENTS, _RECORDER, _HYPRCTL, "
+               "_ENGINE (sherpa|fake), _MODEL_DIR, _ARMED_TIMEOUT, _LISTENING_TIMEOUT, _TYPING_TIMEOUT; for install "
                "_PYTHON, _PIP, _CURL.")
     commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
     commands.add_parser("serve", help="run the caption daemon")

@@ -244,22 +244,43 @@ matches. If anything fails it reads "Dictation failed" instead, with
 
 ### Live captions
 
-While `SUPER+R` dictation runs, a caption pill at the bottom centre of the
-screen shows your words as you say them, with a small meter for your
-microphone level. When you stop, Hyprvoice types its final text exactly as
-before. The caption is a preview only. It runs fully offline: no cloud
-service, no API key, and audio never leaves the machine.
+While `SUPER+R` dictation runs, your words are typed into the text box you
+are dictating into as you say them. When you stop, those live words are
+erased and Hyprvoice types its final text in their place, exactly as before.
+A pill at the bottom centre of the screen shows a microphone and a small
+meter for your microphone level. It shows no words; it names the problem when
+live words cannot work ("Loading speech model…", "No microphone audio",
+"Live captions unavailable"). It runs fully offline: no cloud service, no API
+key, and audio never leaves the machine.
+
+Live words go only to the window that had focus when dictation started, and
+they keep going there while the pointer is over another window. A word is
+typed once the recogniser has settled on it. Live words are typed as US
+keyboard keys, so a character with no key there (an accented letter, an emoji)
+is left out of the live text; Hyprvoice's final text still has it. If
+dictation ends without a stop (Hyprvoice fails, or the 10 minute limit
+passes), the live words stay in the box.
 
 The `voice-captions` daemon (Stow package `systemd`) records the dictation
 microphone and streams it through the NVIDIA Nemotron Speech Streaming 0.6B
 model on [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), on the CPU. It
 uses about 0.7 of a CPU core while you talk and about 1.1 GB of memory.
-A word usually shows within 0.2 s of you saying it, and within 0.6 s nine
-times in ten. `voice-dictation` reports
-each phase to it through a FIFO with a shell builtin, so the keypress spawns no
-extra process. The daemon sends the text to the Quickshell pill over a unix
-socket. The service may only open unix sockets (`RestrictAddressFamilies=AF_UNIX`),
-so the kernel keeps it offline. It never logs or stores what you said.
+A word is usually recognised within 0.2 s of you saying it, and within 0.6 s
+nine times in ten. `voice-dictation` reports each phase to it through a FIFO
+with a shell builtin, so the keypress spawns no extra process. The daemon
+types and erases with Hyprland's `send_shortcut` dispatcher, one
+`hyprctl --batch` per group of words. That sends each key straight to the
+window by its address with only the modifiers the daemon names, so a `SUPER`
+still held from the `SUPER+R` that stops dictation cannot turn a typed letter
+into a keybind. If Hyprland refuses a key, live typing ends for that
+dictation and only the keys that landed are erased. The daemon sends the
+phase and microphone level to the Quickshell pill over a unix socket. On
+stop, `voice-dictation` waits for the daemon to answer `erased` on a second
+FIFO before it lets Hyprvoice type. The wait ends after 1.5 s at most.
+Hyprland takes about 10 ms to type or erase 256 keys, even with `SUPER`
+held. The service may only open unix
+sockets (`RestrictAddressFamilies=AF_UNIX`), so the kernel keeps it offline.
+It never logs or stores what you said.
 
 Turn it on from the menu under Setup, Voice dictation, "Install live
 captions…", or by hand:
@@ -276,7 +297,7 @@ voice-captions watch               # print caption events as they arrive
 The install downloads about 460 MB once. After that, "Live captions" in the
 same menu turns the service on and off. Hyprland's autostart starts it at
 login while it is enabled. If the daemon is stopped or broken,
-dictation works exactly as before, just without the caption.
+dictation works exactly as before, just without the live words and the pill.
 
 Validate with `bash tests/hyprvoice-gpu.test.sh`,
 `bash tests/hyprvoice-clipboard.test.sh`, `bash tests/voice-dictation.test.sh`,

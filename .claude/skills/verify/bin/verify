@@ -20,7 +20,7 @@ usage: verify <command> [options]
   shot NAME [--env KEY=VALUE]... [--timeout SECONDS]
                                drive a shot harness and save PNGs. NAME is battery-panel
                                (click the real BatteryIcon, save icon + panel PNGs),
-                               voice-caption (the caption pill in five states, one PNG each)
+                               voice-caption (the dictation pill in five states, one PNG each)
                                or timer (the whole timer journey; --env TIMER_SHOT_FRAMES=1
                                adds frames/)
   lmenu ROUTE [--display]      lmenu --dry-run (or --dry-run-display) against the repo menu

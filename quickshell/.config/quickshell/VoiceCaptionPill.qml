@@ -1,8 +1,10 @@
 import QtQuick
 
-// The caption pill. Takes its state as a property so the smoke can load it
-// with a fake; VoiceCaptionPopup passes the VoiceCaptionState singleton. The
-// caption carries visible, phase, settled, pending, hint and level.
+// The dictation pill: a microphone and a level meter. The words themselves are
+// typed into the text box, so the pill only says that dictation is on, plus a
+// hint when live words cannot work. Takes its state as a property so the smoke
+// can load it with a fake; VoiceCaptionPopup passes the VoiceCaptionState
+// singleton. The caption carries visible, phase, hint and level.
 Rectangle {
   id: pill
   required property var caption
@@ -22,31 +24,11 @@ Rectangle {
     NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
   }
 
-  function hex(c) {
-    function h(v) { return ("0" + Math.round(v * 255).toString(16)).slice(-2) }
-    return "#" + h(c.r) + h(c.g) + h(c.b)
-  }
-  function escapeMarkup(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
-  }
-  readonly property string markup: {
-    const c = caption
-    let out = ""
-    if (c.settled !== "")
-      out += "<font color=\"" + hex(Theme.foregroundBright) + "\">" + escapeMarkup(c.settled) + "</font>"
-    if (c.pending !== "")
-      out += "<font color=\"" + hex(Theme.textMuted) + "\">" + escapeMarkup(c.pending) + "</font>"
-    if (c.hint !== "")
-      out += (out !== "" ? " " : "") + "<font color=\"" + hex(Theme.textMuted) + "\">" + escapeMarkup(c.hint) + "</font>"
-    return out
-  }
-
   // Plain bindings rather than a layout, so sizes settle without a window
   // polish pass and the headless smoke sees the real geometry.
-  readonly property real maxWordsWidth: Theme.fs(720) - glyph.implicitWidth - Theme.gapS - meter.width - Theme.gapM
-
-  implicitWidth: Theme.gapL * 2 + glyph.implicitWidth + Theme.gapS + meter.width + Theme.gapM + wordWindow.width
-  implicitHeight: Theme.gapM * 2 + Math.max(glyph.implicitHeight, wordWindow.height)
+  implicitWidth: Theme.gapL * 2 + glyph.implicitWidth + Theme.gapS + meter.width
+    + (hint.visible ? Theme.gapM + hint.implicitWidth : 0)
+  implicitHeight: Theme.gapM * 2 + Math.max(glyph.implicitHeight, hint.implicitHeight)
 
   Text {
     id: glyph
@@ -93,38 +75,17 @@ Rectangle {
   }
 
   Text {
-    id: natural
-    visible: false
-    text: pill.markup
-    textFormat: Text.StyledText
-    font: words.font
-  }
-
-  FontMetrics { id: metrics; font: words.font }
-
-  // Newest words stay visible: the text wraps freely and is pinned to the
-  // bottom of a two-line window, so older lines scroll off the top.
-  Item {
-    id: wordWindow
-    objectName: "captionWindow"
+    id: hint
+    objectName: "captionHint"
+    visible: text !== ""
     x: meter.x + meter.width + Theme.gapM
-    y: Theme.gapM
-    width: Math.min(natural.implicitWidth, pill.maxWordsWidth)
-    height: Math.min(words.implicitHeight, metrics.lineSpacing * 2)
-    clip: true
-
-    Text {
-      id: words
-      objectName: "captionWords"
-      width: parent.width
-      anchors.bottom: parent.bottom
-      text: pill.markup
-      textFormat: Text.StyledText
-      wrapMode: Text.WordWrap
-      opacity: pill.dimmed ? 0.5 : 1
-      font.family: Theme.uiFamily
-      font.pixelSize: Theme.fs(18)
-      font.weight: Font.Medium
-    }
+    y: glyph.y + (glyph.implicitHeight - implicitHeight) / 2
+    text: pill.caption.hint
+    textFormat: Text.PlainText
+    color: Theme.textMuted
+    opacity: pill.dimmed ? 0.5 : 1
+    font.family: Theme.uiFamily
+    font.pixelSize: Theme.fs(18)
+    font.weight: Font.Medium
   }
 }

@@ -1,28 +1,25 @@
 import Quickshell
 import QtQuick
 
-// One PNG per caption state, rendered by the real VoiceCaptionPill over a
+// One PNG per dictation pill state, rendered by the real VoiceCaptionPill over a
 // dark desktop-like backdrop, bottom-centre as the popup places it.
 Scope {
   id: shot
   property int failures: 0
   property int step: 0
   readonly property string outDir: Quickshell.env("VERIFY_SHOT_DIR")
-  readonly property string longText: "so the plan for the next release is to move the caption pill above the volume slot and keep the newest words visible while the older ones fade out of the start of the line"
   readonly property var steps: [
-    { name: "armed", visible: true, phase: "armed", settled: "", pending: "", hint: "Listening…", level: 0 },
-    { name: "listening-short", visible: true, phase: "listening", settled: "and then we can ", pending: "ship it", hint: "", level: 0.78 },
-    { name: "listening-long", visible: true, phase: "listening", settled: "…move the caption pill above the volume slot and keep the newest words visible while the older ones fade out of the ", pending: "start of the line", hint: "", level: 0.6 },
-    { name: "typing", visible: true, phase: "typing", settled: "and then we can ship it on friday", pending: "", hint: "", level: 0 },
-    { name: "loading", visible: true, phase: "listening", settled: "", pending: "", hint: "Loading speech model…", level: 0 }
+    { name: "armed", visible: true, phase: "armed", hint: "", level: 0 },
+    { name: "listening-quiet", visible: true, phase: "listening", hint: "", level: 0.3 },
+    { name: "listening-loud", visible: true, phase: "listening", hint: "", level: 0.78 },
+    { name: "typing", visible: true, phase: "typing", hint: "", level: 0 },
+    { name: "loading", visible: true, phase: "listening", hint: "Loading speech model…", level: 0 }
   ]
 
   QtObject {
     id: fake
     property bool visible: false
     property string phase: "idle"
-    property string settled: ""
-    property string pending: ""
     property string hint: ""
     property real level: 0
   }
@@ -69,7 +66,7 @@ Scope {
 
   function applyStep() {
     const s = shot.steps[shot.step]
-    fake.visible = s.visible; fake.phase = s.phase; fake.settled = s.settled; fake.pending = s.pending; fake.hint = s.hint; fake.level = s.level
+    fake.visible = s.visible; fake.phase = s.phase; fake.hint = s.hint; fake.level = s.level
     grabTimer.start()
   }
 
@@ -78,7 +75,7 @@ Scope {
     interval: 600
     onTriggered: {
       const s = shot.steps[shot.step]
-      console.log("text " + s.name + ": " + pill.markup + " | dimmed " + pill.dimmed + " | " + Math.round(pill.width) + "x" + Math.round(pill.height))
+      console.log("text " + s.name + ": hint \"" + s.hint + "\" | level " + s.level + " | dimmed " + pill.dimmed + " | " + Math.round(pill.width) + "x" + Math.round(pill.height))
       check(s.name + ": pill is faded in", pill.opacity === pill.targetOpacity && pill.opacity > 0)
       const path = shot.outDir + "/voice-caption-" + s.name + ".png"
       backdrop.grabToImage(function (image) {
