@@ -86,7 +86,13 @@ case "$*" in
     if [[ -n ${HYPR_WARPS_JSON:-} ]]; then printf '%s\n' "$HYPR_WARPS_JSON";
     else printf '{"bool":false}\n'; fi ;;
   --batch\ *)
-    # The caption daemon's keys: Hyprland answers ok for each command.
+    # The caption daemon's keys: Hyprland answers ok for each command. An
+    # erase takes HYPR_ERASE_DELAY_FILE's seconds, waited with a builtin so a
+    # killed stub leaves no child holding its output open.
+    if [[ $2 == *BackSpace* && -s ${HYPR_ERASE_DELAY_FILE:-/nonexistent} ]]; then
+      read -r delay <"$HYPR_ERASE_DELAY_FILE"
+      read -r -t "$delay" _ <>"$HYPR_ERASE_DELAY_FILE.fifo" || true
+    fi
     printf '%s\n' "$*" >>"$VOICE_DICTATION_CALLS"
     IFS=';' read -ra commands <<<"$2"
     printf 'ok\n\n\n%.0s' "${commands[@]}" ;;
@@ -898,6 +904,9 @@ SH
 chmod +x "$test_root/bin/live-recorder" "$test_root/bin/wtype"
 export HYPR_ACTIVE_FILE=$test_root/active
 printf 0xaaa >"$HYPR_ACTIVE_FILE"
+export HYPR_ERASE_DELAY_FILE=$live/erase-delay
+: >"$HYPR_ERASE_DELAY_FILE"
+mkfifo "$HYPR_ERASE_DELAY_FILE.fifo"
 VOICE_CAPTIONS_CONTROL=$live/control VOICE_CAPTIONS_EVENTS=$live/events.sock VOICE_CAPTIONS_ENGINE=fake \
   VOICE_CAPTIONS_RECORDER=$test_root/bin/live-recorder VOICE_CAPTIONS_HYPRCTL=$test_root/bin/hyprctl \
   PYTHONDONTWRITEBYTECODE=1 python3 "$daemon" serve 2>"$live/log" &
@@ -937,7 +946,29 @@ text = "".join(" " if key == "space" else key for key in keys)
 assert re.fullmatch(r"(wrd\d+ )+", text), text
 assert [command.fullmatch(key)[1] for key in batches[erase]] == ["BackSpace"] * len(keys), (batches[erase], text)
 PY
-unset HYPR_ACTIVE_FILE
+
+# An erase slower than the script's 1.5 s wait but quicker than the daemon's
+# helper timeout: the daemon gives up at its stop budget, so no BackSpace
+# lands after Hyprvoice was told to type.
+printf 1.8 >"$HYPR_ERASE_DELAY_FILE"
+printf 0xaaa >"$HYPR_ACTIVE_FILE"
+: >"$calls"
+VOICE_CAPTIONS_CONTROL=$captions "$script" toggle >/dev/null 2>&1
+for _ in {1..400}; do
+  grep -Fq -- "$third_word" "$calls" && break
+  sleep 0.025
+done
+grep -Fq -- "$third_word" "$calls" || fail "live words were not sent before the slow erase: $(<"$calls")"
+printf 0xbbb >"$HYPR_ACTIVE_FILE"
+stop_started=${EPOCHREALTIME/[.,]/}
+VOICE_CAPTIONS_CONTROL=$captions JOURNAL_FIXTURE=$journal_done "$script" toggle >/dev/null 2>&1
+grep -qx toggle "$calls" || fail 'the slow erase kept Hyprvoice from typing'
+while (( ${EPOCHREALTIME/[.,]/} - stop_started < 2500000 )); do sleep 0.05; done
+! grep -Fq BackSpace "$calls" || fail "a BackSpace landed after Hyprvoice typed: $(<"$calls")"
+grep -Fq 'stop budget spent' "$live/log" || grep -Fq 'Hyprland took 0 of' "$live/log" ||
+  fail "the daemon did not give up the slow erase: $(<"$live/log")"
+: >"$HYPR_ERASE_DELAY_FILE"
+unset HYPR_ACTIVE_FILE HYPR_ERASE_DELAY_FILE
 kill -TERM "$daemon_pid"
 wait "$daemon_pid" || fail 'the caption daemon did not exit cleanly'
 daemon_pid=

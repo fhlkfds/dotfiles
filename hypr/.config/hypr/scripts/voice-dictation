@@ -383,7 +383,9 @@ resume_media() {
 # until it says it erased them, so Hyprvoice's text does not land behind them.
 # The reply FIFO is opened before the report, so the answer cannot be missed.
 # Builtins only, and never longer than 1.5 s: with no daemon there is no reply
-# FIFO and no wait, and a stuck daemon costs the wait once per stop.
+# FIFO and no wait. The daemon answers within 1 s and sends no key after that
+# (its STOP_BUDGET), so going on after a timeout cannot let a late BackSpace
+# eat Hyprvoice's text. A stuck daemon costs the wait once per stop.
 erase_live_words() {
   local fd line now deadline left
   if [[ -z $caption_id || ! -p $captions_reply ]] || ! { exec {fd}<>"$captions_reply"; } 2>/dev/null; then

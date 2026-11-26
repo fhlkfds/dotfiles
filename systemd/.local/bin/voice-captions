@@ -44,6 +44,10 @@ FAKE_WORD_BYTES = BYTES_PER_SECOND // 10
 LEVEL_INTERVAL = 0.05
 LEVEL_BYTES = int(LEVEL_INTERVAL * BYTES_PER_SECOND)
 HELPER_TIMEOUT = 2.0
+# A stop is answered within this long, before voice-dictation's 1.5 s wait
+# ends and Hyprvoice types. Keys still unsent then are dropped: a BackSpace
+# that landed after Hyprvoice's text would delete it.
+STOP_BUDGET = 1.0
 # Hyprland reads a request until its socket runs dry, so a very long request
 # can arrive cut short. A 256-key batch (at most 29 KiB) lands whole.
 BATCH_KEYS = 256
@@ -609,6 +613,8 @@ class Daemon:
         self.reply_fd = reply_fd
         self.keyboard = asyncio.Lock()
         self.jobs = set()
+        self.helpers = set()
+        self.stop_deadline = math.inf
         self.state = State()
         self.seq = 0
         self.subscribers = {}
@@ -632,7 +638,13 @@ class Daemon:
             pass  # the loop closed while a decode finished
 
     def handle(self, inp):
+        stopping = self.state.id if self.state.stop else None
         self.state, effects = step(self.state, inp, self.loop.time(), self.cfg.limits)
+        if not self.state.stop:
+            self.stop_deadline = math.inf
+        elif stopping != self.state.id:
+            self.stop_deadline = self.loop.time() + STOP_BUDGET
+            self.loop.call_at(self.stop_deadline, self.cut_helpers)
         for effect in effects:
             self.perform(effect)
         if self.deadline_timer:
@@ -680,6 +692,7 @@ class Daemon:
         except OSError as error:
             log(f"{self.cfg.hyprctl} did not start: {error.strerror}")
             return b""
+        self.helpers.add(proc)
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), HELPER_TIMEOUT)
         except TimeoutError:
@@ -687,7 +700,16 @@ class Daemon:
             await proc.wait()
             log(f"{self.cfg.hyprctl} hung")
             return b""
+        finally:
+            self.helpers.discard(proc)
         return out
+
+    def cut_helpers(self):
+        """The stop's budget is spent: end the batches still running."""
+        if self.loop.time() < self.stop_deadline:
+            return
+        for proc in self.helpers:
+            proc.kill()
 
     async def press(self, target, keys) -> int:
         """Press keys in the target window, whichever window has focus and
@@ -697,6 +719,9 @@ class Daemon:
         taken = 0
         async with self.keyboard:
             for start in range(0, len(keys), BATCH_KEYS):
+                if self.loop.time() >= self.stop_deadline:
+                    log(f"stop budget spent after {taken} of {len(keys)} keys")
+                    break
                 part = keys[start:start + BATCH_KEYS]
                 ok = (await self.hyprctl(batch(target, part))).split().count(b"ok")
                 taken += ok
