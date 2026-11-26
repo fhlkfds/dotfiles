@@ -209,8 +209,9 @@ check("batch: the longest batch fits one socket write",
 
 
 
-def press(count, script, stop_deadline=math.inf):
-    """Run Daemon.press against a stand-in hyprctl; returns (keys taken, batch sizes)."""
+def press(count, script, stop_deadline=math.inf, stop_after=None):
+    """Run Daemon.press against a stand-in hyprctl; returns (keys taken, batch sizes).
+    stop_after starts the dictation's stop that many seconds into the run."""
     with tempfile.TemporaryDirectory() as tmp:
         stub = Path(tmp) / "hyprctl"
         stub.write_text("#!/usr/bin/env bash\nIFS=';' read -ra commands <<<\"$2\"\n"
@@ -218,11 +219,13 @@ def press(count, script, stop_deadline=math.inf):
         stub.chmod(0o700)
         daemon = object.__new__(vc.Daemon)
         daemon.cfg, daemon.keyboard = SimpleNamespace(hyprctl=str(stub)), asyncio.Lock()
-        daemon.helpers = {}
+        daemon.helpers, daemon.stop_deadlines = {}, {"1.0": stop_deadline}
 
         async def run():
             daemon.loop = asyncio.get_running_loop()
-            return await daemon.press("1.0", BOX, (vc.BACKSPACE,) * count, stop_deadline)
+            if stop_after is not None:
+                daemon.loop.call_later(stop_after, lambda: daemon.stop_deadlines.update({"1.0": daemon.loop.time()}))
+            return await daemon.press("1.0", BOX, (vc.BACKSPACE,) * count)
         taken = asyncio.run(run())
         sizes = Path(tmp) / "sizes"
         return taken, [int(size) for size in sizes.read_text().split()] if sizes.exists() else []
@@ -236,6 +239,9 @@ check("press: only the keys Hyprland took count, and a refusal ends the run",
 check("press: a hyprctl that fails outright sent nothing", press(3, "exit 1") == (0, [3]))
 check("press: once the stop budget is spent, no batch starts",
       press(3, ok_each, stop_deadline=-math.inf) == (0, []))
+slow_ok = "read -r -t 0.3 _ <> <(:) || true\n" + ok_each
+check("press: a stop that starts mid-run ends a long typing run after its batch",
+      press(600, slow_ok, stop_after=0.1) == (256, [256]), str(press(600, slow_ok, stop_after=0.1)))
 
 custom = {"armed": 1.0, "listening": 2.0, "typing": 3.0}
 state, _ = vc.step(State(), Report("1", "armed"), 0, custom)

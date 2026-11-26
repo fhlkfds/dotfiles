@@ -618,7 +618,9 @@ class Daemon:
         self.keyboard = asyncio.Lock()
         self.jobs = set()
         self.helpers = {}
-        self.stop_deadline = math.inf
+        # Each dictation's stop deadline, kept apart from State so a later
+        # report (an idle read in the same burst) cannot lift it.
+        self.stop_deadlines = {}
         self.state = State()
         self.seq = 0
         self.subscribers = {}
@@ -644,15 +646,16 @@ class Daemon:
     def handle(self, inp):
         stopping = self.state.id if self.state.stop else None
         self.state, effects = step(self.state, inp, self.loop.time(), self.cfg.limits)
-        if not self.state.stop:
-            self.stop_deadline = math.inf
-        elif stopping != self.state.id:
+        if self.state.stop and stopping != self.state.id:
             # Only a typing report starts a stop. The budget runs from when
             # voice-dictation sent it, so a report read late, by a daemon that
             # was paused, finds it already spent and sends no keys.
             late = time.time() - float(inp.sent) if inp.sent else 0.0
-            self.stop_deadline = self.loop.time() + STOP_BUDGET - max(late, 0.0)
-            self.loop.call_at(self.stop_deadline, self.cut_helpers, self.state.id)
+            now = self.loop.time()
+            deadline = now + STOP_BUDGET - max(late, 0.0)
+            self.stop_deadlines = {id: end for id, end in self.stop_deadlines.items() if end > now - 60}
+            self.stop_deadlines[self.state.id] = deadline
+            self.loop.call_at(deadline, self.cut_helpers, self.state.id)
         for effect in effects:
             self.perform(effect)
         if self.deadline_timer:
@@ -676,9 +679,7 @@ class Daemon:
             case Type(id=id, target=target, keys=keys):
                 self.start(self.type_keys(id, target, keys))
             case Erase(id=id, target=target, count=count):
-                # The erase keeps this stop's deadline: a later report, such
-                # as idle read in the same burst, must not lift it.
-                self.start(self.erase(id, target, count, self.stop_deadline))
+                self.start(self.erase(id, target, count))
             case Ack(id=id):
                 try:
                     os.write(self.reply_fd, f"{id} erased\n".encode())
@@ -721,7 +722,7 @@ class Daemon:
             if owner == id:
                 proc.kill()
 
-    async def press(self, id, target, keys, deadline=math.inf) -> int:
+    async def press(self, id, target, keys) -> int:
         """Press keys in the target window, whichever window has focus and
         whatever modifiers are held: send_shortcut goes to the window's
         surface with exactly the mods named and runs no keybind. Returns how
@@ -729,6 +730,9 @@ class Daemon:
         taken = 0
         async with self.keyboard:
             for start in range(0, len(keys), BATCH_KEYS):
+                # Typing and erasing alike: once the dictation's stop budget
+                # is spent, no batch starts.
+                deadline = self.stop_deadlines.get(id, math.inf)
                 if self.loop.time() >= deadline:
                     log(f"stop budget spent after {taken} of {len(keys)} keys")
                     break
@@ -744,8 +748,8 @@ class Daemon:
         taken = await self.press(id, target, keys)
         self.handle(Typed(id, taken) if taken == len(keys) else TypeFailed(id, taken))
 
-    async def erase(self, id, target, count, deadline):
-        self.handle(Erased(id, await self.press(id, target, (BACKSPACE,) * count, deadline)))
+    async def erase(self, id, target, count):
+        self.handle(Erased(id, await self.press(id, target, (BACKSPACE,) * count)))
 
     def on_audio(self, id, pcm):
         self.decoder.audio(id, pcm)
