@@ -82,18 +82,22 @@ class Report:
     phase: str
     source: str = ""
     target: str = ""  # the window being dictated into, as a Hyprland address
+    sent: str = ""  # when voice-dictation sent a typing report, in epoch seconds
 
 
 REPORT_LINE = re.compile(
-    r"([0-9]{1,20}(?:\.[0-9]{1,9})?) "
-    r"(armed|typing|idle|listening ([A-Za-z0-9_.:-]{1,255})(?: (0x[0-9a-fA-F]{1,16}))?)")
+    r"(?P<id>[0-9]{1,20}(?:\.[0-9]{1,9})?) (?:"
+    r"(?P<phase>armed|idle)"
+    r"|(?P<typing>typing)(?: (?P<sent>[0-9]{1,20}\.[0-9]{1,9}))?"
+    r"|(?P<listening>listening) (?P<source>[A-Za-z0-9_.:-]{1,255})(?: (?P<target>0x[0-9a-fA-F]{1,16}))?)")
 
 
 def parse_report(line: str) -> "Report | None":
     match = REPORT_LINE.fullmatch(line)
     if not match:
         return None
-    return Report(match[1], match[2].split(" ", 1)[0], match[3] or "", match[4] or "")
+    phase = match["phase"] or match["typing"] or match["listening"]
+    return Report(match["id"], phase, match["source"] or "", match["target"] or "", match["sent"] or "")
 
 
 @dataclass(frozen=True)
@@ -613,7 +617,7 @@ class Daemon:
         self.reply_fd = reply_fd
         self.keyboard = asyncio.Lock()
         self.jobs = set()
-        self.helpers = set()
+        self.helpers = {}
         self.stop_deadline = math.inf
         self.state = State()
         self.seq = 0
@@ -643,8 +647,12 @@ class Daemon:
         if not self.state.stop:
             self.stop_deadline = math.inf
         elif stopping != self.state.id:
-            self.stop_deadline = self.loop.time() + STOP_BUDGET
-            self.loop.call_at(self.stop_deadline, self.cut_helpers)
+            # Only a typing report starts a stop. The budget runs from when
+            # voice-dictation sent it, so a report read late, by a daemon that
+            # was paused, finds it already spent and sends no keys.
+            late = time.time() - float(inp.sent) if inp.sent else 0.0
+            self.stop_deadline = self.loop.time() + STOP_BUDGET - max(late, 0.0)
+            self.loop.call_at(self.stop_deadline, self.cut_helpers, self.state.id)
         for effect in effects:
             self.perform(effect)
         if self.deadline_timer:
@@ -668,7 +676,9 @@ class Daemon:
             case Type(id=id, target=target, keys=keys):
                 self.start(self.type_keys(id, target, keys))
             case Erase(id=id, target=target, count=count):
-                self.start(self.erase(id, target, count))
+                # The erase keeps this stop's deadline: a later report, such
+                # as idle read in the same burst, must not lift it.
+                self.start(self.erase(id, target, count, self.stop_deadline))
             case Ack(id=id):
                 try:
                     os.write(self.reply_fd, f"{id} erased\n".encode())
@@ -682,7 +692,7 @@ class Daemon:
         self.jobs.add(task)
         task.add_done_callback(self.jobs.discard)
 
-    async def hyprctl(self, request) -> bytes:
+    async def hyprctl(self, id, request, deadline) -> bytes:
         """Hyprland's answer to a batch, empty when hyprctl did not run or
         hung. Its exit status says nothing about the keys."""
         pipe = asyncio.subprocess
@@ -692,26 +702,26 @@ class Daemon:
         except OSError as error:
             log(f"{self.cfg.hyprctl} did not start: {error.strerror}")
             return b""
-        self.helpers.add(proc)
+        self.helpers[proc] = id
         try:
-            out, _ = await asyncio.wait_for(proc.communicate(), HELPER_TIMEOUT)
+            timeout = min(HELPER_TIMEOUT, deadline - self.loop.time())
+            out, _ = await asyncio.wait_for(proc.communicate(), max(timeout, 0))
         except TimeoutError:
             proc.kill()
             await proc.wait()
             log(f"{self.cfg.hyprctl} hung")
             return b""
         finally:
-            self.helpers.discard(proc)
+            self.helpers.pop(proc, None)
         return out
 
-    def cut_helpers(self):
-        """The stop's budget is spent: end the batches still running."""
-        if self.loop.time() < self.stop_deadline:
-            return
-        for proc in self.helpers:
-            proc.kill()
+    def cut_helpers(self, id):
+        """A stop's budget is spent: end that dictation's batches still running."""
+        for proc, owner in list(self.helpers.items()):
+            if owner == id:
+                proc.kill()
 
-    async def press(self, target, keys) -> int:
+    async def press(self, id, target, keys, deadline=math.inf) -> int:
         """Press keys in the target window, whichever window has focus and
         whatever modifiers are held: send_shortcut goes to the window's
         surface with exactly the mods named and runs no keybind. Returns how
@@ -719,11 +729,11 @@ class Daemon:
         taken = 0
         async with self.keyboard:
             for start in range(0, len(keys), BATCH_KEYS):
-                if self.loop.time() >= self.stop_deadline:
+                if self.loop.time() >= deadline:
                     log(f"stop budget spent after {taken} of {len(keys)} keys")
                     break
                 part = keys[start:start + BATCH_KEYS]
-                ok = (await self.hyprctl(batch(target, part))).split().count(b"ok")
+                ok = (await self.hyprctl(id, batch(target, part), deadline)).split().count(b"ok")
                 taken += ok
                 if ok < len(part):
                     log(f"Hyprland took {taken} of {len(keys)} keys")
@@ -731,11 +741,11 @@ class Daemon:
         return taken
 
     async def type_keys(self, id, target, keys):
-        taken = await self.press(target, keys)
+        taken = await self.press(id, target, keys)
         self.handle(Typed(id, taken) if taken == len(keys) else TypeFailed(id, taken))
 
-    async def erase(self, id, target, count):
-        self.handle(Erased(id, await self.press(target, (BACKSPACE,) * count)))
+    async def erase(self, id, target, count, deadline):
+        self.handle(Erased(id, await self.press(id, target, (BACKSPACE,) * count, deadline)))
 
     def on_audio(self, id, pcm):
         self.decoder.audio(id, pcm)

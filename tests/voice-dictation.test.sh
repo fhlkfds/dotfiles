@@ -804,7 +804,8 @@ id_pattern='^[0-9]+\.[0-9]{6}$'
 [[ $started_id =~ $id_pattern ]] || fail "the dictation start time is not a caption id: $started_id"
 [[ $start_reports == "$started_id armed"$'\n'"$started_id listening alsa_input.webcam 0xaaa" ]] ||
   fail "start did not report armed, then listening with the window to type into: $start_reports"
-[[ $stop_reports == "$started_id typing"$'\n'"$started_id idle" ]] || fail "stop did not report typing then idle: $stop_reports"
+stop_pattern="^${started_id//./\\.} typing [0-9]+\.[0-9]{6}"$'\n'"${started_id//./\\.} idle\$"
+[[ $stop_reports =~ $stop_pattern ]] || fail "stop did not report typing with its send time, then idle: $stop_reports"
 for half in start stop; do
   cmp -s "$test_root/with.$half.out" "$test_root/without.$half.out" ||
     fail "captions changed what dictation $half does or prints"
@@ -829,11 +830,12 @@ printf '%s\n' 42.5 >"$VOICE_DICTATION_TARGET.started"
 if VOICE_CAPTIONS_CONTROL=$captions HYPRVOICE_TOGGLE_FAIL=1 HYPRVOICE_FAILURE_STATE=status-error "$script" toggle 2>/dev/null; then
   fail 'failed stop reported success'
 fi
-[[ $(reports) == '42.5 typing'$'\n''42.5 idle' ]] || fail 'a stop whose Hyprvoice failed did not report typing then idle'
+[[ $(reports) =~ ^42\.5\ typing\ [0-9]+\.[0-9]{6}$'\n'42\.5\ idle$ ]] ||
+  fail 'a stop whose Hyprvoice failed did not report typing then idle'
 printf transcribing >"$HYPRVOICE_STATE"
 printf '%s\n' 43.5 >"$VOICE_DICTATION_TARGET.started"
 VOICE_CAPTIONS_CONTROL=$captions HYPRVOICE_TOGGLE_FAIL=1 "$script" toggle 2>/dev/null || true
-[[ $(reports) == '43.5 typing' ]] || fail 'a stop that left Hyprvoice listening reported more than typing'
+[[ $(reports) =~ ^43\.5\ typing\ [0-9]+\.[0-9]{6}$ ]] || fail 'a stop that left Hyprvoice listening reported more than typing'
 
 # The stop waits for the daemon to say the live words are erased: not at all
 # with no reply FIFO, until the answer for this dictation, and 1.5 s at most.
@@ -860,7 +862,7 @@ unanswered=$(stop_ms 46.5)
 ((unanswered - plain >= 1300 && unanswered - plain < 2300)) ||
   fail "an unanswered stop took $unanswered ms, against $plain ms: the wait is not 1.5 s"
 grep -Fxq toggle "$calls" || fail 'an unanswered stop did not stop Hyprvoice'
-[[ $(reports | grep -c ' typing$') == 3 ]] || fail 'a stop did not report typing before it waited'
+[[ $(reports | grep -cE ' typing [0-9]+\.[0-9]{6}$') == 3 ]] || fail 'a stop did not report typing before it waited'
 exec 6>&-
 rm -f -- "$test_root/reply"
 
@@ -968,6 +970,30 @@ while (( ${EPOCHREALTIME/[.,]/} - stop_started < 2500000 )); do sleep 0.05; done
 grep -Fq 'stop budget spent' "$live/log" || grep -Fq 'Hyprland took 0 of' "$live/log" ||
   fail "the daemon did not give up the slow erase: $(<"$live/log")"
 : >"$HYPR_ERASE_DELAY_FILE"
+
+# A daemon paused through the whole stop reads the typing report only after
+# the script gave up waiting and let Hyprvoice type. The report says when it
+# was sent, so the resumed daemon finds its budget spent and sends no keys.
+printf 0xaaa >"$HYPR_ACTIVE_FILE"
+: >"$calls"
+VOICE_CAPTIONS_CONTROL=$captions "$script" toggle >/dev/null 2>&1
+for _ in {1..400}; do
+  grep -Fq -- "$third_word" "$calls" && break
+  sleep 0.025
+done
+grep -Fq -- "$third_word" "$calls" || fail "live words were not sent before the pause: $(<"$calls")"
+printf 0xbbb >"$HYPR_ACTIVE_FILE"
+kill -STOP "$daemon_pid"
+VOICE_CAPTIONS_CONTROL=$captions JOURNAL_FIXTURE=$journal_done "$script" toggle >/dev/null 2>&1
+grep -qx toggle "$calls" || fail 'a paused daemon kept Hyprvoice from typing'
+kill -CONT "$daemon_pid"
+resumed=${EPOCHREALTIME/[.,]/}
+for _ in {1..400}; do
+  grep -Fq 'stop budget spent' "$live/log" && break
+  sleep 0.025
+done
+while (( ${EPOCHREALTIME/[.,]/} - resumed < 1000000 )); do sleep 0.05; done
+! grep -Fq BackSpace "$calls" || fail "a resumed daemon erased after Hyprvoice typed: $(<"$calls")"
 unset HYPR_ACTIVE_FILE HYPR_ERASE_DELAY_FILE
 kill -TERM "$daemon_pid"
 wait "$daemon_pid" || fail 'the caption daemon did not exit cleanly'

@@ -218,11 +218,11 @@ def press(count, script, stop_deadline=math.inf):
         stub.chmod(0o700)
         daemon = object.__new__(vc.Daemon)
         daemon.cfg, daemon.keyboard = SimpleNamespace(hyprctl=str(stub)), asyncio.Lock()
-        daemon.helpers, daemon.stop_deadline = set(), stop_deadline
+        daemon.helpers = {}
 
         async def run():
             daemon.loop = asyncio.get_running_loop()
-            return await daemon.press(BOX, (vc.BACKSPACE,) * count)
+            return await daemon.press("1.0", BOX, (vc.BACKSPACE,) * count, stop_deadline)
         taken = asyncio.run(run())
         sizes = Path(tmp) / "sizes"
         return taken, [int(size) for size in sizes.read_text().split()] if sizes.exists() else []
@@ -311,6 +311,7 @@ valid = {
     "1764069000.123456 armed": Report("1764069000.123456", "armed"),
     "5 idle": Report("5", "idle"),
     "5.1 typing": Report("5.1", "typing"),
+    "5.1 typing 1764069001.5": Report("5.1", "typing", sent="1764069001.5"),
     "5.1 listening alsa_input.usb-Foo_Bar-00.analog-stereo":
         Report("5.1", "listening", "alsa_input.usb-Foo_Bar-00.analog-stereo"),
     "5.1 listening mic 0x55D0c0ffee": Report("5.1", "listening", "mic", "0x55D0c0ffee"),
@@ -321,6 +322,7 @@ junk = ["", "armed", "abc armed", "1 armed extra", "1 listening", "1 listening b
         " 1 typing", "1  armed", "-1 armed", "1.2.3 armed", "1. armed", "1 sleeping", "1 ARMED",
         "１ armed", "1 armed\r", "1 listening mic other", "1 listening " + "a" * 300, "1 listening mic 0x",
         "1 listening mic 0xzz", "1 listening mic 55d0", "1 listening mic 0xabc 0xdef", "1 typing 0xabc",
+        "1 typing 17", "1 typing 1.5 2.5", "1 armed 1.5", "1 idle 1.5",
         "1" * 21 + " armed", "{\"phase\":\"armed\"}"]
 for line in junk:
     check(f"parse: rejects {line[:40]!r}", vc.parse_report(line) is None)
