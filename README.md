@@ -41,7 +41,7 @@ contents into `~`.
 **Deploy the standard packages at once:**
 
 ```bash
-stow ai browser cliphist fastfetch greeter hypr hyprlock kitty modes \
+stow ai browser cliphist fastfetch greeter herdr hypr hyprlock kitty modes \
      menu quickshell rofi screensaver security ssh systemd windows xdg zsh
 ```
 
@@ -55,6 +55,7 @@ stow security    # ~/.local/bin/yubikey-auth, safe YubiKey PAM setup/addition;
                  # ~/.local/bin/fingerprint-auth, laptop fingerprint sign-in;
                  # ~/.config/gnupg-conf gpg/gpg-agent examples
 stow ssh         # ~/.local/bin/sshpersist, SSH keepalive config fragment
+stow herdr       # ~/.config/herdr, ~/.local/bin/herdr-up (SUPER+Return)
 stow browser     # Chromium extensions, flags, and native messaging hosts
 stow hypr        # ~/.config/hypr
 stow hyprlock    # ~/.config/hyprlock
@@ -117,6 +118,23 @@ Their package-level `.gitignore` files keep accidental app state untracked, but
 do not prevent Stow from folding a missing target directory into one symlink.
 Without `--no-folding`, a later `git clean -xfd` could therefore delete app
 state written through that symlink.
+
+### Herdr tabs that reconnect
+
+`SUPER+Return` opens kitty running `herdr-up`, which attaches to Herdr at once
+and, in the background, types `sshpersist <host>` into each SSH tab whose shell
+is idle. Herdr restores tabs after a reboot as local shells, so without it the
+`hubble` and `Hermes` tabs need reconnecting by hand. A busy tab (already
+connected, or running anything else) is left alone, and a missing tab is
+created. The background run logs to `~/.local/state/herdr-up/last-run.log`.
+
+```bash
+herdr-up --dry-run    # show what it would connect; changes nothing
+herdr-up --no-attach  # connect the tabs without opening Herdr
+HERDR_UP_TARGETS='hubble=hubble,Hermes=hermes,lab=lab-box' herdr-up
+```
+
+Each host needs key-based SSH login, or the tab waits at a password prompt.
 
 ## ASCII Screensaver
 

@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# Open Herdr with the SSH tabs already connected. Herdr restores tabs after a
+# reboot as plain local shells, so the hubble and Hermes tabs need
+# `sshpersist <host>` typed into them again. This attaches right away and, in
+# the background, types that into each listed tab whose shell is idle, creating
+# the tab if it is gone. A tab that is busy (already connected, or running
+# anything else) is left alone, so running it again or opening a second
+# terminal never connects twice.
+set -euo pipefail
+
+herdr_command=${HERDR_UP_HERDR:-herdr}
+ps_command=${HERDR_UP_PS:-ps}
+connect_command=${HERDR_UP_CONNECT:-sshpersist}
+targets=${HERDR_UP_TARGETS:-hubble=hubble,Hermes=hermes}
+session=${HERDR_UP_SESSION:-}
+wait_seconds=${HERDR_UP_WAIT_SECONDS:-10}
+state_dir=${HERDR_UP_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/herdr-up}
+dry_run=0
+attach=1
+
+usage() {
+  cat <<EOF
+usage: ${0##*/} [--dry-run] [--no-attach]
+
+Attach to Herdr and connect its SSH tabs (HERDR_UP_TARGETS, label=host pairs
+separated by commas; default: $targets).
+
+  --dry-run    print what would be connected, change nothing, do not attach
+  --no-attach  connect the tabs in the foreground and exit
+EOF
+}
+
+for argument in "$@"; do
+  case "$argument" in
+    --dry-run) dry_run=1 attach=0 ;;
+    --no-attach) attach=0 ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+
+h() {
+  "$herdr_command" ${session:+--session "$session"} "$@"
+}
+
+run() {
+  if ((dry_run)); then
+    printf '+ %s\n' "$*"
+  else
+    h "$@" >/dev/null
+  fi
+}
+
+# The server is up and has restored (or created) a workspace to put tabs in.
+wait_for_workspace() {
+  local deadline=$((SECONDS + wait_seconds))
+  until h workspace list 2>/dev/null | jq -e '.result.workspaces | length > 0' >/dev/null; do
+    ((SECONDS < deadline)) || return 1
+    sleep 0.1
+  done
+}
+
+# A shell restored after a reboot runs .zshrc's banner in the foreground before
+# its first prompt, so a young shell gets until the deadline to reach it. A
+# busy shell older than that is in use and is left alone.
+wait_for_prompt() {
+  local info age deadline=$((SECONDS + wait_seconds))
+  while :; do
+    info=$(h pane process-info --pane "$1") || return 1
+    jq -e '.result.process_info | .foreground_process_group_id == .shell_pid' <<<"$info" >/dev/null \
+      && return 0
+    age=$("$ps_command" -o etimes= -p "$(jq -r '.result.process_info.shell_pid' <<<"$info")") || return 1
+    ((age < wait_seconds && SECONDS < deadline)) || return 1
+    sleep 0.2
+  done
+}
+
+connect_tab() {
+  local label=$1 host=$2 tabs=$3 panes=$4 tab_id pane_id workspace_id line
+  printf -v line '%q %q' "$connect_command" "$host"
+
+  tab_id=$(jq -r --arg label "$label" \
+    'first(.result.tabs[] | select(.label == $label) | .tab_id) // empty' <<<"$tabs")
+  if [[ -z $tab_id ]]; then
+    workspace_id=$(h workspace list | jq -r '.result.workspaces[0].workspace_id')
+    if ((dry_run)); then
+      printf '+ tab create --workspace %s --label %q, then pane run <new pane> %s\n' \
+        "$workspace_id" "$label" "$line"
+      return
+    fi
+    pane_id=$(h tab create --workspace "$workspace_id" --label "$label" --cwd "$HOME" --no-focus \
+      | jq -r '.result.root_pane.pane_id // empty') && [[ -n $pane_id ]] || return 1
+    printf '%s: created tab, pane %s\n' "$label" "$pane_id"
+  else
+    pane_id=$(jq -r --arg tab "$tab_id" \
+      'first(.result.panes[] | select(.tab_id == $tab) | .pane_id) // empty' <<<"$panes")
+    if [[ -z $pane_id ]] || ! wait_for_prompt "$pane_id"; then
+      printf '%s: busy, left alone\n' "$label"
+      return
+    fi
+  fi
+  run pane run "$pane_id" "$line"
+  printf '%s: connecting to %s in %s\n' "$label" "$host" "$pane_id"
+}
+
+connect_tabs() {
+  local entries entry label host tabs panes
+  mkdir -p -- "$state_dir"
+  exec 9>"$state_dir/lock"
+  flock -w "$wait_seconds" 9 || { printf 'another herdr-up is still running\n' >&2; return 1; }
+
+  wait_for_workspace || { printf 'no Herdr server with a workspace after %ss\n' "$wait_seconds" >&2; return 1; }
+  tabs=$(h tab list)
+  panes=$(h pane list)
+
+  IFS=, read -ra entries <<<"$targets"
+  for entry in "${entries[@]}"; do
+    label=${entry%%=*} host=${entry#*=}
+    if [[ -z $label || $entry != *=* || ! $host =~ ^[A-Za-z0-9_][A-Za-z0-9_.@-]*$ ]]; then
+      printf 'skipping bad target %q (want label=host)\n' "$entry" >&2
+      continue
+    fi
+    connect_tab "$label" "$host" "$tabs" "$panes" || printf '%s: failed\n' "$label" >&2
+  done
+}
+
+if ((attach)); then
+  mkdir -p -- "$state_dir"
+  (trap '' HUP; connect_tabs) </dev/null >"$state_dir/last-run.log" 2>&1 &
+  exec "$herdr_command" ${session:+--session "$session"}
+fi
+connect_tabs
